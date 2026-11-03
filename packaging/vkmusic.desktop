@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=VK Music
+GenericName=Музыкальный плеер
+Comment=Музыка ВКонтакте
+Exec=vkmusic
+Icon=vkmusic
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+StartupWMClass=vkmusic

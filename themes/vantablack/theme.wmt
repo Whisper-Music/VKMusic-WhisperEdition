@@ -1,0 +1,97 @@
+#WMT 1
+# Vantablack — палитра и обои темы Omarchy «Vantablack» (basecamp/omarchy, themes/vantablack):
+# чистый чёрный, белый текст, серые акценты. Обои: backgrounds/0-dot-hands.webp.
+
+@@ manifest
+{
+  "id": "vantablack",
+  "name": "Vantablack",
+  "author": "Omarchy",
+  "description": "Абсолютный чёрный, белый текст и серые оттенки — без единого цвета",
+  "version": "1.0",
+  "base": "neon",
+  "apps": ["vkmusic"],
+  "created": "2026-10-29T00:00:00Z",
+  "preview": "asset:preview.jpg"
+}
+
+@@ tokens
+{
+  "color": {
+    "accent": "#ececec",      // light_foreground
+    "accent2": "#8d8d8d",     // accent из colors.toml Omarchy
+    "text": "#ffffff",        // foreground
+    "muted": "#7a7a7a",       // muted
+    "background": "#000000"
+  },
+  "effects": {
+    "glow": 0,
+    "panelOpacity": 0.93,
+    "dim": 0.3,
+    "backgroundBlur": 0
+  },
+  "font": {
+    "body": "\"JetBrainsMono Nerd Font\", \"JetBrains Mono\", \"Fira Code\", monospace",
+    "display": "\"JetBrainsMono Nerd Font\", \"JetBrains Mono\", monospace"
+  }
+}
+
+@@ settings vkmusic
+{
+  "features": { "glow": false }
+}
+
+@@ css vkmusic
+:root {
+  --heading: #ffffff;
+  --text-soft: #ececec;
+  --selection: #1a1a1a;          /* selection */
+  --border: #1a1a1a;             /* lighter_background */
+  --border-active: #8d8d8d;
+  --surface: #090909;            /* dark_background */
+  --hover: rgba(255, 255, 255, 0.05);
+  --danger: #a4a4a4;
+  --ok: #b6b6b6;
+  --warn: #cecece;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --gap: 10px;
+  --panel-blur: 0px;
+}
+
+.panel { border: 2px solid var(--border); box-shadow: none; }
+.main.panel { border-color: var(--border-active); }
+
+.brand { color: #ffffff; letter-spacing: .14em; text-transform: lowercase; }
+.brand b { color: #8d8d8d; }
+.brand-mark { filter: grayscale(1); }
+.page-title { color: #ffffff; letter-spacing: .03em; }
+
+.nav-item:hover { background: var(--hover); }
+.nav-item.active { background: #1a1a1a; color: #ffffff; box-shadow: inset 3px 0 0 #ececec; }
+.nav-badge { background: #ececec; color: #000; border-radius: 0; }
+
+.track:hover { background: var(--hover); }
+.track.playing { background: #111111; }
+.track.playing .t-title, .track.playing .t-num { color: #ffffff; }
+.track.playing .t-title { text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #505050; }
+.t-cover, .np-cover { background: #0c0c0c; border: 1px solid #1a1a1a; }
+
+.input, .search input { background: #050505; border: 1px solid #1a1a1a; }
+.input:focus, .search input:focus { border-color: #8d8d8d; box-shadow: none; }
+
+.btn { background: #0c0c0c; border: 1px solid #1a1a1a; }
+.btn:hover { border-color: #8d8d8d; }
+.btn.primary, .play { background: #ececec; color: #000000; }
+.btn.primary:hover, .play:hover { background: #ffffff; }
+.icon-btn.on { color: #ffffff; }
+
+.bar { background: #1a1a1a; }
+.bar-fill { background: #ececec; }
+.bar-knob { background: #ffffff; }
+.vol input, .sliders input { accent-color: #8d8d8d; }
+
+.theme-card.active { outline: 2px solid #ececec; }
+.toast { background: #050505; border: 1px solid #1a1a1a; border-left: 3px solid #ececec; }
+
+::selection { background: #1a1a1a; color: #ffffff; }

@@ -1,0 +1,231 @@
+#WMT 1
+# Ashen Inventory — тема в духе экрана инвентаря мрачных фэнтези-RPG (вдохновлено Dark Souls Remastered).
+# Всё своё: процедурный фон (пепел и искры), рамки и уголки на CSS, системные шрифты —
+# никаких ассетов из игры. Антиква берётся из того, что установлено: Cinzel, Cormorant, EB Garamond,
+# Palatino / TeX Gyre Pagella, иначе Georgia/serif.
+
+@@ manifest
+{
+  "id": "ashen-inventory",
+  "name": "Ashen Inventory",
+  "author": "VK Music",
+  "description": "Мрачный инвентарь: каменные панели, бронзовые рамки, слоты-ячейки и тлеющий пепел",
+  "version": "1.0",
+  "base": "royal",
+  "apps": ["vkmusic"],
+  "created": "2026-10-29T00:00:00Z",
+  "preview": "asset:preview.jpg"
+}
+
+@@ tokens
+{
+  "color": {
+    "accent": "#e6dab4",      // бледное золото — подсветка выбранного
+    "accent2": "#a8834a",     // старая бронза — рамки и кнопки
+    "text": "#d3c9b0",        // пергамент
+    "muted": "#8a8170",
+    "background": "#0b0a09"
+  },
+  "effects": {
+    "glow": 0,
+    "panelOpacity": 0.86,
+    "dim": 0.12,
+    "backgroundBlur": 0
+  },
+  "font": {
+    "body": "\"EB Garamond\", \"Cormorant Garamond\", \"Palatino Linotype\", \"TeX Gyre Pagella\", \"URW Palladio L\", Georgia, serif",
+    "display": "\"Cinzel\", \"Cormorant SC\", \"Trajan Pro\", \"EB Garamond\", \"Palatino Linotype\", \"TeX Gyre Pagella\", Georgia, serif"
+  }
+}
+
+@@ settings vkmusic
+{
+  "features": { "glow": false }
+}
+
+@@ css vkmusic
+:root {
+  --heading: #ece1c0;
+  --text-soft: #c9bfa5;
+  --gold: #a8834a;
+  --gold-dim: rgba(168, 131, 74, 0.42);
+  --gold-faint: rgba(168, 131, 74, 0.16);
+  --pale: rgba(230, 218, 180, 0.55);
+  --border: var(--gold-dim);
+  --border-active: var(--gold);
+  --selection: rgba(230, 218, 180, 0.10);
+  --hover: rgba(230, 218, 180, 0.05);
+  --danger: #b5523b;
+  --ok: #9fae6f;
+  --warn: #d0a54f;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --gap: 12px;
+  --panel-blur: 2px;
+  font-size: 15px;
+}
+
+body { font-size: 15px; letter-spacing: .01em; }
+
+/* ── панели: тёмный камень, двойная бронзовая рамка, уголки ── */
+.panel {
+  position: relative;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(40, 34, 26, 0.35), transparent 60%),
+    linear-gradient(180deg, rgba(16, 14, 11, var(--panel-opacity)), rgba(7, 6, 5, var(--panel-opacity)));
+  border: 1px solid var(--gold-dim);
+  box-shadow:
+    inset 0 0 0 3px rgba(0, 0, 0, 0.75),
+    inset 0 0 0 4px var(--gold-faint),
+    inset 0 0 40px rgba(0, 0, 0, 0.6),
+    0 10px 34px rgba(0, 0, 0, 0.75);
+}
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  --c: rgba(214, 186, 128, 0.85);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 16px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top left / 1px 16px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 16px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 1px 16px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 16px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px 16px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 16px 1px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px 16px no-repeat;
+}
+.main.panel { border-color: var(--gold); }
+
+/* ── заголовки: антиква капителью, разреженная ── */
+.brand, .page-title, .section-title, .np-title, .theme-name {
+  font-family: var(--font-display);
+  font-variant: small-caps;
+}
+.brand { color: var(--heading); letter-spacing: .2em; font-weight: 600; }
+.brand b { color: var(--accent2); font-weight: 600; }
+.brand-mark {
+  width: 12px; height: 12px; margin: 0 4px;
+  background: var(--accent2);
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px rgba(214, 160, 80, .55);
+}
+.page-title { color: var(--heading); letter-spacing: .16em; font-weight: 600; text-shadow: 0 1px 0 #000; }
+.section-title {
+  color: var(--accent);
+  letter-spacing: .24em;
+  text-transform: none;
+  font-weight: 600;
+  font-size: 14px;
+  padding-bottom: 6px;
+  background: linear-gradient(90deg, transparent, var(--gold-dim) 15%, var(--gold-dim) 85%, transparent) bottom / 100% 1px no-repeat;
+}
+
+/* ── меню слева: пункты как строки меню, ромб у выбранного ── */
+.nav-item {
+  position: relative;
+  font-family: var(--font-display);
+  font-variant: small-caps;
+  letter-spacing: .14em;
+  color: var(--muted);
+  padding-left: 26px;
+}
+.nav-item .ic { display: none; }
+.nav-item::before {
+  content: "";
+  position: absolute; left: 10px; top: 50%;
+  width: 6px; height: 6px; margin-top: -3px;
+  transform: rotate(45deg);
+  border: 1px solid var(--gold-dim);
+}
+.nav-item:hover { background: var(--hover); color: var(--text); }
+.nav-item.active {
+  color: var(--heading);
+  background: linear-gradient(90deg, rgba(230, 218, 180, .13), rgba(230, 218, 180, .02) 70%, transparent);
+  box-shadow: inset 0 0 0 1px var(--pale), inset 0 0 14px rgba(230, 218, 180, .08);
+}
+.nav-item.active::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 6px rgba(230, 218, 180, .7); }
+.nav-badge { background: var(--accent2); color: #0b0a09; border-radius: 0; }
+.side-foot, .queue-mini { font-variant: small-caps; letter-spacing: .08em; }
+.side-foot { border-top: 1px solid var(--gold-faint); }
+
+/* ── список: строки как предметы, обложки как слоты ── */
+.track { border: 1px solid transparent; padding: 5px 10px; }
+.track:hover { background: var(--hover); border-color: var(--gold-faint); }
+.track.playing {
+  background: linear-gradient(90deg, rgba(230, 218, 180, .11), rgba(230, 218, 180, .02) 75%, transparent);
+  border-color: var(--pale);
+  box-shadow: inset 0 0 18px rgba(230, 218, 180, .08);
+}
+.track.playing .t-title { color: var(--heading); text-shadow: 0 0 10px rgba(230, 218, 180, .35); }
+.track.playing .t-num { color: var(--accent); }
+.t-num { font-family: var(--font-display); color: var(--muted); }
+.t-cover, .np-cover {
+  background: radial-gradient(circle at 50% 40%, #17140f, #050404 75%);
+  border: 1px solid var(--gold-dim);
+  box-shadow: inset 0 0 0 2px #000, inset 0 0 10px rgba(0, 0, 0, .9);
+  color: var(--gold-dim);
+}
+.t-title { font-weight: 500; color: var(--text); }
+.t-artist { color: var(--muted); font-style: italic; }
+.t-quality, .t-dur { font-variant: small-caps; letter-spacing: .1em; color: var(--muted); }
+
+/* ── поля и кнопки: прямоугольные, бронзовая волосяная линия ── */
+.input, .search input {
+  background: linear-gradient(180deg, rgba(0, 0, 0, .55), rgba(12, 10, 8, .55));
+  border: 1px solid var(--gold-dim);
+  box-shadow: inset 0 1px 6px rgba(0, 0, 0, .8);
+  color: var(--text);
+}
+.input:focus, .search input:focus { border-color: var(--accent); box-shadow: inset 0 1px 6px rgba(0, 0, 0, .8), 0 0 8px rgba(230, 218, 180, .15); }
+.btn {
+  font-family: var(--font-display);
+  font-variant: small-caps;
+  letter-spacing: .14em;
+  background: linear-gradient(180deg, rgba(36, 30, 22, .9), rgba(14, 12, 9, .9));
+  border: 1px solid var(--gold-dim);
+  color: var(--text);
+}
+.btn:hover { border-color: var(--accent); color: var(--heading); box-shadow: 0 0 10px rgba(230, 218, 180, .12); }
+.btn.primary { background: linear-gradient(180deg, #3a2f1f, #1a150e); border-color: var(--gold); color: var(--heading); font-weight: 600; }
+.icon-btn { border-radius: 0; }
+.icon-btn.on { color: var(--accent); text-shadow: 0 0 8px rgba(230, 218, 180, .6); }
+
+/* ── плеер: ромб-кнопка, тонкая полоса, ромб-ползунок ── */
+.play {
+  border-radius: 0;
+  width: 38px; height: 38px;
+  transform: rotate(45deg);
+  background: linear-gradient(135deg, #3a2f1f, #120f0a);
+  border: 1px solid var(--gold);
+  color: var(--heading);
+  box-shadow: 0 0 12px rgba(214, 160, 80, .25);
+}
+.play .ic { transform: rotate(-45deg); }
+.play:active { transform: rotate(45deg) scale(.94); }
+.bar { height: 2px; background: var(--gold-faint); border-radius: 0; }
+.bar-fill { background: linear-gradient(90deg, var(--accent2), var(--accent)); border-radius: 0; }
+.bar-knob { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 0; transform: rotate(45deg); background: var(--accent); box-shadow: 0 0 8px rgba(230, 218, 180, .7); }
+.time { font-variant: small-caps; letter-spacing: .08em; }
+.vol input, .sliders input { accent-color: var(--accent2); }
+
+/* ── оформление, загрузки, уведомления ── */
+.theme-card { border: 1px solid var(--gold-dim); background: rgba(0, 0, 0, .35); }
+.theme-card.active { outline: 1px solid var(--accent); outline-offset: 2px; }
+.dl { border: 1px solid var(--gold-dim); background: rgba(0, 0, 0, .3); }
+.dl-bar { background: var(--gold-faint); }
+.dl-bar i { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
+.toast {
+  border: 1px solid var(--gold-dim);
+  border-left: 1px solid var(--gold-dim);
+  background: linear-gradient(180deg, rgba(20, 17, 13, .97), rgba(8, 7, 6, .97));
+  font-family: var(--font-display);
+  letter-spacing: .06em;
+  text-align: center;
+}
+.toast.error { border-color: var(--danger); }
+.empty > .ic { color: var(--gold-dim); }
+.content::-webkit-scrollbar { width: 8px; }
+.content::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 0; border: 2px solid transparent; background-clip: padding-box; }
+::selection { background: rgba(168, 131, 74, .45); color: #fff6dc; }

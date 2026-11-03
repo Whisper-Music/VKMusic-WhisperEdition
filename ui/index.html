@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VK Music</title>
+  <link rel="stylesheet" href="app.css" />
+  <!-- CSS темы (@@ css vkmusic), затем переменные из tokens — они главнее -->
+  <style id="theme-css"></style>
+  <style id="theme-vars"></style>
+</head>
+<body>
+  <div id="bg" class="bg" aria-hidden="true"></div>
+  <div class="bg-dim" aria-hidden="true"></div>
+
+  <div id="app" class="app">
+    <aside class="side panel">
+      <!-- нажатие сворачивает панель до значков (body.side-collapsed) -->
+      <div class="brand" id="brand" role="button" tabindex="0" title="Свернуть панель"><span class="brand-mark"></span><span>vk<b>music</b></span></div>
+      <!-- обычный режим -->
+      <nav class="nav" id="mainNav">
+        <button class="nav-item" data-page="library"><i data-icon="note"></i><span>Библиотека</span><span class="nav-badge" id="dlBadge" hidden></span></button>
+        <button class="nav-item" data-page="vk"><i data-icon="mix"></i><span>Миксы</span></button>
+      </nav>
+      <!-- настройки: слева разделы, справа (в основной панели) параметры -->
+      <nav class="nav settings-nav" id="setNav" hidden>
+        <button class="nav-item nav-back" id="setBack"><i data-icon="back"></i><span>Назад</span></button>
+        <div class="nav-caption">Настройки</div>
+        <button class="nav-item" data-page="set-general"><i data-icon="globe"></i><span>Общее</span></button>
+        <button class="nav-item" data-page="set-lyrics"><i data-icon="lyrics"></i><span>Текст песен</span></button>
+        <button class="nav-item" data-page="set-services"><i data-icon="link"></i><span>Сервисы</span></button>
+        <button class="nav-item" data-page="set-theme"><i data-icon="palette"></i><span>Оформление</span></button>
+        <button class="nav-item" data-page="set-storage"><i data-icon="disk"></i><span>Хранилище</span></button>
+      </nav>
+      <div class="queue-mini" id="queueInfo"></div>
+      <button class="side-foot" id="statsBtn" title="Статистика"><i data-icon="chart"></i><span>Статистика</span></button>
+      <button class="side-foot" id="settingsBtn" title="Настройки"><i data-icon="gear"></i><span>Настройки</span></button>
+    </aside>
+
+    <main class="main panel">
+      <header class="topbar">
+        <!-- «назад» (из открытого плейлиста) — стрелкой слева от названия -->
+        <div class="topbar-title">
+          <button class="icon-btn page-back" id="pageBack" title="Назад" hidden><i data-icon="back"></i></button>
+          <h1 class="page-title" id="pageTitle"></h1>
+        </div>
+        <!-- общий поиск: треки в сервисах и ссылки (yt-dlp) -->
+        <div class="gsearch">
+          <form class="search" id="searchBox" autocomplete="off">
+            <i data-icon="search"></i>
+            <input id="searchInput" type="search" placeholder="Найти трек или вставить ссылку…" spellcheck="false" maxlength="2048" />
+            <button type="button" class="svc-btn" id="svcBtn" title="Где искать"></button>
+          </form>
+          <!-- вне .search: правила .search input / .search .ic (в том числе из тем) не должны задевать меню -->
+          <div class="popup svc-menu" id="svcMenu" hidden></div>
+          <!-- результаты поиска: выпадающий список поверх библиотеки -->
+          <div class="search-drop" id="searchDrop" hidden></div>
+        </div>
+        <div class="topbar-right">
+          <div class="topbar-actions" id="topActions"></div>
+          <!-- правая панель (обложка, статистика, текст): спрятать / выдвинуть -->
+          <button class="icon-btn np-toggle" id="npToggle" title="Правая панель"><i data-icon="panel"></i></button>
+        </div>
+      </header>
+      <section class="content" id="content"></section>
+    </main>
+
+    <!-- справа от библиотеки: обложка играющего трека и статистика прослушивания -->
+    <aside class="np-side panel" id="npSide">
+      <div class="np-head">
+        <div class="np-big-cover" id="npBigCover"><i data-icon="note"></i><img id="npBigImg" alt="" hidden /></div>
+        <div class="np-big-meta">
+          <div class="np-big-title" id="npBigTitle">Ничего не играет</div>
+          <div class="np-big-artist" id="npBigArtist"></div>
+          <div class="np-big-info" id="npBigInfo"></div>
+        </div>
+      </div>
+      <div class="np-stats" id="npStats" hidden>
+        <div class="np-stat"><div class="np-stat-value" id="npPlays">0</div><div class="np-stat-label" id="npPlaysLabel">раз дослушан</div></div>
+        <div class="np-stat"><div class="np-stat-value" id="npListened">0 с</div><div class="np-stat-label">слушали всего</div></div>
+      </div>
+      <div class="np-more" id="npMore"></div>
+      <!-- текст песни с Genius: занимает остаток панели, прокручивается -->
+      <section class="np-lyrics" id="npLyrics" hidden>
+        <div class="np-lyrics-head">
+          <span>Текст</span>
+          <label class="np-lyrics-notes" id="npLyricsNotesBox" title="Пояснения Genius к строкам" hidden><input type="checkbox" id="npLyricsNotes" /><span>Пояснения</span></label>
+          <select class="np-lyrics-lang" id="npLyricsLang" title="Язык текста" hidden></select>
+          <button class="np-lyrics-src" id="npLyricsSrc" hidden>Genius</button>
+        </div>
+        <div class="np-lyrics-text" id="npLyricsText"></div>
+        <!-- пояснение Genius к фрагменту: над ним, неширокое -->
+        <div class="lyr-note" id="lyrNote" hidden></div>
+      </section>
+    </aside>
+
+    <footer class="player panel">
+      <div class="np">
+        <div class="np-cover"><img id="npCover" alt="" /></div>
+        <div class="np-meta">
+          <div class="np-title" id="npTitle">Ничего не играет</div>
+          <div class="np-artist" id="npArtist"></div>
+        </div>
+        <!-- трек сервиса не из библиотеки (микс, плейлист, поиск) — добавить -->
+        <button class="icon-btn np-add" id="npAdd" title="В библиотеку" hidden><i data-icon="plus"></i></button>
+        <button class="icon-btn np-add np-topl" id="npToPl" title="В плейлист" hidden><i data-icon="listadd"></i></button>
+      </div>
+      <div class="center">
+        <div class="controls">
+          <button class="icon-btn" id="shuffleBtn" title="Перемешать"><i data-icon="shuffle"></i></button>
+          <button class="icon-btn" id="prevBtn" title="Предыдущий"><i data-icon="prev"></i></button>
+          <button class="play" id="playBtn" title="Пауза / играть (Пробел)"><i data-icon="play"></i></button>
+          <button class="icon-btn" id="nextBtn" title="Следующий"><i data-icon="next"></i></button>
+          <button class="icon-btn" id="repeatBtn" title="Повтор"><i data-icon="repeat"></i></button>
+        </div>
+        <div class="progress">
+          <span class="time" id="curTime">0:00</span>
+          <div class="bar" id="bar"><div class="bar-fill" id="barFill"></div><div class="bar-knob" id="barKnob"></div></div>
+          <span class="time" id="durTime">0:00</span>
+        </div>
+      </div>
+      <div class="vol">
+        <button class="icon-btn" id="normBtn" title="Постоянный уровень громкости"><i data-icon="levels"></i></button>
+        <button class="icon-btn" id="volBtn" title="Без звука"><i data-icon="volume"></i></button>
+        <input id="vol" type="range" min="0" max="100" step="1" />
+      </div>
+    </footer>
+  </div>
+
+  <!-- пока открыта страница входа сервиса, окно интерфейса сжато до этой полосы (как в NK-Player) -->
+  <div class="login-bar" id="loginBar" hidden>
+    <span id="loginBarText"></span>
+    <button class="btn" id="loginCancel">Отмена</button>
+  </div>
+  <div class="drop-hint" id="dropHint" hidden><div>Отпустите файл .wmt, чтобы установить тему</div></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <!-- локализация: функции и словари (ключ — русский текст) -->
+  <script src="i18n/i18n.js"></script>
+  <script src="i18n/ru.js"></script>
+  <script src="i18n/en.js"></script>
+  <script src="icons.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

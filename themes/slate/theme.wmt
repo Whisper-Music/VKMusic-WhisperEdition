@@ -1,0 +1,44 @@
+#WMT 1
+# Грифель — базовая палитра VK Music (фиолетовый и розовый акценты на почти чёрном) поверх школьной доски
+# со стёртым мелом. Фон нарисован процедурно (numpy + Pillow): разводы тряпкой, бледные нотные станы, зерно.
+
+@@ manifest
+{
+  "id": "slate",
+  "name": "Грифель",
+  "author": "VK Music",
+  "description": "Тёмные стеклянные панели с фиолетовым акцентом поверх школьной доски со стёртым мелом",
+  "version": "1.0",
+  "base": "neon",
+  "apps": ["vkmusic"],
+  "created": "2026-10-30T00:00:00Z",
+  "preview": "asset:preview.jpg"
+}
+
+@@ tokens
+{
+  "color": {
+    "accent": "#8b5cf6",
+    "accent2": "#ec4899",
+    "text": "#e8e6f0",
+    "muted": "#9a97a8",
+    "background": "#0f0e14"
+  },
+  "effects": {
+    "glow": 0,
+    "panelOpacity": 0.85,
+    "dim": 0.3,
+    "backgroundBlur": 3
+  }
+}
+
+@@ settings vkmusic
+{
+  "features": { "glow": false }
+}
+
+@@ css vkmusic
+/* Всё остальное — базовое оформление приложения: стеклянные панели (размытие 14px) поверх доски. */
+:root {
+  --panel-blur: 14px;
+}

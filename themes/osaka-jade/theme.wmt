@@ -1,0 +1,106 @@
+#WMT 1
+# Osaka Jade — тема по умолчанию для VK Music.
+# Палитра и обои — из темы Omarchy «Osaka Jade» (последняя версия перед заменой на Jade Horse,
+# basecamp/omarchy@a1ea6096d^, themes/osaka-jade). Обои: backgrounds/1-glowing-city.webp.
+# Формат: docs/WMT-FORMAT.md из Whisper-Music/YandexMusic-WhisperEdition.
+# Править: переименовать в .zip, распаковать, поправить этот файл или заменить background.webp,
+# запаковать обратно в .wmt и поменять manifest.id (встроенный id занят).
+
+@@ manifest
+{
+  "id": "osaka-jade",
+  "name": "Osaka Jade",
+  "author": "Omarchy",
+  "description": "Нефритовая ночь Осаки: тёмно-зелёные панели, мятный акцент, обои Glowing City",
+  "version": "1.0",
+  "base": "neon",
+  "apps": ["vkmusic"],
+  "created": "2026-10-29T00:00:00Z",
+  "preview": "asset:preview.jpg"
+}
+
+@@ tokens
+{
+  "color": {
+    "accent": "#2dd5b7",      // cyan — свечение нефрита
+    "accent2": "#509475",     // accent из colors.toml Omarchy
+    "text": "#c1c497",        // foreground
+    "muted": "#81b8a8",       // dark_foreground
+    "background": "#111c18"   // background
+  },
+  "effects": {
+    "glow": 0,
+    "panelOpacity": 0.74,
+    "dim": 0.28,
+    "backgroundBlur": 0
+  },
+  "font": {
+    "body": "\"JetBrainsMono Nerd Font\", \"JetBrains Mono\", \"Fira Code\", monospace",
+    "display": "\"JetBrainsMono Nerd Font\", \"JetBrains Mono\", monospace"
+  }
+}
+
+@@ settings vkmusic
+{
+  "features": { "glow": false }
+}
+
+@@ css vkmusic
+:root {
+  /* остальная палитра Omarchy Osaka Jade */
+  --heading: #f7e8b2;          /* bright_foreground */
+  --text-soft: #d6d5bc;        /* light_foreground */
+  --selection: #32473b;
+  --border: #23372b;           /* lighter_background */
+  --border-active: #509475;
+  --surface: #0c1512;          /* dark_background */
+  --surface-2: #090f0d;        /* darker_background */
+  --danger: #ff5345;
+  --warn: #e5c736;
+  --ok: #63b07a;
+  --pink: #d2689c;
+  --radius: 0px;               /* плитки как в Hyprland */
+  --radius-sm: 0px;
+  --gap: 10px;
+  --hover: rgba(80, 148, 117, 0.16);
+  --panel-blur: 8px;
+}
+
+/* рамки окон: неактивные — lighter_background, «активное» (основная область) — accent */
+.panel { border: 2px solid var(--border); box-shadow: none; }
+.main.panel { border-color: var(--border-active); }
+
+.brand { color: var(--accent); letter-spacing: .14em; text-transform: lowercase; }
+.brand b { color: var(--heading); }
+.page-title { color: var(--heading); letter-spacing: .03em; }
+
+.nav-item:hover { background: var(--hover); }
+.nav-item.active {
+  background: var(--selection);
+  color: var(--heading);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.track:hover { background: var(--hover); }
+.track.playing { background: rgba(50, 71, 59, .55); }
+.track.playing .t-title { color: var(--accent); }
+.track.playing .t-num { color: var(--accent); }
+
+.input, .search input {
+  background: rgba(9, 15, 13, .75);
+  border: 1px solid var(--border);
+}
+.input:focus, .search input:focus { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2); }
+
+.btn.primary, .play {
+  background: var(--accent2);
+  color: #090f0d;
+}
+.btn.primary:hover, .play:hover { background: var(--accent); }
+
+.bar { background: var(--border); }
+.bar-fill { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
+
+.theme-card.active { outline: 2px solid var(--accent); }
+
+::selection { background: var(--selection); color: var(--heading); }
