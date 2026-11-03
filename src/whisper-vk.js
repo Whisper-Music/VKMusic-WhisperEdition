@@ -61,20 +61,49 @@
 
   // ---------- треки: наш объект трека (app.js: localTrack / svcTrack) ↔ сущность ядра ----------
   // id в ядре — до 100 символов; ключ библиотеки (путь файла, vk:…, sc:…) бывает длиннее — тогда хэш и хвост
+  const fnv = (s) => {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+    return (h >>> 0).toString(16);
+  };
   function trackId(key) {
     key = String(key || "");
-    if (key.length <= 100) return key;
-    let h = 0x811c9dc5;
-    for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 0x01000193);
-    return "h" + (h >>> 0).toString(16) + ":" + key.slice(-80);
+    return key.length <= 100 ? key : "h" + fnv(key) + ":" + key.slice(-80);
   }
   // сущность ядра (или её сохранённые в истории данные) → трек app.js: из библиотеки, если он там есть (свежие
-  // обложка и ссылки), иначе — как сохранили
+  // обложка и ссылки), иначе — как сохранили. Трек комнаты «Слушать вместе» (roomId) и метка архива ведущего
+  // (waShared) сохраняются: по ним ядро узнаёт трек комнаты и находит его в архиве.
   function fromCore(x) {
     const raw = x && x.kind === "track" ? x.raw : x;
     if (!raw || typeof raw !== "object" || !raw.key) return null;
-    return allTracks().find((t) => t.key === raw.key) || (S.queue || []).find((t) => t.key === raw.key) || raw;
+    const lib = allTracks().find((t) => t.key === raw.key) || (S.queue || []).find((t) => t.key === raw.key);
+    if (!lib) return raw;
+    return raw.roomId || raw.waShared ? { ...lib, roomId: raw.roomId, waShared: raw.waShared } : lib;
   }
+
+  // ---------- «Слушать вместе»: трек ↔ формат сервера комнат ----------
+  // Сервер хранит поля трека, а не ссылку на сервис: гость ищет у себя тот же трек — по ключу (тот же файл / тот же
+  // трек сервиса в библиотеке), по исполнителю + названию + длительности (libraryMatch), трек SoundCloud играет по id.
+  // Не нашёлся — заготовка «room:…»: при включении её найдёт архив ведущего (waShared) или один поиск ВКонтакте.
+  const https = (u) => (/^https:\/\//.test(u || "") ? String(u).slice(0, 300) : null);
+  function fromRoom(x) {
+    const id = String(x?.id || ""), artist = (x?.artists || []).map((a) => a?.name).filter(Boolean).join(", ");
+    const want = { key: id, artist, title: String(x?.title || ""), duration: Math.round((x?.durationMs || 0) / 1000) };
+    const lib = allTracks().find((t) => t.key === id) || (artist ? libraryMatch(want) : null);
+    if (lib) return { ...lib, roomId: id };
+    if (/^sc:\d+$/.test(id)) return { ...svcTrack("sc", { id: id.slice(3), artist, title: want.title, duration: want.duration, cover: https(x.coverUri) }), roomId: id };
+    return { key: "room:" + id, roomId: id, room: true, artist: artist || L("Неизвестный исполнитель"), title: want.title || L("Без названия"),
+      duration: want.duration, cover: https(x?.coverUri) };
+  }
+  // заготовку комнаты — в трек ВК: один поиск, совпадение по названию, исполнителю и длительности ±3 с
+  async function resolveRoom(t) {
+    const p = await invoke("vk_search", { query: `${t.artist} ${t.title}`.slice(0, 200), more: null });
+    const found = (p.tracks || []).map((x) => svcTrack("vk", x)).filter((x) => !x.unavailable);
+    const same = found.find((x) => normText(x.title) === normText(t.title) && normText(x.artist) === normText(t.artist)
+      && (!t.duration || !x.duration || Math.abs(x.duration - t.duration) <= 3));
+    return same ? { ...same, roomId: t.roomId, waShared: t.waShared } : null;
+  }
+  window.resolveRoomTrack = resolveRoom;
 
   W.registerProvider({
     id: "vk",
@@ -92,7 +121,7 @@
     },
     toTrack: (t) => ({
       provider: t.path ? "local" : t.service || "vk",
-      id: trackId(t.key),
+      id: trackId(t.roomId || t.key),
       title: t.title,
       artists: t.artist ? [{ id: "", name: t.artist }] : [],
       cover: t.cover || "",
@@ -102,6 +131,27 @@
     }),
     // что модули ядра сохраняют о треке (история очереди): поля трека app.js; id нужен истории и у файлов
     store: (t) => (t && t.key ? { ...t, id: t.id != null ? t.id : t.key } : null),
+    // Whisper Archive: файл трека Rust берёт сам по ключу библиотеки (whisper_vk.rs); обложка файла (vkm://) —
+    // не адрес для скачивания: Rust возьмёт её из тегов файла
+    archiveSave: (t, a) => {
+      const r = t.raw || {};
+      if (r.room || !(r.path || S.saved.some((x) => x.key === r.key))) return Promise.reject(new Error(L("В архив сохраняются только треки библиотеки")));
+      return invoke("wa_save_track", { key: r.key, file_name: a.fileName, album_id: a.albumId, album_title: a.albumTitle,
+        cover_url: https(a.coverUrl), cover_bytes: a.coverBytes });
+    },
+    // id файла из папки музыки — не путь (в нём имя пользователя), а хэш: гостю файл всё равно не открыть,
+    // он ищет трек у себя по названию и исполнителю
+    toRoom: (e) => ({
+      id: e.raw && e.raw.path && !e.raw.roomId ? "local:" + fnv(e.raw.key) + fnv("vkm" + e.raw.key) : e.id,
+      albumId: null,
+      title: String(e.title || "Без названия").slice(0, 300),
+      version: null,
+      artists: e.artists.slice(0, 10).map((a) => ({ id: null, name: String(a.name).slice(0, 200) })),
+      coverUri: https(e.cover),
+      durationMs: Math.max(0, Math.round(e.durationMs || 0)),
+    }),
+    fromRoom,
+    accountLabel: "аккаунта ВКонтакте или SoundCloud",
   });
 
   // ---------- плеер ----------
@@ -123,14 +173,33 @@
       syncVolume();
       invoke("player_volume", { volume: S.volume }).catch(() => {});
     },
+    setRate: (r) => setRate(r),
+    // «Слушать вместе»: включить трек комнаты (сразу за играющим, очередь остаётся) с позиции at; hold — без звука
+    playTrack: (e, { at = 0, hold = false } = {}) => {
+      const t = fromCore(e);
+      if (!t) return Promise.resolve();
+      if (S.qi < 0 || !S.queue.length) { S.queue = [t]; S.qi = -1; }
+      else S.queue.splice(S.qi + 1, 0, t);
+      return playAt(S.qi + 1, false, { at, hold });
+    },
+    reload: (at = 0, hold = false) => (S.current ? playAt(S.qi, false, { at, hold }) : Promise.resolve()),
+    // что с самим файлом: загрузка — от включения до первого состояния mpv с длительностью (S.loading в app.js)
     media: () => ({
       paused: !playing(),
+      ended: !!S.current && S.pl.idle && !S.loading,
       duration: S.pl.duration || 0,
-      time: S.pl.pos || 0,
+      pending: false,
+      loading: !!S.loading,
+      startAt: S.loading ? S.startAt || 0 : null,
       has: true,
-      pending: !!S.current && S.pl.idle,
+      time: S.pl.pos || 0,
+      rate: S.rate || 1,
+      buffering: false,
+      error: false,
     }),
   });
+  // меню трека, консоль и «Слушать вместе» зовут это с треком app.js (старое имя из ядра)
+  window.playNext = (t, quiet) => W.queue.playNext(t, { quiet: !!quiet });
 
   // ---------- очередь ----------
   // Номера треков S.queue, которые заиграют дальше, по порядку. Перемешивание знает только следующий
@@ -203,19 +272,152 @@
     },
   });
 
+  // ---------- меню трека «⋯» (пункты модулей ядра: «Слушать вместе», «Сохранить в архив») ----------
+  const tmenu = document.createElement("div");
+  tmenu.className = "popup tmenu";
+  tmenu.hidden = true;
+  tmenu.setAttribute("role", "menu");
+  document.body.append(tmenu);
+  let tmenuBtn = null, menuSeq = 0;
+  function closeTrackMenu() {
+    if (tmenu.hidden) return;
+    menuSeq++;
+    tmenu.hidden = true;
+    tmenu.replaceChildren();
+    if (tmenuBtn) tmenuBtn.classList.remove("open");
+    tmenuBtn = null;
+  }
+  function openMenu(btn, build) {
+    if (tmenuBtn === btn) return closeTrackMenu();
+    closeTrackMenu();
+    closePopups();
+    tmenuBtn = btn;
+    btn.classList.add("open");
+    tmenu.hidden = false;
+    build(menuSeq);
+    placeMenu();
+  }
+  const menuReset = () => (tmenu.replaceChildren(), ++menuSeq);
+  const menuAlive = (seq) => !tmenu.hidden && seq === menuSeq;
+  // icon — SVG-строка (свои значки модулей ядра и наши Icons.svg), текст — только textContent
+  function menuItem(icon, text, fn, { keep = false, arrow = false, danger = false, to = tmenu } = {}) {
+    const b = el("button", "popup-item mi" + (danger ? " danger" : ""));
+    b.innerHTML = icon || "";
+    b.append(el("span", "mt", text));
+    if (arrow) b.append(el("i", "miarrow", "›"));
+    b.addEventListener("click", (e) => { e.stopPropagation(); if (!keep) closeTrackMenu(); fn(); });
+    to.append(b);
+    return b;
+  }
+  function menuHead(text, back) {
+    const h = el("div", "mhead"), b = el("button", "mback", "←");
+    b.title = L("Назад");
+    b.addEventListener("click", (e) => { e.stopPropagation(); back(); });
+    h.append(b, el("b", null, text));
+    tmenu.append(h);
+  }
+  const menuNote = (text, to = tmenu) => { const p = el("p", "mnote", text); to.append(p); return p; };
+  function menuSep() {
+    const last = tmenu.lastElementChild;
+    if (last && !last.classList.contains("msep")) tmenu.append(el("hr", "msep"));
+  }
+  function placeMenu() {
+    if (tmenu.hidden || !tmenuBtn) return;
+    const r = tmenuBtn.getBoundingClientRect(), m = tmenu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.right - m.width, innerWidth - m.width - 8));
+    const top = r.bottom + 6 + m.height <= innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - m.height - 6);
+    tmenu.style.left = left + "px";
+    tmenu.style.top = top + "px";
+  }
+  function trackMenuMain(t) {
+    menuReset();
+    if (W.ui.trackMenu.build(t, null, "top") > 0) menuSep();       // «Слушать вместе · КОД» (core/together.js)
+    if (!t.room && !t.unavailable && !(S.current && S.current.key === t.key)) menuItem(Icons.svg("playnext"), L("Играть следующим"), () => window.playNext(t));
+    W.ui.trackMenu.build(t, null);                                    // «Сохранить в архив» (core/archive.js)
+    if (!tmenu.children.length) menuNote(L("Здесь пока нечего делать"));
+    placeMenu();
+  }
+  /** Меню «⋯» трека app.js у кнопки btn (строка списка, плеер). */
+  window.openTrackMenu = (t, btn) => openMenu(btn, () => trackMenuMain(t));
+  document.addEventListener("pointerdown", (e) => { if (!tmenu.hidden && !tmenu.contains(e.target) && !(tmenuBtn && tmenuBtn.contains(e.target))) closeTrackMenu(); }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeTrackMenu(); });
+  window.addEventListener("resize", closeTrackMenu);
+  document.addEventListener("scroll", (e) => { if (!tmenu.contains(e.target)) closeTrackMenu(); }, true);
+
+  // ---------- карточки настроек модулей: страница «Интеграции» ----------
+  // Карточка вставляется сразу и остаётся в документе (модули ищут свои элементы по id): страница #intPage
+  // постоянная, её показывает go("set-integrations"). Все разделы модулей — на ней.
+  function settingsCard(card, { first, colbreak } = {}) {
+    const page = document.getElementById("intPage");
+    if (!page) return false;
+    card.classList.add("card", "int-card");
+    if (colbreak) card.classList.add("colbreak");
+    const firstCard = page.querySelector(":scope > .card");
+    if (first && firstCard) firstCard.before(card);
+    else page.append(card);
+    return true;
+  }
+  // цвета стиля для виджета OBS: строго #rrggbb — из переменных темы, иначе по умолчанию
+  function accentColors() {
+    const cs = getComputedStyle(document.documentElement), hex = (v) => (/^#[0-9a-f]{6}$/i.test(v) ? v : null);
+    const accent = hex(cs.getPropertyValue("--accent").trim()), accent2 = hex(cs.getPropertyValue("--accent2").trim());
+    return accent ? { accent, accent2: accent2 || accent } : null;
+  }
+
+  // Оформление виджета OBS — секции whisper-obs текущей темы. Разбирает их движок ядра (WMT.open + obsCss) из файла
+  // темы (theme_file), поэтому файл читается, только когда виджет спросил (он включён) и только раз на тему.
+  let obsCache = null, obsLoading = "";
+  function obsTheme() {
+    const th = S.theme;
+    if (!th) return null;
+    if (obsCache && obsCache.key === th.id) return obsCache;
+    if (!th.obs) return (obsCache = { key: th.id, css: "", settings: {} });
+    if (obsLoading !== th.id) {
+      obsLoading = th.id;
+      invoke("theme_file", { id: th.id })
+        .then((buf) => WMT.open(new Uint8Array(buf)))
+        .then((wmt) => { if (S.theme && S.theme.id === th.id) obsCache = { key: th.id, ...WhisperThemeCss.obsCss(wmt) }; })
+        .catch((e) => console.warn("whisper-vk: оформление OBS темы", e))
+        .finally(() => { obsLoading = ""; });
+    }
+    return null;          // виджет спросит снова (раз в 1,5 с) — к тому времени оформление готово
+  }
+
   // ---------- набор интерфейса для модулей ядра ----------
   // Подтверждение — наше окошко у кнопки (confirmClick), не window.confirm (правило владельца): кнопка — та,
   // на которую только что нажали. «Отмена» просто закрывает окошко — действие не выполняется.
   let lastButton = null;
   document.addEventListener("pointerdown", (ev) => { lastButton = ev.target.closest && ev.target.closest("button"); }, true);
   W.ui.provide({
-    toast: (text, ms, opts) => toast(text, null, opts && opts.action, ms),
+    toast: (text, ms, opts) => toast(text, opts && opts.kind === "err" ? "error" : null, opts && opts.action, ms),
     confirm: ({ title, text, ok } = {}) => new Promise((resolve) => {
       const btn = lastButton && lastButton.isConnected ? lastButton : document.activeElement;
       if (!btn || btn === document.body) return resolve(false);
       // после текущего нажатия: оно ещё всплывает до document, а там нажатие мимо окошка его закрывает
       setTimeout(() => confirmClick(btn, () => resolve(true), [title, text].filter(Boolean).join(" "), ok || L("Удалить")), 0);
     }),
-    closeMenu: () => { closePopups(); closeConfirm(); },
+    closeMenu: () => { closeTrackMenu(); closePopups(); closeConfirm(); },
+    trackMenu: (t, btn) => { const raw = fromCore(t); if (raw) window.openTrackMenu(raw, btn); },
+    icon: (name) => ({ more: Icons.svg("dots"), plus: Icons.svg("plus"), grip: Icons.svg("grip") }[name] || ""),
+    menu: (raw) => ({
+      item: menuItem,
+      note: menuNote,
+      head: (text) => menuHead(text, () => trackMenuMain(raw)),
+      scroll: () => { const b = el("div", "mscroll"); tmenu.append(b); return b; },
+      place: placeMenu,
+      reset: menuReset,
+      alive: menuAlive,
+      anchor: () => tmenuBtn,
+      reopen: (anchor, build) => openMenu(anchor, build),
+      close: closeTrackMenu,
+      append: (x) => tmenu.append(x),
+    }),
+    settingsCard,
+    accentColors,
+    obsTheme: () => obsTheme(),
+    // ключ архива лёг не в связку ключей, а в файл открытым текстом — предупредить
+    secretSaved: () => invoke("secret_backend").then((b) => {
+      if (b === "file") toast(L("Связки ключей в системе нет — ключ Whisper Archive сохранён в файле ~/.config/vkmusic (только для вас)"), "error");
+    }).catch(() => {}),
   });
 })();

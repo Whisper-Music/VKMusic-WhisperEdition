@@ -26,6 +26,7 @@ const PAGES = {
   "set-theme": "Оформление",
   "set-store": "Магазин тем",
   "set-storage": "Хранилище",
+  "set-integrations": "Интеграции",
 };
 
 const SERVICES = {
@@ -55,6 +56,14 @@ const S = {
   current: null,
   skips: 0,
   pl: { pos: 0, duration: 0, paused: true, idle: true },
+  // для ядра Whisper («Слушать вместе», Discord): трек грузится (от включения до первой длительности от mpv),
+  // с какой секунды он начнёт, ждём ли первого звука (report audible), загружен ли «без звука» (hold); скорость
+  loading: false,
+  startAt: 0,
+  needAudible: false,
+  holdPending: false,
+  playSeq: 0,
+  rate: 1,
   seeking: false,
   shuffle: false,
   repeat: "off",
@@ -530,6 +539,8 @@ function renderTracks(items, reorder, opts = {}) {
       }
     }
 
+    // «⋯»: «Играть следующим» и пункты модулей ядра Whisper («Слушать вместе», «Сохранить в архив»)
+    if (!t.unavailable) actions.append(iconButton("dots", L("Ещё"), (b) => openTrackMenu(t, b)));
     row.append(el("div", "t-num", String(i + 1)), cover, meta, q, actions, el("div", "t-dur", fmt(t.duration)));
     row.addEventListener("click", () => {
       // только что перетаскивали — это не нажатие
@@ -575,6 +586,9 @@ function go(page, keepPopups) {
   $("#topActions").replaceChildren();
   if (!keepPopups) closePopups();
   $("#content").scrollTop = 0;
+  // «Интеграции» — постоянная страница #intPage: карточки модулей ядра Whisper живут в документе всё время
+  $("#content").hidden = page === "set-integrations";
+  $("#intPage").hidden = page !== "set-integrations";
   rerender();
   // новая страница проявляется (анимация перезапускается)
   const c = $("#content");
@@ -2806,20 +2820,52 @@ function prefetchNext() {
   invoke("cache_prefetch", { key: t.key }).catch(() => {});
 }
 
-/** fresh — ссылку на поток запросить заново, а не из кэша (кэшированная не открылась). */
-async function playAt(i, fresh) {
-  const t = S.queue[i];
+/**
+ * fresh — ссылку на поток запросить заново, а не из кэша (кэшированная не открылась).
+ * opts (ядро Whisper, «Слушать вместе»): { at — с какой секунды начать, hold — загрузить на паузе }.
+ * Сначала — источники ядра (Whisper Archive: свой трек или архив ведущего комнаты), потом сам трек.
+ */
+async function playAt(i, fresh, opts) {
+  let t = S.queue[i];
   if (!t) return;
+  const at = (opts && opts.at) || 0, hold = !!(opts && opts.hold);
+  const seq = ++S.playSeq;
   S.qi = i;
   S.current = t;
   S.retried = !!fresh;
-  startListen(t);
+  Object.assign(S, { loading: true, startAt: at, needAudible: true, holdPending: hold });
+  if (!t.room) startListen(t);
   updateNowPlaying();
   markPlaying();
   // ядру Whisper: новый трек (повтор со свежей ссылкой — не новое включение, в историю не идёт)
-  Whisper.player.report({ track: t, queue: true, ...(fresh ? {} : { started: t }), source: t.path ? "local" : "provider" });
+  Whisper.player.report({ track: t, queue: true, ...(fresh ? {} : { started: t }) });
   try {
     const title = `${t.artist} — ${t.title}`;
+    if (at > 0 || hold) await invoke("player_cue", { at, hold });
+    const nx = S.queue[upcoming()];
+    const hit = await Whisper.sources.resolve(t, nx && nx !== t ? nx : null).catch(() => null);
+    if (seq !== S.playSeq) return;
+    if (hit) {
+      try {
+        await invoke("wa_play", { id: hit.id, title });
+        if (t.room) startListen(t);
+        Whisper.player.report({ source: hit.source });
+        return;
+      } catch (e) {
+        if (seq !== S.playSeq) return;
+        // архив не отдал файл — играет сам трек
+      }
+    }
+    // трек комнаты «Слушать вместе», которого нет в библиотеке: один поиск ВКонтакте
+    if (t.room) {
+      const r = await window.resolveRoomTrack(t).catch(() => null);
+      if (seq !== S.playSeq) return;
+      if (!r) throw L("Трека «{0}» нет ни в вашей библиотеке, ни во ВКонтакте", t.title);
+      S.queue[i] = S.current = t = r;
+      startListen(t);
+      updateNowPlaying();
+    }
+    Whisper.player.report({ source: t.path ? "local" : "provider" });
     let caching;
     if (t.service === "vk" && t.api && !t.reload) caching = await invoke("vk_play_api", { id: t.id, title, fresh: !!fresh });
     else if (t.service === "vk") caching = await invoke("vk_play", { reload: t.reload, title, fresh: !!fresh });
@@ -2830,11 +2876,22 @@ async function playAt(i, fresh) {
     // VK Микс бесконечный: очередь подходит к концу — догружаем следующие треки
     if (S.queueMix && S.qi >= S.queue.length - 2) extendMix();
   } catch (e) {
+    if (seq === S.playSeq) S.loading = false;
     toast(errMsg(e), "error");
   }
 }
 
+/** Скорость воспроизведения (ядро Whisper: «Слушать вместе» выравнивает её по ведущему). */
+function setRate(r) {
+  S.rate = Math.min(4, Math.max(0.25, Number(r) || 1));
+  invoke("player_rate", { rate: S.rate }).catch(() => {});
+  Whisper.player.report({ rate: S.rate });
+}
+
 function next(auto) {
+  // «Слушать вместе»: режим «Ставить в очередь» успевает поставить предложенный трек следующим
+  const room = Whisper.modules.together;
+  if (room && room.take) room.take();
   if (!S.queue.length) return;
   if (auto && S.repeat === "one") return playAt(S.qi);
   let i;
@@ -3412,6 +3469,7 @@ function updateQueueInfo() {
 /** «+» у играющего трека: трек сервиса (микс, плейлист, поиск), которого ещё нет в библиотеке. */
 function syncNpAdd() {
   const t = S.current;
+  $("#npMenu").hidden = !t;
   $("#npAdd").hidden = !t || !t.service || t.unavailable || !!libraryMatch(t);
   $("#npToPl").hidden = !canAddToPlaylist(t);
 }
@@ -3436,6 +3494,10 @@ function setBar(f) {
 function initPlayer() {
   $("#playBtn").addEventListener("click", togglePlay);
   $("#npAdd").addEventListener("click", () => S.current && saveTrack(S.current));
+  $("#npMenu").addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (S.current) openTrackMenu(S.current, $("#npMenu"));
+  });
   $("#npToPl").addEventListener("click", (ev) => {
     ev.stopPropagation();
     if (S.current) addToPlaylistMenu($("#npToPl"), S.current);
@@ -3518,7 +3580,19 @@ function initPlayer() {
     const e = ev.payload;
     if (e.type === "state") {
       Object.assign(S.pl, { pos: e.pos, duration: e.duration, paused: e.paused, idle: e.idle });
+      // трек загрузился: загружали «без звука», а ведущий комнаты уже играет — не держать
+      if (S.loading && !e.idle && e.duration > 0) {
+        S.loading = false;
+        const room = Whisper.modules.together;
+        if (S.holdPending && room && room.wantsPlay && room.wantsPlay()) invoke("player_pause", { paused: false }).catch(() => {});
+        S.holdPending = false;
+      }
       Whisper.player.report({ playing: !e.paused && !e.idle });
+      // звук реально пошёл (после загрузки) — ядру: «Слушать вместе» догоняет ведущего по этому моменту
+      if (S.needAudible && !S.loading && !e.paused && !e.idle) {
+        S.needAudible = false;
+        Whisper.player.report({ audible: true });
+      }
       if (e.pos > 1) S.skips = 0;
       trackListen(e);
       updatePlayButton();

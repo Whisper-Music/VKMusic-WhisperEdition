@@ -297,6 +297,16 @@ window.I18N_DICTS.en = {
   "Здесь появятся треки, которые ты слушал.": "Tracks you've listened to will appear here.",
   "Очередь и история прослушивания (Q)": "Queue and listening history (Q)",
   "Очередь и история прослушивания": "Queue and listening history",
+  // ── модули ядра Whisper: меню трека, «Интеграции», «Слушать вместе», Whisper Archive ──
+  "Интеграции": "Integrations",
+  "Играть следующим": "Play next",
+  "Здесь пока нечего делать": "Nothing to do here yet",
+  "Whisper Archive — свои треки вместо версий сервиса и «Слушать вместе»; Discord — что играет, в профиле; OBS — виджет «Сейчас играет» для трансляций.":
+    "Whisper Archive — your own tracks instead of the service's versions, plus “Listen together”; Discord — what's playing, in your profile; OBS — a “Now playing” widget for streams.",
+  "Трека «{0}» нет ни в вашей библиотеке, ни во ВКонтакте": "“{0}” is neither in your library nor on VK",
+  "В архив сохраняются только треки библиотеки": "Only library tracks can be saved to the archive",
+  "Связки ключей в системе нет — ключ Whisper Archive сохранён в файле ~/.config/vkmusic (только для вас)":
+    "No system keyring — the Whisper Archive key is saved in a file in ~/.config/vkmusic (readable only by you)",
   // ── ошибки Rust (точные сообщения) ──
   "Неверный ключ кэша": "Invalid cache key",
   "Неизвестный формат файла": "Unknown file format",

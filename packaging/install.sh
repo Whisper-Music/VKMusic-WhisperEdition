@@ -11,4 +11,8 @@ install -Dm644 src-tauri/icons/icon.png "$HOME/.local/share/icons/hicolor/512x51
 install -Dm644 packaging/vkmusic.desktop "$HOME/.local/share/applications/vkmusic.desktop"
 mkdir -p "$HOME/Music/vk"
 command -v update-desktop-database >/dev/null && update-desktop-database "$HOME/.local/share/applications" || true
+# ссылки whisper://room/КОД («Слушать вместе») — нам, если их ещё никто не открывает (например, другое приложение Whisper)
+if command -v xdg-mime >/dev/null && [ -z "$(xdg-mime query default x-scheme-handler/whisper 2>/dev/null)" ]; then
+  xdg-mime default vkmusic.desktop x-scheme-handler/whisper || true
+fi
 echo "Готово: vkmusic (или «VK Music» в меню приложений)"

@@ -3,19 +3,31 @@
 
 mod cache;
 mod config;
+mod deeplink;
+// Rust-часть ядра Whisper (подмодуль src/core): Discord, виджет OBS, Whisper Archive и «Слушать вместе».
+// Своё у приложения — whisper_host.rs (ключ, семафор, Origin, Discord/OBS), whisper_vk.rs (архив и треки VK Music)
+#[path = "../../src/core/rust/discord.rs"]
+mod discord;
 mod fonts;
 mod library;
 mod lyrics;
+#[path = "../../src/core/rust/obs.rs"]
+mod obs;
 mod order;
 mod player;
 mod playlists;
 mod saved;
 mod sc;
+mod secret;
 mod stats;
 mod streams;
 mod themelib;
 mod themes;
 mod vk;
+#[path = "../../src/core/rust/whisper/mod.rs"]
+mod whisper;
+mod whisper_host;
+mod whisper_vk;
 mod wmt;
 mod ytdlp;
 
@@ -240,6 +252,19 @@ fn local_job(src: &str) -> Option<cache::Job> {
         artist: String::new(),
         title: String::new(),
     })
+}
+
+/// Следующее включение начать с секунды `at`; `hold` — загрузить на паузе («Слушать вместе», ядро Whisper).
+#[tauri::command(rename_all = "snake_case")]
+fn player_cue(st: State<'_, AppState>, at: f64, hold: bool) -> Res<()> {
+    st.player()?.cue(if at.is_finite() { at } else { 0.0 }, hold);
+    Ok(())
+}
+
+/// Скорость воспроизведения (0.25–4).
+#[tauri::command(rename_all = "snake_case")]
+fn player_rate(st: State<'_, AppState>, rate: f64) -> Res<()> {
+    st.player()?.set_speed(if rate.is_finite() { rate } else { 1.0 })
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -1316,30 +1341,8 @@ async fn stats_all(st: State<'_, AppState>) -> Res<stats::Data> {
 #[tauri::command(rename_all = "snake_case")]
 async fn track_download(app: AppHandle, st: State<'_, AppState>, key: String) -> Res<String> {
     let dest = st.cfg.lock().unwrap().download_dir();
-    let (job, name) = if key.starts_with('/') {
-        let src = PathBuf::from(&key);
-        if !library::inside(&st.music_dir(), &src) {
-            return Err("Файл вне папки музыки".into());
-        }
-        let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        (None, (src, cache::file_name("", &stem)))
-    } else {
-        let (service, id) = key.split_once(':').ok_or("Неверный трек")?;
-        let t = st.saved(service, id).ok_or("Скачать можно только трек из библиотеки")?;
-        let ckey = cache::service_key(service, id);
-        let name = cache::file_name(&t.artist, &t.title);
-        if let Some(p) = st.cache.get(&ckey) {
-            (None, (p, name))
-        } else {
-            (Some(service_job(&app, &st, &t).await?), (PathBuf::new(), name))
-        }
-    };
-    let cache = st.cache.clone();
+    let (src, stem) = library_file(&app, &st, &key).await?;
     tauri::async_runtime::spawn_blocking(move || -> Res<String> {
-        let (mut src, stem) = name;
-        if let Some(job) = job {
-            src = cache.fetch(&job)?;
-        }
         let ext = src.extension().and_then(|x| x.to_str()).unwrap_or("mka").to_ascii_lowercase();
         std::fs::create_dir_all(&dest).map_err(|e| format!("Не удалось создать {}: {e}", dest.display()))?;
         let out = cache::free_path(&dest, &stem, &ext);
@@ -1348,6 +1351,30 @@ async fn track_download(app: AppHandle, st: State<'_, AppState>, key: String) ->
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Файл трека библиотеки по ключу (как в порядке библиотеки) и имя для него «Исполнитель - Название».
+/// Файл из папки музыки — как есть; трек сервиса — из кэша, а нет там — выкачивается в кэш сейчас.
+/// Данные трека сервиса берутся из library.json, не из интерфейса; треки вне библиотеки не отдаются.
+async fn library_file(app: &AppHandle, st: &AppState, key: &str) -> Res<(PathBuf, String)> {
+    if key.starts_with('/') {
+        let src = PathBuf::from(key);
+        if !library::inside(&st.music_dir(), &src) {
+            return Err("Файл вне папки музыки".into());
+        }
+        let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+        return Ok((src, cache::file_name("", &stem)));
+    }
+    let (service, id) = key.split_once(':').ok_or("Неверный трек")?;
+    let t = st.saved(service, id).ok_or("Скачать можно только трек из библиотеки")?;
+    let name = cache::file_name(&t.artist, &t.title);
+    if let Some(p) = st.cache.get(&cache::service_key(service, id)) {
+        return Ok((p, name));
+    }
+    let job = service_job(app, st, &t).await?;
+    let cache = st.cache.clone();
+    let p = tauri::async_runtime::spawn_blocking(move || cache.fetch(&job)).await.map_err(|e| e.to_string())??;
+    Ok((p, name))
 }
 
 /// Задача кэша для трека сервиса из библиотеки. Ссылка на поток — из кэша ссылок или новый запрос к сервису.
@@ -1456,6 +1483,12 @@ fn theme_install(st: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> R
         return Err("Нет данных темы".into());
     };
     st.themes.install(body)
+}
+
+/// Файл темы целиком (ArrayBuffer в JS) — для оформления виджета OBS (ядро Whisper разбирает его само).
+#[tauri::command(rename_all = "snake_case")]
+fn theme_file(st: State<'_, AppState>, id: String) -> Res<tauri::ipc::Response> {
+    st.themes.raw(&id).map(tauri::ipc::Response::new)
 }
 
 /// Тема перетащена в окно — приходит путь к файлу.
@@ -1614,6 +1647,15 @@ fn old_nvidia(version: Option<&str>) -> bool {
         .is_some_and(|major| major < FIXED)
 }
 
+/// Окно — наверх (ссылка whisper:// пришла в уже открытое приложение, второй запуск).
+fn show_main(app: &AppHandle) {
+    if let Some(w) = app.get_window("main") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+    }
+}
+
 fn main() {
     // Обход WEBKIT_DISABLE_DMABUF_RENDERER дорог: кадр копируется через процессор, и чем больше окно, тем
     // медленнее (2560×1440: ~10 кадров/с против 60 с DMA-BUF на NVIDIA 615, проверено 2026-10-30). Поэтому
@@ -1652,7 +1694,20 @@ fn main() {
     };
 
     let app = tauri::Builder::default()
+        // второй запуск — окно уже открытого; ссылку whisper:// из его аргументов плагин отдаёт deep-link
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_deep_link::init())
         .manage(state)
+        // wa:// — потоки Whisper Archive (ядро: whisper::stream), только главному окну
+        .register_asynchronous_uri_scheme_protocol("wa", |ctx, request, responder| {
+            if ctx.webview_label() != "main" {
+                responder.respond(respond(StatusCode::FORBIDDEN, "text/plain", Vec::new()));
+                return;
+            }
+            tauri::async_runtime::spawn(async move {
+                responder.respond(whisper::stream::serve_stream(request).await);
+            });
+        })
         .register_asynchronous_uri_scheme_protocol("vkm", |ctx, request, responder| {
             if ctx.webview_label() != "main" {
                 responder.respond(respond(StatusCode::FORBIDDEN, "text/plain", Vec::new()));
@@ -1665,6 +1720,7 @@ fn main() {
             });
         })
         .setup(|app| {
+            deeplink::init(app.handle()); // ссылки whisper://room/КОД — приглашения в комнату
             let handle = app.handle().clone();
             let st = app.state::<AppState>();
             let h = handle.clone();
@@ -1698,6 +1754,8 @@ fn main() {
             save_prefs,
             fonts_list,
             player_play,
+            player_cue,
+            player_rate,
             player_toggle,
             player_pause,
             player_seek,
@@ -1714,6 +1772,7 @@ fn main() {
             theme_select,
             theme_install,
             theme_install_path,
+            theme_file,
             theme_remove,
             themelib_list,
             themelib_install,
@@ -1761,6 +1820,39 @@ fn main() {
             lyrics_translation_cached,
             lyrics_translation,
             lyrics_note,
+            // ядро Whisper: Whisper Archive
+            secret::secret_backend,
+            whisper::wa_token_exists,
+            whisper::wa_token_set,
+            whisper::wa_token_clear,
+            whisper::wa_albums_mine,
+            whisper::wa_album,
+            whisper::wa_me,
+            whisper::wa_stream,
+            whisper::auth::wa_auth_request_code,
+            whisper::auth::wa_auth_issue,
+            whisper::stream::wa_prefetch,
+            whisper_vk::wa_save_track,
+            whisper_vk::wa_play,
+            // «Слушать вместе»
+            whisper::rooms::wa_room_create,
+            whisper::rooms::wa_room_get,
+            whisper::rooms::wa_room_join,
+            whisper::rooms::wa_room_leave,
+            whisper::rooms::wa_room_state,
+            whisper::rooms::wa_room_suggest,
+            whisper::rooms::wa_room_dismiss,
+            whisper::rooms::wa_room_transfer,
+            whisper::rooms::wa_room_ping,
+            deeplink::room_link_take,
+            // Discord и виджет OBS
+            discord::discord_config,
+            discord::discord_status,
+            discord::discord_retry,
+            discord::discord_update,
+            obs::obs_config,
+            obs::obs_state,
+            obs::obs_theme,
         ])
         .build(tauri::generate_context!())
         .expect("не удалось запустить приложение");

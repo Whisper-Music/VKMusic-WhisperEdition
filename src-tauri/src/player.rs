@@ -36,7 +36,13 @@ pub struct Player {
     writer: Mutex<UnixStream>,
     child: Mutex<Child>,
     sock: PathBuf,
+    /// с какой секунды и на паузе ли начать следующий загружаемый трек («Слушать вместе»: гость встаёт на позицию
+    /// ведущего и, пока тот грузит трек, готовит его без звука); действует CUE_TTL — иначе случайно достался бы
+    /// следующему включению, если это не загрузилось
+    cue: Mutex<Option<(f64, bool, Instant)>>,
 }
+
+const CUE_TTL: Duration = Duration::from_secs(30);
 
 fn sock_path() -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
@@ -106,7 +112,7 @@ impl Player {
             }
         };
         let reader = stream.try_clone().map_err(|e| e.to_string())?;
-        let player = Player { writer: Mutex::new(stream), child: Mutex::new(child), sock };
+        let player = Player { writer: Mutex::new(stream), child: Mutex::new(child), sock, cue: Mutex::new(None) };
 
         for (id, prop) in [(1, "time-pos"), (2, "duration"), (3, "pause"), (4, "idle-active"), (5, "volume")] {
             player.send(json!(["observe_property", id, prop]))?;
@@ -127,11 +133,25 @@ impl Player {
             .map_err(|e| format!("mpv не отвечает: {e}"))
     }
 
-    /// Играть файл; title — для MPRIS / заголовка.
+    /// Следующий трек начать с секунды `at`, `hold` — загрузить на паузе.
+    pub fn cue(&self, at: f64, hold: bool) {
+        *self.cue.lock().unwrap() = Some((at.max(0.0), hold, Instant::now()));
+    }
+
+    /// Играть файл; title — для MPRIS / заголовка. Позиция старта и пауза — до loadfile: start — опция mpv
+    /// для следующих файлов (каждый раз задаётся заново), пауза до загрузки — чтобы «без звука» не прозвучало начало.
     pub fn load(&self, src: &str, title: &str) -> Result<(), String> {
+        let cue = self.cue.lock().unwrap().take().filter(|c| c.2.elapsed() < CUE_TTL);
+        let (at, hold) = cue.map(|c| (c.0, c.1)).unwrap_or((0.0, false));
         self.send(json!(["set_property", "force-media-title", title]))?;
-        self.send(json!(["loadfile", src, "replace"]))?;
-        self.send(json!(["set_property", "pause", false]))
+        self.send(json!(["set_property", "start", if at > 0.0 { format!("{at:.3}") } else { "none".into() }]))?;
+        self.send(json!(["set_property", "pause", hold]))?;
+        self.send(json!(["loadfile", src, "replace"]))
+    }
+
+    /// Скорость воспроизведения (высота звука сохраняется — scaletempo mpv).
+    pub fn set_speed(&self, rate: f64) -> Result<(), String> {
+        self.send(json!(["set_property", "speed", rate.clamp(0.25, 4.0)]))
     }
 
     /// Играть поток по https (ВКонтакте): с User-Agent и Referer браузера, в котором выполнен вход.

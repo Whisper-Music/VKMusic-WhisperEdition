@@ -30,3 +30,16 @@ libc = "0.2"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "cookies"] }
 # уже есть в зависимостях Tauri; нужны пауза между запросами к ВК и асинхронный мьютекс
 tokio = { version = "1", features = ["time", "sync"] }
+
+# ── Rust-часть ядра Whisper (src/core/rust: Whisper Archive, «Слушать вместе», Discord, OBS) ──
+# ядро ходит в сеть через reqwest, который реэкспортирует плагин (tauri_plugin_http::reqwest); сам плагин не подключается
+tauri-plugin-http = "2"
+# ключ виджета OBS и временные имена файлов секретов — случайные байты
+getrandom = "0.3"
+# ссылки whisper://room/КОД — приглашения в комнату «Слушать вместе» (deeplink.rs)
+tauri-plugin-deep-link = "2"
+# второй запуск (в том числе по ссылке whisper://) не открывает новую копию, а отдаёт ссылку уже запущенной
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+# ключ Whisper Archive — в системной «связке ключей» (Secret Service: GNOME Keyring, KWallet, KeePassXC);
+# vendored — libdbus собирается вместе с приложением
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }

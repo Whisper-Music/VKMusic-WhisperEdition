@@ -3,8 +3,10 @@ Type=Application
 Name=VK Music
 GenericName=Музыкальный плеер
 Comment=Музыка ВКонтакте
-Exec=vkmusic
+Exec=vkmusic %u
 Icon=vkmusic
 Terminal=false
 Categories=AudioVideo;Audio;Player;
 StartupWMClass=vkmusic
+# ссылки whisper://room/КОД — приглашения в комнату «Слушать вместе» (ядро Whisper)
+MimeType=x-scheme-handler/whisper;

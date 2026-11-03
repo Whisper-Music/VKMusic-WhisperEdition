@@ -4,9 +4,16 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VK Music</title>
+  <!-- базовое оформление общих классов ядра Whisper (окна, переключатели, поля модулей) — в слое и :where(),
+       любое правило app.css главнее -->
+  <link rel="stylesheet" href="core/base.css" />
   <link rel="stylesheet" href="app.css" />
-  <!-- общие модули ядра Whisper (src/core) — после своего оформления -->
+  <!-- общие модули ядра Whisper (src/core) — после своего оформления; together.css — первым из них -->
+  <link rel="stylesheet" href="core/together.css" />
+  <link rel="stylesheet" href="core/archive.css" />
   <link rel="stylesheet" href="core/queue.css" />
+  <link rel="stylesheet" href="core/discord.css" />
+  <link rel="stylesheet" href="core/obs.css" />
   <!-- CSS темы: @@ css whisper-core (роли) → @@ css whisper-vk → переменные из tokens; привязан к стилю
        (:root[data-style]) движком тем ядра. data-anim="on" — сдвиги тем при наведении включены -->
   <style id="theme-css"></style>
@@ -33,6 +40,7 @@
         <button class="nav-item" data-page="set-services"><i data-icon="link"></i><span>Сервисы</span></button>
         <button class="nav-item" data-page="set-theme"><i data-icon="palette"></i><span>Оформление</span></button>
         <button class="nav-item" data-page="set-storage"><i data-icon="disk"></i><span>Хранилище</span></button>
+        <button class="nav-item" data-page="set-integrations"><i data-icon="plug"></i><span>Интеграции</span></button>
       </nav>
       <div class="queue-mini" id="queueInfo"></div>
       <button class="side-foot" id="statsBtn" title="Статистика"><i data-icon="chart"></i><span>Статистика</span></button>
@@ -65,6 +73,11 @@
         </div>
       </header>
       <section class="content" id="content"></section>
+      <!-- «Интеграции»: карточки модулей ядра Whisper (Whisper Archive, Discord, OBS) — вставляются при запуске
+           и остаются в документе, страница только показывается -->
+      <section class="content int-page" id="intPage" hidden>
+        <p class="hint int-hint">Whisper Archive — свои треки вместо версий сервиса и «Слушать вместе»; Discord — что играет, в профиле; OBS — виджет «Сейчас играет» для трансляций.</p>
+      </section>
     </main>
 
     <!-- справа от библиотеки: обложка играющего трека и статистика прослушивания -->
@@ -99,13 +112,15 @@
     <footer class="player panel">
       <div class="np">
         <div class="np-cover"><img id="npCover" alt="" /></div>
-        <div class="np-meta">
+        <div class="np-meta meta">
           <div class="np-title" id="npTitle">Ничего не играет</div>
           <div class="np-artist" id="npArtist"></div>
         </div>
         <!-- трек сервиса не из библиотеки (микс, плейлист, поиск) — добавить -->
         <button class="icon-btn np-add" id="npAdd" title="В библиотеку" hidden><i data-icon="plus"></i></button>
         <button class="icon-btn np-add np-topl" id="npToPl" title="В плейлист" hidden><i data-icon="listadd"></i></button>
+        <!-- меню играющего трека: «Играть следующим», «Слушать вместе», «Сохранить в архив» -->
+        <button class="icon-btn np-add np-menu" id="npMenu" title="Ещё" hidden><i data-icon="dots"></i></button>
       </div>
       <div class="center">
         <div class="controls">
@@ -151,7 +166,13 @@
   <!-- привязка к ядру (роли, провайдер, плеер, очередь) — до движка тем и модулей; app.js запускается
        по DOMContentLoaded, когда всё ниже уже подключено -->
   <script src="whisper-vk.js"></script>
+  <script src="core/wmt.js"></script>
   <script src="core/theme-css.js"></script>
+  <!-- модули ядра: порядок = порядок их карточек в «Интеграциях» -->
+  <script src="core/archive.js"></script>
   <script src="core/queue.js"></script>
+  <script src="core/discord.js"></script>
+  <script src="core/obs.js"></script>
+  <script src="core/together.js"></script>
 </body>
 </html>

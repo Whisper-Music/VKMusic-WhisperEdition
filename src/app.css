@@ -79,7 +79,8 @@ code { font-size: .92em; opacity: .9; }
 .brand.big { font-size: 26px; justify-content: center; padding-bottom: 6px; }
 .brand-mark { width: 22px; height: 18px; flex: none; background: linear-gradient(var(--accent2), var(--accent2)) 0 100%/5px 55% no-repeat, linear-gradient(var(--accent), var(--accent)) 50% 100%/5px 100% no-repeat, linear-gradient(var(--accent2), var(--accent2)) 100% 100%/5px 75% no-repeat; }
 .brand.big .brand-mark { width: 28px; height: 24px; }
-.nav { display: flex; flex-direction: column; gap: 2px; }
+/* боковая навигация; .nav у кнопок модулей ядра Whisper — их кнопки (base.css), поэтому только в .side */
+.side .nav { display: flex; flex-direction: column; gap: 2px; padding: 0; border-radius: 0; background: none; cursor: default; }
 .nav-item {
   display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 0; background: transparent;
   border-radius: var(--radius-sm); color: var(--muted); text-align: left; transition: background .15s, color .15s;
@@ -602,3 +603,31 @@ body.side-collapsed #statsBtn { margin-top: auto; }
 .qpanel .grip { display: grid; place-items: center; color: var(--muted); cursor: grab; touch-action: none; }
 .qpanel li.dragging { opacity: .6; }
 .qnext li.drop-before { box-shadow: inset 0 3px 0 var(--accent); }
+
+/* меню трека «⋯» (whisper-vk.js): «Играть следующим» и пункты модулей ядра («Слушать вместе», «Сохранить в архив») */
+.tmenu { position: fixed; z-index: 60; min-width: 220px; max-width: min(320px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
+.tmenu[hidden] { display: none; }
+.tmenu .mi { gap: 10px; }
+.tmenu .mi svg { width: 18px; height: 18px; flex: none; color: var(--accent); }
+.tmenu .mi:disabled { opacity: .5; cursor: default; }
+.tmenu .mi.danger { color: var(--danger); }
+.tmenu .mt { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tmenu .miarrow { font-style: normal; color: var(--muted); font-size: 18px; line-height: 1; }
+.tmenu .mhead { display: flex; align-items: center; gap: 8px; padding: 4px 6px 6px; }
+.tmenu .mhead b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.tmenu .mback { width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); }
+.tmenu .mback:hover { color: var(--text); background: var(--hover); }
+.tmenu .mnote { margin: 4px 10px 6px; font-size: 12px; color: var(--muted); white-space: normal; }
+.tmenu .mscroll { max-height: 260px; overflow-y: auto; }
+.tmenu .msep { margin: 4px 6px; border: 0; border-top: 1px solid var(--border); }
+.icon-btn.open { color: var(--text); background: var(--hover); }
+.np-menu { flex: none; }
+
+/* «Интеграции»: карточки модулей ядра (Whisper Archive, Discord, OBS) */
+.int-page { display: flex; flex-direction: column; gap: 12px; }
+.int-page[hidden] { display: none; }
+.int-page .int-hint { margin: 0 4px 4px; }
+.int-card { margin: 0; }
+/* «Слушать вместе»: у гостя «вперёд/назад» и режимы не работают — ведущий управляет */
+body.room-guest:not(.room-away) #prevBtn, body.room-guest:not(.room-away) #nextBtn,
+body.room-guest:not(.room-away) #shuffleBtn, body.room-guest:not(.room-away) #repeatBtn { opacity: .4; }

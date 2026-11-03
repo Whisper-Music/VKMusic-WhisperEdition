@@ -17,6 +17,9 @@
     volume: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
     mute: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M16 9.5l5 5M21 9.5l-5 5"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    playnext: '<path d="M4 6h10M4 11h10M4 16h6"/><path d="M15 13.5v7l5.5-3.5z" fill="currentColor" stroke="none"/>',
+    plug: '<path d="M9 3v5M15 3v5M7 8h10v3a5 5 0 0 1-10 0zM12 16v5"/>',
+    grip: '<circle cx="9" cy="6" r="1"/><circle cx="15" cy="6" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="18" r="1"/><circle cx="15" cy="18" r="1"/>',
     listadd: '<path d="M4 6h12M4 11h12M4 16h7"/><path d="M17.5 13v7M14 16.5h7"/>',
     listremove: '<path d="M4 6h12M4 11h12M4 16h7"/><path d="M14 16.5h7"/>',
     edit: '<path d="M4.5 19.5h4l10-10-4-4-10 10z"/><path d="M13 7l4 4"/>',
@@ -66,5 +69,6 @@
     i.dataset.icon = name;
     i.innerHTML = svg(name);
   }
-  window.Icons = { hydrate, icon, setIcon };
+  // svg(имя) — строкой, для меню модулей ядра Whisper (их пункты принимают значок разметкой)
+  window.Icons = { hydrate, icon, setIcon, svg };
 })();

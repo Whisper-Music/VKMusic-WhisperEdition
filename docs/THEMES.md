@@ -95,6 +95,8 @@ body(.settings-mode)(.login-mode)(.side-collapsed)(.np-off)(.np-over)(.drag-sort
 │   │       ├── .downloads > .dl-head, .dl(.done|.failed) > .dl-name, .dl-status, .dl-bar > i
 │   │       ├── .svc-cards > .svc-card > .svc-head > .ic, .svc-name, .svc-status(.on|.warn);
 │   │       │     .svc-actions; .caps > .cap(.ok|.bad); .btn.open-dir                    (Сервисы)
+│   │       ├── (рядом с section.content, а не в ней) section.content.int-page#intPage — «Интеграции», показывается вместо #content: .hint, .card.int-card(.colbreak) > h3 …
+│   │       │     (карточки Whisper Archive, Discord, OBS — разметка модулей ядра: label.switch, .nav, .status, .chip, label.slide)
 │   │       ├── form.lib-head.storage-row > .storage-label, .input, .btn.primary;
 │   │       │     .cache-size > .cache-size-value, .cache-size-dir; .btn.danger.open-dir             (Хранилище)
 │   │       ├── .themes > .theme-card(.active) > .theme-prev > .theme-swatch, .theme-info, .theme-desc
@@ -118,10 +120,13 @@ body(.settings-mode)(.login-mode)(.side-collapsed)(.np-off)(.np-over)(.drag-sort
 │   │         (язык: оригинал первым), button.np-lyrics-src;
 │   │         .np-lyrics-text(.note) > .lyr-tag, .lyr-ann(.open) (фрагмент с пояснением); .lyr-note(.below|.loading)
 │   └── footer.player.panel
-│       ├── .np > .np-cover > img, .np-meta > .np-title, .np-artist; button.icon-btn.np-add#npAdd «в библиотеку», button.icon-btn.np-add.np-topl#npToPl «в плейлист»
+│       ├── .np > .np-cover(> span.wacov — печать «WA» архива) > img, .np-meta.meta > .np-title, .np-artist, .roomline > .roomtab
+│       │         («Слушать вместе»: .host | .guest | .away); button.icon-btn.np-add#npAdd «в библиотеку»,
+│       │         button.icon-btn.np-add.np-topl#npToPl «в плейлист», button.icon-btn.np-add.np-menu#npMenu(.open) «⋯»
 │       ├── .center > .controls > #shuffleBtn, #prevBtn, button.play#playBtn, #nextBtn, #repeatBtn (.on)
 │       │           > .progress > .time, .bar#bar > .bar-fill, .bar-knob
-│       └── .vol > #normBtn(.on) «постоянный уровень громкости», button.qtoggle#qBtn(.on) (очередь, ядро),
+│       └── .vol > button.togetherbtn#togetherBtn («Слушать вместе», ядро), #normBtn(.on) «постоянный уровень громкости»,
+│                  button.qtoggle#qBtn(.on) (очередь, ядро),
 │                  .vol-box > #volBtn, input#vol
 ├── .login-bar#loginBar > span, .btn          полоса над страницей входа сервиса (окно сжато до неё)
 ├── .popup.confirm-pop#confirmPop > .confirm-text, .confirm-actions > .btn.danger, .btn   подтверждение
@@ -129,6 +134,10 @@ body(.settings-mode)(.login-mode)(.side-collapsed)(.np-off)(.np-over)(.drag-sort
 ├── aside.panel.qpanel#qPanel              «Очередь и история» (core/queue.js, классы — его):
 │     > .qhead > b, .qclose; .qbody > section.qsec > h4, ul.list(.qnow|.qnext) > li(.playing|.dragging) > .grip, img,
 │       div > .t, .a; .qx, .qmore, .qempty; .qhist > .qday, ul.list.qhlist > li > .qtime; .qclear
+├── .popup.tmenu                          меню «⋯» трека > button.popup-item.mi(.danger) > svg, .mt, .miarrow; .mhead > .mback, b;
+│     .mnote, .mscroll, hr.msep; .mroom («Слушать вместе · КОД», ядро)
+├── окна модулей ядра (вход в архив, комната, Discord): .login.modal > .panel.login-box.modalbox > h2, p, .field,
+│     .row > .nav, .status; оформление по умолчанию — core/base.css (слой whisper-base), своё — в теме
 └── .toasts > .toast(.error)(.has-action > button.toast-action)
 ```
 

@@ -58,6 +58,8 @@ pub struct ThemeRender {
     pub vars: String,
     /// адреса файлов темы (vkm://…) — единственные, которые движок тем ядра оставит в url()
     pub assets: Vec<String>,
+    /// в теме есть оформление виджета OBS (`@@ css whisper-obs`)
+    pub obs: bool,
     pub settings: Value,
     pub background: Option<Background>,
 }
@@ -121,6 +123,18 @@ impl ThemeStore {
         Ok(theme)
     }
 
+    /// Файл темы как есть (встроенная — из бинарника). Нужен интерфейсу только для виджета OBS:
+    /// секции whisper-obs с ресурсами разбирает движок ядра (WMT.open + WhisperThemeCss.obsCss).
+    pub fn raw(&self, id: &str) -> Result<Vec<u8>, String> {
+        if let Some((_, bytes)) = BUILTIN.iter().find(|(b, _)| *b == id) {
+            return Ok(bytes.to_vec());
+        }
+        if !wmt::valid_theme_id(id) {
+            return Err("неверный id темы".into());
+        }
+        std::fs::read(self.dir.join(format!("{id}.wmt"))).map_err(|_| format!("Тема «{id}» не найдена"))
+    }
+
     pub fn list(&self) -> Vec<ThemeInfo> {
         let mut out = Vec::new();
         for (id, _) in BUILTIN {
@@ -182,6 +196,7 @@ impl ThemeStore {
                 v
             },
             settings: app_settings(&t),
+            obs: t.sections.iter().any(|x| x.kind == "css" && x.name.as_deref() == Some(OBS_ID)),
             background: t.background().map(|(name, video)| Background { url: asset_url(&id, &name), video }),
             id,
         })

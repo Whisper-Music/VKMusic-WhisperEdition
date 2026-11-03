@@ -10,7 +10,9 @@
 (формат Whisper Music Theme из [YandexMusic-WhisperEdition](https://github.com/Whisper-Music/YandexMusic-WhisperEdition)).
 Приложение построено на **ядре Whisper** — [whisper-core](https://github.com/Whisper-Music/whisper-core), подмодуль
 в `src/core` (решение владельца, 2026-11-03; в ядре оно называется «Whisper VK», id `whisper-vk`): шина событий,
-плеер и очередь для общих модулей, роли интерфейса и движок CSS тем, панель «Очередь и история».
+плеер и очередь для общих модулей, роли интерфейса и движок CSS тем, и все общие модули (просьба владельца,
+2026-11-04, по образцу YandexMusic-WhisperEdition): «Очередь и история», Whisper Archive, «Слушать вместе», Discord,
+виджет OBS — вместе с их Rust-частью.
 ВКонтакте и SoundCloud — поиск и прослушивание под своим аккаунтом (см. правило «Сервисы»). Библиотека —
 файлы из папки музыки плюс сохранённые треки сервисов (`library.json`, описание трека). Звук треков
 библиотеки — в кэше `~/.cache/vkmusic/tracks`, скачать трек можно в папку загрузок (`~/Downloads`).
@@ -66,6 +68,11 @@ src-tauri/src/cache.rs     кэш треков библиотеки ~/.cache/vkm
 src-tauri/src/stats.rs     статистика прослушивания: ~/.config/vkmusic/stats.json (версия 2) — по ключу трека дослушан раз,
                            секунд, первое/последнее прослушивание; журнал по местным дням (от интерфейса): секунды по трекам и часам
 src-tauri/src/order.rs     порядок библиотеки: ~/.config/vkmusic/order.json, ключи (путь файла | vk:/sc:+id), новые сверху
+src-tauri/src/whisper_host.rs  что приложение даёт Rust ядра: ключ архива (secret.rs), heavy_slot, app_origin, Discord, OBS
+src-tauri/src/whisper_vk.rs    архив для VK Music: wa_save_track (файл трека библиотеки по ключу), wa_play (трек архива → mpv)
+src-tauri/src/secret.rs    ключ Whisper Archive: Secret Service (keyring), без связки ключей — файл 0600 (secret_backend)
+src-tauri/src/deeplink.rs  ссылки whisper://room/КОД: deep-link + single-instance, room_link_take, событие room-link
+src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
@@ -94,9 +101,11 @@ docs/THEMES.md             формат тем для авторов: перем
 ### Ядро Whisper (`src/core`)
 
 * Порядок в `index.html` важен: `core/whisper-core.js` → i18n, `icons.js`, `app.js` → `whisper-vk.js` →
-  `core/theme-css.js` → `core/queue.js`; CSS — `app.css`, затем `core/queue.css`. `app.js` запускается
-  по `DOMContentLoaded` (`boot`), когда роли и движок тем уже подключены. `core/base.css` не подключаем —
-  у приложения своё оформление (недостающее модулям — в конце `app.css`, «модули ядра Whisper»).
+  `core/wmt.js`, `core/theme-css.js` → модули `archive`, `queue`, `discord`, `obs`, `together` (порядок модулей =
+  порядок карточек в «Интеграциях»). CSS: `core/base.css` (слой `whisper-base` и `:where()` — оформление окон и полей
+  модулей, любое правило `app.css` главнее) → `app.css` → `core/together.css`, `archive.css`, `queue.css`,
+  `discord.css`, `obs.css`. `app.js` запускается по `DOMContentLoaded` (`boot`), когда роли и движок тем уже подключены.
+  Классы, совпавшие с `base.css`: `.nav` в боковой панели оформлен как `.side .nav` (у кнопок модулей `.nav` — их).
 * Ядру о плеере сообщает `app.js` — `Whisper.player.report(…)`: смена трека (`playAt`: `track`, `started` — кроме
   повтора со свежей ссылкой, `source`, `queue`), пуск/пауза (`player://event`), перемотка (`seekTo`), громкость
   (`syncVolume`), режимы (`syncModes`), догрузка микса. Новое место, где меняется что-то из этого, — тоже с отчётом.
@@ -109,13 +118,49 @@ docs/THEMES.md             формат тем для авторов: перем
 * Роли (`Whisper.ui.define` в `whisper-vk.js`) — публичный контракт с темами, как классы: меняются вместе с
   `docs/THEMES.md`. Словарь ролей — `VOCAB` в `core/whisper-core.js`.
 * Набор интерфейса (`ui.provide`): подсказка с кнопкой (`toast(…, action, ms)`), подтверждение — наше окошко у кнопки
-  (`confirmClick` у последней нажатой кнопки), не `window.confirm`.
+  (`confirmClick` у последней нажатой кнопки), не `window.confirm`; меню трека `menu` / `trackMenu` — своё меню «⋯»
+  (`openTrackMenu` в `whisper-vk.js`, `.popup.tmenu`: «Играть следующим», пункты модулей — `trackMenu.build`, слот
+  `top` — «Слушать вместе»); `settingsCard` — страница «Интеграции» (`#intPage`: постоянная, её показывает
+  `go("set-integrations")` вместо `#content` — модули ищут свои элементы по id, карточки не должны выпадать из документа);
+  `accentColors`, `obsTheme` (секции `whisper-obs` из файла темы — `theme_file`, `WMT.open`, `obsCss`; только когда
+  спросил включённый виджет), `secretSaved` (ключ лёг в файл — предупредить).
+* Плеер для модулей (`player.bind`): `playTrack(t, { at, hold })` ставит трек сразу за играющим и включает его;
+  `at` / `hold` — через `player_cue` (опции `start` и `pause` mpv до `loadfile`, действует 30 с, `player.rs`);
+  `setRate` — `player_rate` (`speed` mpv); `media()` — `loading` (от включения до первой длительности от mpv),
+  `startAt`; `report({ audible })` — первый `state` без паузы после загрузки. Загружали «без звука», а ведущий уже играет
+  (`together.wantsPlay()`) — снимаем паузу. Перед следующим треком `next()` зовёт `together.take()`.
+* Источники звука: `playAt` сначала спрашивает `Whisper.sources.resolve` (Whisper Archive: свой трек или архив ведущего
+  комнаты, `waShared`). Нашёлся — `wa_play`: mpv не играет `wa://`, поэтому файл целиком (`whisper::wa_track_bytes`)
+  кладётся в `~/.cache/vkmusic/archive/<uuid>.<ext>` (последние 30) и играет оттуда; ключ архива в mpv не попадает.
+  Не открылся — играет сам трек.
+* «Слушать вместе»: трек в комнату — `toRoom` (id — ключ библиотеки; у файла из папки музыки — **хэш, не путь**:
+  в пути имя пользователя), обратно — `fromRoom`: трек библиотеки по ключу или по исполнителю + названию +
+  длительности (`libraryMatch`), SoundCloud — по id, иначе заготовка `room:…`: её найдёт архив ведущего или
+  **один** поиск ВКонтакте при включении (`resolveRoomTrack`; это действие пользователя — он в комнате). У трека из
+  комнаты `roomId` — id комнаты, по нему ядро узнаёт «тот же трек». Комнаты — один сервис: VK Music ↔ VK Music.
+* «Сохранить в архив» — `provider.archiveSave` → `wa_save_track` с **ключом** трека библиотеки: файл Rust берёт сам
+  (`library_file`: папка музыки или кэш, нет в кэше — выкачивает), формат, который архив не принимает (opus в webm,
+  aac в ts), перекладывается ffmpeg без перекодирования (`-c copy` в ogg/m4a). Обложка — с CDN ВКонтакте/SoundCloud
+  (только `whisper_host::cover_ok`), из тегов файла или нарисованная модулем. Треки вне библиотеки — нет.
+* Rust ядра: команды — в `generate_handler!` (`whisper::…`, `whisper::auth::…`, `whisper::stream::…`,
+  `whisper::rooms::…`, `discord::…`, `obs::…`); `build.rs` и `capabilities` у нас без списка команд приложения, поэтому
+  отдельно разрешать их не нужно. Протокол `wa` — только главному окну. Зависимости ядра: `tauri-plugin-http` (только
+  реэкспорт reqwest, плагин не подключается), `getrandom`, `libc`, `tokio`; для ключа — `keyring` (Secret Service,
+  vendored dbus); ссылки — `tauri-plugin-deep-link` (`plugins.deep-link.desktop.schemes` в `tauri.conf.json`) и
+  `tauri-plugin-single-instance` (второй запуск отдаёт ссылку первому). Схему регистрирует `install.sh` (`xdg-mime`,
+  только если у `x-scheme-handler/whisper` ещё нет хозяина) и ярлык (`MimeType`, `Exec=vkmusic %u`), не приложение.
+* Discord: `DISCORD_APP_ID` — общее приложение «Whisper» семейства (как у Whisper Yandex, ID публичный); своё —
+  поменять константу в `whisper_host.rs`. Виджет OBS: обложки — только `https://*.userapi.com`, `*.vkuserphoto.ru`,
+  `*.vk.me`, `*.sndcdn.com` (`OBS_IMG_SRC`, `cover_ok`); у файлов из папки музыки обложки в виджете нет (она `vkm://`).
+* Хранилище модулей в `localStorage`: `vkm_history`, `vkm_discord`, `vkm_obs` (приставка `vkm_`), архив — `wa_cfg`,
+  `wa_index_mine`, «Ставить в очередь» комнаты — `ym_room_autoq` (имя ключа задаёт ядро).
 * Код ядра здесь не правится: репозиторий whisper-core общий с Whisper Yandex и не наш (права — только чтение).
   Нужно что-то в ядре — предложить владельцу whisper-core; своё — в `whisper-vk.js` / `app.js`.
   Новая версия ядра: `git submodule update --remote src/core`, проверить (`cargo build`, Playwright), закоммитить `src/core`.
   `rust/check` ядра внутри `src/core` не запускать: Tauri встроил бы его `target/` в бинарник.
-* Модули ядра (панель очереди) — по-русски, без нашего `L()`: перевод — только в самом ядре.
-* Rust-часть ядра (Whisper Archive, «Слушать вместе», Discord, OBS) пока не подключена — только по просьбе владельца.
+* Модули ядра — по-русски, без нашего `L()`: перевод — только в самом ядре (в `en.js` — лишь постоянная разметка
+  панели очереди, её переводит `applyStatic`). Тексты ядра местами про Whisper Yandex (например, путь к входу в архив
+  «Настройки → Для разработчиков» — у нас «Настройки → Интеграции»): поправить можно только в whisper-core.
 
 ## Правила
 
