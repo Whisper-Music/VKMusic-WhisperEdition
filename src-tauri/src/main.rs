@@ -1647,6 +1647,29 @@ fn old_nvidia(version: Option<&str>) -> bool {
         .is_some_and(|major| major < FIXED)
 }
 
+// ───────────────────────── своя полоса заголовка окна (окно без рамки системы, как у Whisper) ─────────────────────────
+
+#[tauri::command]
+fn win_minimize(window: tauri::Window) {
+    let _ = window.minimize();
+}
+#[tauri::command]
+fn win_toggle_max(window: tauri::Window) {
+    if window.is_maximized().unwrap_or(false) {
+        let _ = window.unmaximize();
+    } else {
+        let _ = window.maximize();
+    }
+}
+#[tauri::command]
+fn win_close(window: tauri::Window) {
+    let _ = window.close();
+}
+#[tauri::command]
+fn win_drag(window: tauri::Window) {
+    let _ = window.start_dragging();
+}
+
 /// Окно — наверх (ссылка whisper:// пришла в уже открытое приложение, второй запуск).
 fn show_main(app: &AppHandle) {
     if let Some(w) = app.get_window("main") {
@@ -1753,6 +1776,10 @@ fn main() {
             app_info,
             save_prefs,
             fonts_list,
+            win_minimize,
+            win_toggle_max,
+            win_close,
+            win_drag,
             player_play,
             player_cue,
             player_rate,

@@ -3,26 +3,25 @@
 //! * встроенная тема `osaka-jade` вшита в бинарник;
 //! * свои темы лежат в ~/.config/vkmusic/themes/<id>.wmt;
 //! * файлы темы раздаются интерфейсу по адресу vkm://localhost/theme/<id>/<имя>;
-//! * CSS темы здесь собирается и проходит первую очистку (`sanitize_css`), а привязку к стилю, роли
-//!   ядра Whisper и окончательный фильтр делает движок тем ядра в интерфейсе (`src/core/theme-css.js`).
+//! * основы Whisper (neon, royal, steam, lolitta) — стили без файла: их CSS — в src/whisper.css;
+//! * CSS темы собирает и очищает движок тем ядра в интерфейсе, как у Whisper Yandex (`WMT.open` + `themeCss`
+//!   из src/core): сюда за ним интерфейс приходит только за самим файлом (`raw`).
 
 use crate::wmt::{self, Theme};
-use regex::Regex;
 use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 
-/// id приложения в секциях `@@ css whisper-vk` / `@@ settings whisper-vk` (как в ядре Whisper: `Whisper.setApp`)
-pub const APP_ID: &str = "whisper-vk";
-/// прежнее имя секций — темы, написанные до перехода на ядро Whisper, читаются, если своей секции нет
-pub const LEGACY_APP_ID: &str = "vkmusic";
-/// общая секция тем Whisper: правила по ролям интерфейса (`[data-w="player.play"]`), одинаковые во всех приложениях
-pub const CORE_ID: &str = "whisper-core";
+/// Секция разметки Whisper: у VK Music та же разметка, что у Whisper Yandex, поэтому тема применяется целиком.
+pub const WHISPER_ID: &str = "whisper-music";
+// своё для VK Music поверх неё — секция `@@ css whisper-vk` (необязательно; её подключает интерфейс)
 /// секция виджета OBS — не для окна приложения
 const OBS_ID: &str = "whisper-obs";
 pub const DEFAULT_THEME: &str = "osaka-jade";
+/// Основы оформления Whisper — стили без файла (CSS — в src/whisper.css). id заняты, как у встроенных тем.
+pub const BASES: [(&str, &str); 4] = [("neon", "Неон"), ("royal", "Королевский"), ("steam", "Стимпанк"), ("lolitta", "Lolitta")];
 
 const BUILTIN: &[(&str, &[u8])] = &[
     ("osaka-jade", include_bytes!("../../themes/osaka-jade.wmt")),
@@ -46,21 +45,17 @@ pub struct ThemeInfo {
     pub background_color: Option<String>,
 }
 
+/// Что интерфейсу нужно, чтобы включить стиль. CSS и tokens темы он берёт из самого файла (`theme_file`).
 #[derive(Debug, Clone, Serialize)]
 pub struct ThemeRender {
     pub id: String,
     pub name: String,
-    pub base: Option<String>,
-    /// CSS темы (`@font-face` чужих секций, `@@ css whisper-core`, `@@ css whisper-vk`), уже без
-    /// @import/внешних адресов, asset: → vkm://. Интерфейс привязывает его к стилю движком тем ядра.
-    pub css: String,
-    /// :root { --accent: … } из tokens — подключается после CSS темы и главнее его
-    pub vars: String,
-    /// адреса файлов темы (vkm://…) — единственные, которые движок тем ядра оставит в url()
-    pub assets: Vec<String>,
+    /// основа Whisper: neon | royal | steam | lolitta (у темы — manifest.base, по умолчанию neon)
+    pub base: String,
+    /// стиль — тема из файла (а не основа без файла)
+    pub file: bool,
     /// в теме есть оформление виджета OBS (`@@ css whisper-obs`)
     pub obs: bool,
-    pub settings: Value,
     pub background: Option<Background>,
 }
 
@@ -86,8 +81,9 @@ impl ThemeStore {
         ThemeStore { dir, cache: Mutex::new(HashMap::new()) }
     }
 
+    /// id занят: встроенная тема или основа Whisper — своя тема с ним не ставится.
     pub fn is_builtin(id: &str) -> bool {
-        BUILTIN.iter().any(|(b, _)| *b == id)
+        BUILTIN.iter().any(|(b, _)| *b == id) || is_base(id)
     }
 
     fn user_files(&self) -> Vec<PathBuf> {
@@ -157,6 +153,10 @@ impl ThemeStore {
     /// Установить тему из байтов файла. Тот же manifest.id — обновление темы.
     pub fn install(&self, bytes: &[u8]) -> Result<ThemeInfo, String> {
         let theme = wmt::open(bytes).map_err(|e| format!("Тема не загружена: {e}"))?;
+        // как у Whisper: тема без своей разметки, без общих правил и без цветов ничего не меняет
+        if theme.css(WHISPER_ID).is_none() && theme.css("whisper-core").is_none() && theme.css("whisper-vk").is_none() && theme.tokens.get("color").is_none() {
+            return Err("В теме нет ни секции «@@ css whisper-music» или «@@ css whisper-core», ни цветов в tokens — применять нечего".into());
+        }
         let id = theme.id().to_string();
         if Self::is_builtin(&id) {
             return Err(format!(
@@ -183,19 +183,16 @@ impl ThemeStore {
     }
 
     pub fn render(&self, id: &str) -> Result<ThemeRender, String> {
+        if let Some((b, name)) = BASES.iter().find(|(b, _)| *b == id) {
+            return Ok(ThemeRender { id: b.to_string(), name: name.to_string(), base: b.to_string(), file: false, obs: false, background: None });
+        }
         let t = self.get(id)?;
         let id = t.id().to_string();
+        let base = t.manifest_str("base").filter(|b| is_base(b)).unwrap_or("neon").to_string();
         Ok(ThemeRender {
             name: t.name().to_string(),
-            base: t.manifest_str("base").map(str::to_string),
-            css: sanitize_css(&theme_css(&t), &id, &t),
-            vars: token_vars(&t.tokens),
-            assets: {
-                let mut v: Vec<String> = t.files.keys().map(|n| asset_url(&id, n)).collect();
-                v.sort();
-                v
-            },
-            settings: app_settings(&t),
+            base,
+            file: true,
             obs: t.sections.iter().any(|x| x.kind == "css" && x.name.as_deref() == Some(OBS_ID)),
             background: t.background().map(|(name, video)| Background { url: asset_url(&id, &name), video }),
             id,
@@ -226,70 +223,8 @@ fn info(t: &Theme, builtin: bool) -> ThemeInfo {
     }
 }
 
-fn re(cell: &'static OnceLock<Regex>, pat: &str) -> &'static Regex {
-    cell.get_or_init(|| Regex::new(pat).expect("regex"))
-}
-
-/// Секция приложения в теме: `whisper-vk`, а у тем, написанных до перехода на ядро, — `vkmusic`.
-pub fn app_section(t: &Theme) -> &'static str {
-    let has = |app: &str| t.sections.iter().any(|s| matches!(s.kind.as_str(), "css" | "settings") && s.name.as_deref() == Some(app));
-    if !has(APP_ID) && has(LEGACY_APP_ID) {
-        LEGACY_APP_ID
-    } else {
-        APP_ID
-    }
-}
-
-pub fn app_settings(t: &Theme) -> Value {
-    t.settings(app_section(t))
-}
-
-/// CSS темы для VK Music: шрифты `@font-face` из секций других приложений (темы из библиотеки
-/// Whisper Music подключают свои шрифты в `@@ css whisper-music`), затем общая секция ролей
-/// `@@ css whisper-core` и своя `@@ css whisper-vk` (она главнее — идёт последней).
-/// Чужую разметку не берём — у приложений разный интерфейс, — а шрифты самодостаточны.
-pub fn theme_css(t: &Theme) -> String {
-    static FACE: OnceLock<Regex> = OnceLock::new();
-    let face = re(&FACE, r"(?s)@font-face\s*\{[^{}]*\}");
-    let app = app_section(t);
-    let own = |s: &crate::wmt::Section| matches!(s.name.as_deref(), Some(n) if n == app || n == CORE_ID || n == OBS_ID);
-    let mut out = String::new();
-    for sec in t.sections.iter().filter(|s| s.kind == "css" && !own(s)) {
-        for m in face.find_iter(&sec.body) {
-            out.push_str(m.as_str());
-            out.push('\n');
-        }
-    }
-    for css in [t.css(CORE_ID), t.css(app)].into_iter().flatten() {
-        out.push_str(&css);
-        out.push('\n');
-    }
-    out
-}
-
-/// Привести CSS темы к безопасному виду: без @import, без внешних адресов; `asset:имя` → vkm://.
-pub fn sanitize_css(css: &str, id: &str, theme: &Theme) -> String {
-    static IMPORT: OnceLock<Regex> = OnceLock::new();
-    static URL: OnceLock<Regex> = OnceLock::new();
-    let css = re(&IMPORT, r"(?i)@import[^;]*;?").replace_all(css, "");
-    let css = re(&URL, r#"(?i)url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"]*))\s*\)"#).replace_all(&css, |c: &regex::Captures| {
-        let target = c
-            .get(1)
-            .or_else(|| c.get(2))
-            .or_else(|| c.get(3))
-            .map(|m| m.as_str().trim())
-            .unwrap_or("");
-        if let Some(name) = target.strip_prefix("asset:") {
-            if theme.files.contains_key(name) {
-                return format!("url(\"{}\")", asset_url(id, name));
-            }
-        } else if target.starts_with("data:") && !target.contains('"') {
-            return format!("url(\"{target}\")");
-        }
-        "url(\"\")".to_string()
-    });
-    // закрывающий тег не нужен CSS и не должен попасть в <style>
-    css.replace("</", "<\\/")
+pub fn is_base(id: &str) -> bool {
+    BASES.iter().any(|(b, _)| *b == id)
 }
 
 pub fn hex6(s: &str) -> Option<(u8, u8, u8)> {
@@ -310,52 +245,6 @@ pub fn css_value_ok(s: &str) -> bool {
         && !low.contains("expression(")
 }
 
-fn num(v: &Value, ptr: &str, lo: f64, hi: f64) -> Option<f64> {
-    v.pointer(ptr).and_then(Value::as_f64).map(|n| n.clamp(lo, hi))
-}
-
-/// tokens → `:root { … }` с CSS-переменными приложения.
-pub fn token_vars(tokens: &Value) -> String {
-    let mut vars: Vec<(String, String)> = Vec::new();
-    let s = |ptr: &str| tokens.pointer(ptr).and_then(Value::as_str);
-
-    for (key, var) in [("accent", "accent"), ("accent2", "accent2")] {
-        if let Some(c) = s(&format!("/color/{key}")) {
-            if let Some((r, g, b)) = hex6(c) {
-                vars.push((var.into(), c.to_string()));
-                vars.push((format!("{var}-rgb"), format!("{r}, {g}, {b}")));
-            }
-        }
-    }
-    for (key, var) in [("text", "text"), ("muted", "muted"), ("background", "bg")] {
-        if let Some(c) = s(&format!("/color/{key}")).filter(|c| css_value_ok(c)) {
-            vars.push((var.into(), c.to_string()));
-            if let Some((r, g, b)) = hex6(c) {
-                vars.push((format!("{var}-rgb"), format!("{r}, {g}, {b}")));
-            }
-        }
-    }
-    if let Some(n) = num(tokens, "/effects/glow", 0.0, 48.0) {
-        vars.push(("glow".into(), format!("{n}px")));
-    }
-    if let Some(n) = num(tokens, "/effects/panelOpacity", 0.2, 1.0) {
-        vars.push(("panel-opacity".into(), format!("{n}")));
-    }
-    if let Some(n) = num(tokens, "/effects/dim", 0.0, 0.85) {
-        vars.push(("dim".into(), format!("{n}")));
-    }
-    if let Some(n) = num(tokens, "/effects/backgroundBlur", 0.0, 64.0) {
-        vars.push(("bg-blur".into(), format!("{n}px")));
-    }
-    for (key, var) in [("body", "font-body"), ("display", "font-display")] {
-        if let Some(f) = s(&format!("/font/{key}")).filter(|f| css_value_ok(f)) {
-            vars.push((var.into(), f.to_string()));
-        }
-    }
-    let body: Vec<String> = vars.iter().map(|(k, v)| format!("  --{k}: {v};")).collect();
-    format!(":root {{\n{}\n}}", body.join("\n"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,49 +255,18 @@ mod tests {
             let t = wmt::open(bytes).unwrap_or_else(|e| panic!("{id}.wmt: {e}"));
             assert_eq!(t.id(), *id);
             assert!(t.background().is_some(), "{id}: нет фона");
-            assert!(t.css(APP_ID).is_some(), "{id}: нет CSS секции {APP_ID}");
-            assert!(token_vars(&t.tokens).contains("--accent:"), "{id}: нет --accent");
+            assert!(t.css(WHISPER_ID).is_some(), "{id}: нет CSS секции {WHISPER_ID}");
+            assert!(t.tokens.pointer("/color/accent").and_then(Value::as_str).and_then(hex6).is_some(), "{id}: нет accent");
         }
     }
 
     #[test]
-    fn foreign_font_faces() {
-        let t = wmt::parse_text(
-            "#WMT 1\n@@ manifest\n{\"id\":\"a\",\"name\":\"a\"}\n@@ asset f.woff2 text\nx\n@@ css whisper-music\n@font-face { font-family: \"Hand\"; src: url(asset:f.woff2) format(\"woff2\"); }\n.panel { display: none; }\n@@ css vkmusic\n.x{color:red}",
-        )
-        .unwrap();
-        let css = sanitize_css(&theme_css(&t), "a", &t);
-        assert!(css.contains("font-family: \"Hand\""));
-        assert!(css.contains("vkm://localhost/theme/a/f.woff2"));
-        assert!(!css.contains("display: none"), "чужая разметка не должна попадать");
-        assert!(css.contains(".x{color:red}"));
-        assert_eq!(app_section(&t), LEGACY_APP_ID);
-    }
-
-    #[test]
-    fn core_and_app_sections() {
-        let t = wmt::parse_text(
-            "#WMT 1\n@@ manifest\n{\"id\":\"a\",\"name\":\"a\"}\n@@ css whisper-vk\n.own{color:red}\n@@ css vkmusic\n.old{color:blue}\n@@ css whisper-core\n[data-w=\"player\"]{color:green}\n@@ css whisper-obs\n.obs{color:pink}\n@@ settings whisper-vk\n{\"x\":1}",
-        )
-        .unwrap();
-        assert_eq!(app_section(&t), APP_ID);
-        let css = theme_css(&t);
-        let (core, own) = (css.find("data-w").unwrap(), css.find(".own").unwrap());
-        assert!(core < own, "своя секция должна идти после общей");
-        assert!(!css.contains(".old") && !css.contains(".obs"));
-        assert_eq!(app_settings(&t)["x"], 1);
-    }
-
-    #[test]
-    fn css_is_sanitized() {
-        let t = wmt::parse_text("#WMT 1\n@@ manifest\n{\"id\":\"a\",\"name\":\"a\"}\n@@ asset f.png text\nx").unwrap();
-        let out = sanitize_css(
-            "@import url(http://evil/x.css);\n.a{background:url(asset:f.png)} .b{background:url('https://x/y.png')} .c{background:url(\"asset:none.png\")}",
-            "a",
-            &t,
-        );
-        assert!(!out.contains("@import"));
-        assert!(out.contains("vkm://localhost/theme/a/f.png"));
-        assert!(!out.contains("https://x"));
+    fn bases_render_without_file() {
+        let st = ThemeStore { dir: std::env::temp_dir().join("vkm-no-themes"), cache: Mutex::new(HashMap::new()) };
+        let r = st.render("royal").unwrap();
+        assert!(!r.file && r.base == "royal" && r.background.is_none());
+        assert!(ThemeStore::is_builtin("lolitta") && ThemeStore::is_builtin("osaka-jade"));
+        let j = st.render("osaka-jade").unwrap();
+        assert!(j.file && j.base == "neon" && j.background.is_some());
     }
 }

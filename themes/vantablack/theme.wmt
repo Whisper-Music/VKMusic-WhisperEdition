@@ -10,7 +10,7 @@
   "description": "Абсолютный чёрный, белый текст и серые оттенки — без единого цвета",
   "version": "1.0",
   "base": "neon",
-  "apps": ["whisper-vk"],
+  "apps": ["whisper-music"],
   "created": "2026-10-29T00:00:00Z",
   "preview": "asset:preview.jpg"
 }
@@ -36,62 +36,44 @@
   }
 }
 
-@@ settings whisper-vk
+@@ settings whisper-music
 {
   "features": { "glow": false }
 }
 
-@@ css whisper-vk
-:root {
-  --heading: #ffffff;
-  --text-soft: #ececec;
-  --selection: #1a1a1a;          /* selection */
-  --border: #1a1a1a;             /* lighter_background */
-  --border-active: #8d8d8d;
-  --surface: #090909;            /* dark_background */
-  --hover: rgba(255, 255, 255, 0.05);
-  --danger: #a4a4a4;
-  --ok: #b6b6b6;
-  --warn: #cecece;
-  --radius: 0px;
-  --radius-sm: 0px;
-  --gap: 10px;
-  --panel-blur: 0px;
-}
+@@ css whisper-music
+/* Разметка — Whisper (VK Music повторяет её): чистый чёрный, серые рамки-плитки, белый акцент. */
+:root { --line: #1a1a1a; --hover: rgba(255, 255, 255, 0.05); --danger: #a4a4a4; }
+.panel { border-radius: 0; border: 2px solid var(--line); box-shadow: none; background: rgba(0, 0, 0, var(--panel-a)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.player.panel { border-color: #8d8d8d; }
+.titlebar { background: #000; border-bottom: 1px solid var(--line); }
+.tbdot { border-radius: 0; background: #ececec; box-shadow: none; }
+.tbbrand { color: #fff; letter-spacing: .14em; text-transform: lowercase; }
 
-.panel { border: 2px solid var(--border); box-shadow: none; }
-.main.panel { border-color: var(--border-active); }
+.head h2 { color: #fff; text-shadow: none; letter-spacing: .03em; }
+.side .nav { border-radius: 0; background: transparent; color: #7a7a7a; }
+.side .nav:hover:not(.active) { background: var(--hover); color: #fff; }
+.side .nav.active { background: var(--line); color: #fff; text-shadow: none; box-shadow: inset 3px 0 0 #ececec; }
 
-.brand { color: #ffffff; letter-spacing: .14em; text-transform: lowercase; }
-.brand b { color: #8d8d8d; }
-.brand-mark { filter: grayscale(1); }
-.page-title { color: #ffffff; letter-spacing: .03em; }
+.search, .field { border-radius: 0; background: #050505; border: 1px solid var(--line); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.search:focus, .field:focus { border-color: #8d8d8d; box-shadow: none; }
 
-.nav-item:hover { background: var(--hover); }
-.nav-item.active { background: #1a1a1a; color: #ffffff; box-shadow: inset 3px 0 0 #ececec; }
-.nav-badge { background: #ececec; color: #000; border-radius: 0; }
+.list li { border-radius: 0; }
+.list li:hover { background: var(--hover); }
+.list li.playing { background: #111; }
+.list li.playing .t { color: #fff; text-shadow: none; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #505050; }
+.list img, .cover, .simcard img, .lastAlbum img, .fcover { border-radius: 0; background: #0c0c0c; border: 1px solid var(--line); }
 
-.track:hover { background: var(--hover); }
-.track.playing { background: #111111; }
-.track.playing .t-title, .track.playing .t-num { color: #ffffff; }
-.track.playing .t-title { text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #505050; }
-.t-cover, .np-cover { background: #0c0c0c; border: 1px solid #1a1a1a; }
+.card, .lastAlbum, .simcard, .stylecard, .chip, .nav, .tmenu, .toast, .login-box, .qpanel, .volpop { border-radius: 0; }
+.card, .lastAlbum { background: #050505; border-color: var(--line); }
+.nav, .chip { background: #0c0c0c; border: 1px solid var(--line); }
+.nav:hover:not(:disabled):not(.active) { border-color: #8d8d8d; }
+.nav.active, .chip.active, .player .playbtn, .wavebtn, .fbtns .playbtn { background: #ececec; color: #000; box-shadow: none; text-shadow: none; }
+.player .playbtn:hover, .nav.active:hover { background: #fff; filter: none; }
+.player button, .wavebtn { border-radius: 0; }
+.modebtn.on, .likebtn.on { color: #fff; filter: none; }
+.toast, .tmenu { background: #050505; border-color: var(--line); }
 
-.input, .search input { background: #050505; border: 1px solid #1a1a1a; }
-.input:focus, .search input:focus { border-color: #8d8d8d; box-shadow: none; }
-
-.btn { background: #0c0c0c; border: 1px solid #1a1a1a; }
-.btn:hover { border-color: #8d8d8d; }
-.btn.primary, .play { background: #ececec; color: #000000; }
-.btn.primary:hover, .play:hover { background: #ffffff; }
-.icon-btn.on { color: #ffffff; }
-
-.bar { background: #1a1a1a; }
-.bar-fill { background: #ececec; }
-.bar-knob { background: #ffffff; }
-.vol input, .sliders input { accent-color: #8d8d8d; }
-
-.theme-card.active { outline: 2px solid #ececec; }
-.toast { background: #050505; border: 1px solid #1a1a1a; border-left: 3px solid #ececec; }
-
-::selection { background: #1a1a1a; color: #ffffff; }
+input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #ececec var(--p, 0%), var(--line) var(--p, 0%)); border-radius: 0; }
+input[type=range]::-webkit-slider-thumb { border-radius: 0; box-shadow: none; }
+::selection { background: var(--line); color: #fff; }

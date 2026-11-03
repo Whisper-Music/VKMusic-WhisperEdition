@@ -1,159 +1,186 @@
 <!doctype html>
-<html lang="ru" data-anim="on">
+<html lang="ru" data-anim="on" data-style="neon" data-base="neon">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VK Music</title>
-  <!-- базовое оформление общих классов ядра Whisper (окна, переключатели, поля модулей) — в слое и :where(),
-       любое правило app.css главнее -->
+  <!-- Разметка — как у Whisper Yandex (те же классы и id): темы Whisper (@@ css whisper-music) ложатся на неё целиком.
+       whisper.css — основа оформления Whisper (Неон, Королевский, Стимпанк, Lolitta); app.css — то, чего у Whisper нет. -->
   <link rel="stylesheet" href="core/base.css" />
-  <link rel="stylesheet" href="app.css" />
-  <!-- общие модули ядра Whisper (src/core) — после своего оформления; together.css — первым из них -->
+  <link rel="stylesheet" href="whisper.css" />
   <link rel="stylesheet" href="core/together.css" />
+  <link rel="stylesheet" href="app.css" />
   <link rel="stylesheet" href="core/archive.css" />
   <link rel="stylesheet" href="core/queue.css" />
   <link rel="stylesheet" href="core/discord.css" />
   <link rel="stylesheet" href="core/obs.css" />
-  <!-- CSS темы: @@ css whisper-core (роли) → @@ css whisper-vk → переменные из tokens; привязан к стилю
-       (:root[data-style]) движком тем ядра. data-anim="on" — сдвиги тем при наведении включены -->
+  <!-- CSS темы: @@ css whisper-core (роли) → @@ css whisper-music → @@ css whisper-vk → tokens; привязан к стилю
+       (:root[data-style="<id>"]) движком тем ядра -->
   <style id="theme-css"></style>
 </head>
 <body>
-  <div id="bg" class="bg" aria-hidden="true"></div>
-  <div class="bg-dim" aria-hidden="true"></div>
+  <!-- фон темы: картинка — переменной --bg-image на #bg, видео — #bgVideo внутри (темы задают #bg место и форму) -->
+  <div id="bg"><video id="bgVideo" muted loop playsinline disablepictureinpicture disableremoteplayback preload="auto" hidden></video></div>
+  <div id="dim"></div>
 
-  <div id="app" class="app">
-    <aside class="side panel">
-      <!-- нажатие сворачивает панель до значков (body.side-collapsed) -->
-      <div class="brand" id="brand" role="button" tabindex="0" title="Свернуть панель"><span class="brand-mark"></span><span>vk<b>music</b></span></div>
-      <!-- обычный режим -->
-      <nav class="nav" id="mainNav">
-        <button class="nav-item" data-page="library"><i data-icon="note"></i><span>Библиотека</span><span class="nav-badge" id="dlBadge" hidden></span></button>
-        <button class="nav-item" data-page="vk"><i data-icon="mix"></i><span>Миксы</span></button>
-      </nav>
-      <!-- настройки: слева разделы, справа (в основной панели) параметры -->
-      <nav class="nav settings-nav" id="setNav" hidden>
-        <button class="nav-item nav-back" id="setBack"><i data-icon="back"></i><span>Назад</span></button>
-        <div class="nav-caption">Настройки</div>
-        <button class="nav-item" data-page="set-general"><i data-icon="globe"></i><span>Общее</span></button>
-        <button class="nav-item" data-page="set-lyrics"><i data-icon="lyrics"></i><span>Текст песен</span></button>
-        <button class="nav-item" data-page="set-services"><i data-icon="link"></i><span>Сервисы</span></button>
-        <button class="nav-item" data-page="set-theme"><i data-icon="palette"></i><span>Оформление</span></button>
-        <button class="nav-item" data-page="set-storage"><i data-icon="disk"></i><span>Хранилище</span></button>
-        <button class="nav-item" data-page="set-integrations"><i data-icon="plug"></i><span>Интеграции</span></button>
-      </nav>
-      <div class="queue-mini" id="queueInfo"></div>
-      <button class="side-foot" id="statsBtn" title="Статистика"><i data-icon="chart"></i><span>Статистика</span></button>
-      <button class="side-foot" id="settingsBtn" title="Настройки"><i data-icon="gear"></i><span>Настройки</span></button>
+  <!-- своя полоса заголовка окна (окно без рамки системы): темы рисуют её по-своему -->
+  <div id="titlebar" class="titlebar">
+    <div class="tbtitle">
+      <span class="tbdot"></span>
+      <span class="tbtext">
+        <span class="tbbrand">VK Music</span>
+        <span class="tbsubtitle">Whisper VK</span>
+      </span>
+    </div>
+    <div class="tbctl">
+      <button id="wMin" title="Свернуть"><svg viewBox="0 0 12 12" width="12" height="12"><path d="M2 6h8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      <button id="wMax" title="Развернуть"><svg viewBox="0 0 12 12" width="12" height="12"><rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+      <button id="wClose" class="wclose" title="Закрыть"><svg viewBox="0 0 12 12" width="12" height="12"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+    </div>
+  </div>
+
+  <div class="app">
+    <!-- закладки: разделы библиотеки (Треки / Плейлисты / Загрузки) -->
+    <header class="tabs" id="tabs"></header>
+
+    <aside class="panel side">
+      <input id="search" class="search" type="search" placeholder="Найти трек или вставить ссылку" autocomplete="off" spellcheck="false" maxlength="2048" />
+      <button class="nav" id="wave" data-page="wave">VK Микс</button>
+      <button class="nav active" id="likes" data-page="library">Библиотека<span class="nav-badge" id="dlBadge" hidden></span></button>
+      <button class="nav" id="mixes" data-page="vk">Миксы и плейлисты</button>
+      <button class="nav" id="statsBtn" data-page="stats">Статистика</button>
+      <button class="nav" id="settingsBtn" data-page="settings">Настройки</button>
+      <div class="spacer"></div>
+      <p class="status queue-mini" id="queueInfo"></p>
+      <button class="nav" id="profile" data-page="services">Сервисы</button>
     </aside>
 
-    <main class="main panel">
-      <header class="topbar">
-        <!-- «назад» (из открытого плейлиста) — стрелкой слева от названия -->
-        <div class="topbar-title">
-          <button class="icon-btn page-back" id="pageBack" title="Назад" hidden><i data-icon="back"></i></button>
-          <h1 class="page-title" id="pageTitle"></h1>
+    <main class="main">
+      <div class="head">
+        <button id="back" class="round" hidden title="Назад">←</button>
+        <img id="headImg" class="headimg sq" alt="" hidden />
+        <div class="headtext">
+          <h2 id="title">Библиотека</h2>
+          <div id="sub" class="sub" hidden></div>
         </div>
-        <!-- общий поиск: треки в сервисах и ссылки (yt-dlp) -->
-        <div class="gsearch">
-          <form class="search" id="searchBox" autocomplete="off">
-            <i data-icon="search"></i>
-            <input id="searchInput" type="search" placeholder="Найти трек или вставить ссылку…" spellcheck="false" maxlength="2048" />
-            <button type="button" class="svc-btn" id="svcBtn" title="Где искать"></button>
-          </form>
-          <!-- вне .search: правила .search input / .search .ic (в том числе из тем) не должны задевать меню -->
-          <div class="popup svc-menu" id="svcMenu" hidden></div>
-          <!-- результаты поиска: выпадающий список поверх библиотеки -->
-          <div class="search-drop" id="searchDrop" hidden></div>
+        <div id="waveInfo" class="waveinfo headinfo" hidden>
+          <p id="waveHint" class="wavehint">Нажми, чтобы включить VK Микс</p>
+          <div id="nowplay" class="nowplay" hidden>
+            <div id="waveTitle" class="nptitle"></div>
+            <div id="waveArtist" class="npartist"></div>
+          </div>
         </div>
-        <div class="topbar-right">
-          <div class="topbar-actions" id="topActions"></div>
-          <!-- правая панель (обложка, статистика, текст): спрятать / выдвинуть -->
-          <button class="icon-btn np-toggle" id="npToggle" title="Правая панель"><i data-icon="panel"></i></button>
+        <!-- кнопки страницы справа в шапке (обновить, «Слушать», «Магазин тем» …) -->
+        <div class="headbtns" id="headBtns"></div>
+      </div>
+      <div id="chips" class="chips" hidden></div>
+
+      <!-- страница «VK Микс»: кнопка бесконечного потока, орбиты вокруг неё рисуют стили и темы -->
+      <section id="wavePage" class="wavepage" hidden>
+        <div class="stage">
+          <div id="waveOrbits" class="waveorbits" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+          <button id="waveBtn" class="wavebtn" title="VK Микс"></button>
         </div>
-      </header>
-      <section class="content" id="content"></section>
-      <!-- «Интеграции»: карточки модулей ядра Whisper (Whisper Archive, Discord, OBS) — вставляются при запуске
-           и остаются в документе, страница только показывается -->
-      <section class="content int-page" id="intPage" hidden>
-        <p class="hint int-hint">Whisper Archive — свои треки вместо версий сервиса и «Слушать вместе»; Discord — что играет, в профиле; OBS — виджет «Сейчас играет» для трансляций.</p>
+      </section>
+
+      <!-- остальные страницы: список треков, миксы, поиск, статистика, магазин тем -->
+      <div id="content" class="content"></div>
+
+      <!-- настройки: вкладки-чипы и карточки (карточки модулей ядра — постоянные, вставляются при запуске) -->
+      <section id="settingsPage" class="settings" data-tab="look" hidden>
+        <nav class="settabs" id="setTabs" role="tablist">
+          <button type="button" class="chip" data-tab="look" role="tab">Оформление</button>
+          <button type="button" class="chip" data-tab="ui" role="tab">Общее</button>
+          <button type="button" class="chip" data-tab="play" role="tab">Текст песен</button>
+          <button type="button" class="chip" data-tab="out" role="tab">Хранилище</button>
+          <button type="button" class="chip" data-tab="int" role="tab">Интеграции</button>
+        </nav>
       </section>
     </main>
 
-    <!-- справа от библиотеки: обложка играющего трека и статистика прослушивания -->
-    <aside class="np-side panel" id="npSide">
-      <div class="np-head">
-        <div class="np-big-cover" id="npBigCover"><i data-icon="note"></i><img id="npBigImg" alt="" hidden /></div>
-        <div class="np-big-meta">
-          <div class="np-big-title" id="npBigTitle">Ничего не играет</div>
-          <div class="np-big-artist" id="npBigArtist"></div>
-          <div class="np-big-info" id="npBigInfo"></div>
-        </div>
+    <footer class="panel player">
+      <div class="pinfo">
+        <img id="cover" class="cover" alt="" title="Текст и обложка на весь экран" />
+        <div class="meta"><b id="pTitle">Ничего не играет</b><span id="pArtist"></span></div>
+        <!-- «сердце» — трек в библиотеке: у трека сервиса не из библиотеки — добавить -->
+        <button id="likeBtn" class="likebtn" title="В библиотеку" hidden></button>
       </div>
-      <div class="np-stats" id="npStats" hidden>
-        <div class="np-stat"><div class="np-stat-value" id="npPlays">0</div><div class="np-stat-label" id="npPlaysLabel">раз дослушан</div></div>
-        <div class="np-stat"><div class="np-stat-value" id="npListened">0 с</div><div class="np-stat-label">слушали всего</div></div>
-      </div>
-      <div class="np-more" id="npMore"></div>
-      <!-- текст песни с Genius: занимает остаток панели, прокручивается -->
-      <section class="np-lyrics" id="npLyrics" hidden>
-        <div class="np-lyrics-head">
-          <span>Текст</span>
-          <label class="np-lyrics-notes" id="npLyricsNotesBox" title="Пояснения Genius к строкам" hidden><input type="checkbox" id="npLyricsNotes" /><span>Пояснения</span></label>
-          <select class="np-lyrics-lang" id="npLyricsLang" title="Язык текста" hidden></select>
-          <button class="np-lyrics-src" id="npLyricsSrc" hidden>Genius</button>
-        </div>
-        <div class="np-lyrics-text" id="npLyricsText"></div>
-        <!-- пояснение Genius к фрагменту: над ним, неширокое -->
-        <div class="lyr-note" id="lyrNote" hidden></div>
-      </section>
-    </aside>
 
-    <footer class="player panel">
-      <div class="np">
-        <div class="np-cover"><img id="npCover" alt="" /></div>
-        <div class="np-meta meta">
-          <div class="np-title" id="npTitle">Ничего не играет</div>
-          <div class="np-artist" id="npArtist"></div>
+      <div class="pcenter">
+        <div class="seekrow">
+          <span class="time" id="tCur">0:00</span>
+          <input id="seek" type="range" min="0" max="1000" value="0" />
+          <span class="time" id="tDur">0:00</span>
         </div>
-        <!-- трек сервиса не из библиотеки (микс, плейлист, поиск) — добавить -->
-        <button class="icon-btn np-add" id="npAdd" title="В библиотеку" hidden><i data-icon="plus"></i></button>
-        <button class="icon-btn np-add np-topl" id="npToPl" title="В плейлист" hidden><i data-icon="listadd"></i></button>
-        <!-- меню играющего трека: «Играть следующим», «Слушать вместе», «Сохранить в архив» -->
-        <button class="icon-btn np-add np-menu" id="npMenu" title="Ещё" hidden><i data-icon="dots"></i></button>
-      </div>
-      <div class="center">
-        <div class="controls">
-          <button class="icon-btn" id="shuffleBtn" title="Перемешать"><i data-icon="shuffle"></i></button>
-          <button class="icon-btn" id="prevBtn" title="Предыдущий"><i data-icon="prev"></i></button>
-          <button class="play" id="playBtn" title="Пауза / играть (Пробел)"><i data-icon="play"></i></button>
-          <button class="icon-btn" id="nextBtn" title="Следующий"><i data-icon="next"></i></button>
-          <button class="icon-btn" id="repeatBtn" title="Повтор"><i data-icon="repeat"></i></button>
-        </div>
-        <div class="progress">
-          <span class="time" id="curTime">0:00</span>
-          <div class="bar" id="bar"><div class="bar-fill" id="barFill"></div><div class="bar-knob" id="barKnob"></div></div>
-          <span class="time" id="durTime">0:00</span>
+        <div class="ctrls">
+          <button id="shuffleBtn" class="modebtn" title="Перемешать"></button>
+          <button id="prev" title="Предыдущий"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+          <button id="play" class="playbtn" title="Пауза / играть (Пробел)"></button>
+          <button id="next" title="Следующий"><svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+          <button id="repeatBtn" class="modebtn" title="Повтор"></button>
         </div>
       </div>
-      <div class="vol">
-        <button class="icon-btn" id="normBtn" title="Постоянный уровень громкости"><i data-icon="levels"></i></button>
-        <!-- роль player.volume: перед ней панель очереди ядра ставит свою кнопку -->
-        <span class="vol-box">
-          <button class="icon-btn" id="volBtn" title="Без звука"><i data-icon="volume"></i></button>
-          <input id="vol" type="range" min="0" max="100" step="1" />
-        </span>
+
+      <div class="pright">
+        <button id="normBtn" class="modebtn" title="Постоянный уровень громкости"></button>
+        <div class="volwrap" id="volWrap">
+          <button id="volBtn" title="Громкость (клик — выключить звук)"></button>
+          <div class="volpop">
+            <span id="volVal" class="volval">70</span>
+            <div class="volbox"><input id="vol" type="range" min="0" max="100" value="70" /></div>
+          </div>
+        </div>
+        <button id="pMore" class="morebtn pmore" title="Ещё" disabled></button>
       </div>
     </footer>
+  </div>
+
+  <!-- обложка и текст песни на весь экран (нажатие на обложку в плеере) -->
+  <div id="full" class="full" data-mode="cover" hidden>
+    <div id="fBg" class="fbg"></div>
+    <div class="fwrap">
+      <button id="fClose" class="round fclose" title="Свернуть (Esc)">✕</button>
+      <div id="fSrc" class="fsrc" role="group" aria-label="Текст песни">
+        <button type="button" id="fLyrBtn" title="Текст песни">Текст</button>
+        <select id="fLang" class="np-lyrics-lang" title="Язык текста" hidden></select>
+        <label class="fnotes" id="fNotesBox" title="Пояснения Genius к строкам" hidden><input type="checkbox" id="fNotes" /><span>Пояснения</span></label>
+        <button type="button" id="fGenius" title="Открыть песню на Genius" hidden>Genius</button>
+      </div>
+      <header id="fHead" class="fhead">
+        <img id="fCover" class="fcover" alt="" />
+        <div id="fTitles" class="ftitles">
+          <div id="fTitle" class="ftitle"></div>
+          <div id="fArtist" class="fartist"></div>
+          <div id="fInfo" class="finfo"></div>
+        </div>
+      </header>
+      <div id="fLyrics" class="flyrics"></div>
+      <!-- пояснение Genius к фрагменту текста -->
+      <div class="lyr-note" id="lyrNote" hidden></div>
+      <footer class="fctrl">
+        <div class="fseek">
+          <span id="fTCur" class="time">0:00</span>
+          <input id="fSeek" type="range" min="0" max="1000" value="0" />
+          <span id="fTDur" class="time">0:00</span>
+        </div>
+        <div class="fbtns">
+          <button id="fLike" class="likebtn" hidden></button>
+          <button id="fPrev" title="Предыдущий"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+          <button id="fPlay" class="playbtn" title="Пуск/пауза"></button>
+          <button id="fNext" title="Следующий"><svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+        </div>
+      </footer>
+    </div>
   </div>
 
   <!-- пока открыта страница входа сервиса, окно интерфейса сжато до этой полосы (как в NK-Player) -->
   <div class="login-bar" id="loginBar" hidden>
     <span id="loginBarText"></span>
-    <button class="btn" id="loginCancel">Отмена</button>
+    <button class="nav" id="loginCancel">Отмена</button>
   </div>
   <div class="drop-hint" id="dropHint" hidden><div>Отпустите файл .wmt, чтобы установить тему</div></div>
-  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <!-- одна подсказка внизу по центру, как у Whisper -->
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
   <!-- ядро Whisper — первым: app.js сообщает ему о плеере и очереди -->
   <script src="core/whisper-core.js"></script>

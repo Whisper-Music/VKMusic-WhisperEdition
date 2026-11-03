@@ -10,7 +10,7 @@
   "description": "Тёмные стеклянные панели с фиолетовым акцентом поверх школьной доски со стёртым мелом",
   "version": "1.0",
   "base": "neon",
-  "apps": ["whisper-vk"],
+  "apps": ["whisper-music"],
   "created": "2026-10-30T00:00:00Z",
   "preview": "asset:preview.jpg"
 }
@@ -32,13 +32,12 @@
   }
 }
 
-@@ settings whisper-vk
+@@ settings whisper-music
 {
   "features": { "glow": false }
 }
 
-@@ css whisper-vk
-/* Всё остальное — базовое оформление приложения: стеклянные панели (размытие 14px) поверх доски. */
-:root {
-  --panel-blur: 14px;
-}
+@@ css whisper-music
+/* Разметка — Whisper (VK Music повторяет её). Основа — «Неон» без свечения: стеклянные панели поверх школьной доски. */
+.panel { -webkit-backdrop-filter: blur(14px) saturate(130%); backdrop-filter: blur(14px) saturate(130%); }
+.head h2 { text-shadow: 0 2px 6px rgba(0, 0, 0, .45); }

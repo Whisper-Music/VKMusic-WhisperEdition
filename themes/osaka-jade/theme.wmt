@@ -14,7 +14,7 @@
   "description": "Нефритовая ночь Осаки: тёмно-зелёные панели, мятный акцент, обои Glowing City",
   "version": "1.0",
   "base": "neon",
-  "apps": ["whisper-vk"],
+  "apps": ["whisper-music"],
   "created": "2026-10-29T00:00:00Z",
   "preview": "asset:preview.jpg"
 }
@@ -40,67 +40,48 @@
   }
 }
 
-@@ settings whisper-vk
+@@ settings whisper-music
 {
   "features": { "glow": false }
 }
 
-@@ css whisper-vk
+@@ css whisper-music
+/* Разметка — Whisper (VK Music повторяет её): плитки как в Hyprland, рамки lighter_background, акцент — нефрит. */
 :root {
-  /* остальная палитра Omarchy Osaka Jade */
   --heading: #f7e8b2;          /* bright_foreground */
-  --text-soft: #d6d5bc;        /* light_foreground */
   --selection: #32473b;
-  --border: #23372b;           /* lighter_background */
-  --border-active: #509475;
+  --line: #23372b;             /* lighter_background */
   --surface: #0c1512;          /* dark_background */
-  --surface-2: #090f0d;        /* darker_background */
-  --danger: #ff5345;
-  --warn: #e5c736;
-  --ok: #63b07a;
-  --pink: #d2689c;
-  --radius: 0px;               /* плитки как в Hyprland */
-  --radius-sm: 0px;
-  --gap: 10px;
   --hover: rgba(80, 148, 117, 0.16);
-  --panel-blur: 8px;
+  --danger: #ff5345;
 }
+.panel { border-radius: 0; border: 2px solid var(--line); box-shadow: none; background: rgba(12, 21, 18, var(--panel-a)); }
+.player.panel { border-color: #509475; }
+.titlebar { background: rgba(9, 15, 13, .88); border-bottom: 1px solid var(--line); }
+.tbdot { border-radius: 0; background: var(--accent); box-shadow: none; }
+.tbbrand { color: var(--accent); letter-spacing: .14em; text-transform: lowercase; }
 
-/* рамки окон: неактивные — lighter_background, «активное» (основная область) — accent */
-.panel { border: 2px solid var(--border); box-shadow: none; }
-.main.panel { border-color: var(--border-active); }
+.head h2 { color: var(--heading); text-shadow: none; letter-spacing: .03em; }
+.side .nav { border-radius: 0; background: transparent; }
+.side .nav:hover:not(.active) { background: var(--hover); }
+.side .nav.active { background: var(--selection); color: var(--heading); text-shadow: none; box-shadow: inset 3px 0 0 var(--accent); }
 
-.brand { color: var(--accent); letter-spacing: .14em; text-transform: lowercase; }
-.brand b { color: var(--heading); }
-.page-title { color: var(--heading); letter-spacing: .03em; }
+.search, .field { border-radius: 0; background: rgba(9, 15, 13, .78); border: 1px solid var(--line); }
+.search:focus, .field:focus { border-color: #509475; box-shadow: 0 0 0 1px #509475; }
 
-.nav-item:hover { background: var(--hover); }
-.nav-item.active {
-  background: var(--selection);
-  color: var(--heading);
-  box-shadow: inset 3px 0 0 var(--accent);
-}
+.list li { border-radius: 0; }
+.list li:hover { background: var(--hover); }
+.list li.playing { background: rgba(50, 71, 59, .55); }
+.list li.playing .t { color: var(--accent); text-shadow: none; }
+.list img, .cover, .simcard img, .lastAlbum img, .fcover { border-radius: 0; }
 
-.track:hover { background: var(--hover); }
-.track.playing { background: rgba(50, 71, 59, .55); }
-.track.playing .t-title { color: var(--accent); }
-.track.playing .t-num { color: var(--accent); }
+.card, .lastAlbum, .simcard, .stylecard, .chip, .nav, .tmenu, .toast, .login-box, .qpanel, .volpop { border-radius: 0; }
+.nav.active, .chip.active, .player .playbtn, .wavebtn, .fbtns .playbtn { background: #509475; color: #090f0d; box-shadow: none; text-shadow: none; }
+.player .playbtn:hover, .nav.active:hover { background: var(--accent); filter: none; }
+.player button { border-radius: 0; }
+.wavebtn { border-radius: 0; }
+.modebtn.on, .likebtn.on { color: var(--accent); filter: none; }
 
-.input, .search input {
-  background: rgba(9, 15, 13, .75);
-  border: 1px solid var(--border);
-}
-.input:focus, .search input:focus { border-color: var(--accent2); box-shadow: 0 0 0 1px var(--accent2); }
-
-.btn.primary, .play {
-  background: var(--accent2);
-  color: #090f0d;
-}
-.btn.primary:hover, .play:hover { background: var(--accent); }
-
-.bar { background: var(--border); }
-.bar-fill { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
-
-.theme-card.active { outline: 2px solid var(--accent); }
-
+input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #509475, var(--accent) var(--p, 0%), var(--line) var(--p, 0%)); border-radius: 0; }
+input[type=range]::-webkit-slider-thumb { border-radius: 0; box-shadow: none; background: var(--heading); }
 ::selection { background: var(--selection); color: var(--heading); }

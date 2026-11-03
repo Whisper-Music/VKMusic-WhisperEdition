@@ -57,6 +57,8 @@ pub struct Theme {
     pub manifest: Value,
     pub tokens: Value,
     pub sections: Vec<Section>,
+    // настройки секций читает интерфейс (ядро Whisper, WMT.open); здесь — для разбора и тестов формата
+    #[allow(dead_code)]
     settings: HashMap<String, Value>,
     /// файлы архива и секции `@@ asset` (файл архива главнее)
     pub files: HashMap<String, Vec<u8>>,
@@ -89,6 +91,7 @@ impl Theme {
     }
 
     /// JSON-настройки приложения `app` или пустой объект.
+    #[allow(dead_code)]
     pub fn settings(&self, app: &str) -> Value {
         self.settings
             .get(app)

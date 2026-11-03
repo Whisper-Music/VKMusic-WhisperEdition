@@ -13,6 +13,10 @@
 плеер и очередь для общих модулей, роли интерфейса и движок CSS тем, и все общие модули (просьба владельца,
 2026-11-04, по образцу YandexMusic-WhisperEdition): «Очередь и история», Whisper Archive, «Слушать вместе», Discord,
 виджет OBS — вместе с их Rust-частью.
+**Интерфейс — разметка Whisper Yandex** (просьба владельца, 2026-11-04: «темы Whisper должны применяться полностью»):
+те же классы и id (`.app`, `.side`, `.main > .head`, `ul.list > li`, `.player > .pinfo/.pcenter/.pright`, `#settingsPage`
+с вкладками, `#full`, `.titlebar` …), основа оформления — `src/whisper.css` (styles.css Whisper Yandex без изменений),
+тема применяется, как там: `@@ css whisper-music` целиком.
 ВКонтакте и SoundCloud — поиск и прослушивание под своим аккаунтом (см. правило «Сервисы»). Библиотека —
 файлы из папки музыки плюс сохранённые треки сервисов (`library.json`, описание трека). Звук треков
 библиотеки — в кэше `~/.cache/vkmusic/tracks`, скачать трек можно в папку загрузок (`~/Downloads`).
@@ -53,7 +57,7 @@ src-tauri/src/library.rs   сканирование ~/Music/vk (глубина 3
 src-tauri/src/fonts.rs     системные шрифты: `fc-list --format "%{family[0]}\n" :`
 src-tauri/src/wmt.rs       чтение .wmt: текст (#WMT 1, секции @@) и zip (свой ридер: stored/deflate, без zip64)
 src-tauri/src/themes.rs    встроенные темы (include_bytes!), ~/.config/vkmusic/themes, tokens → CSS-переменные,
-                           CSS темы (@font-face чужих секций + whisper-core + whisper-vk) и первая очистка, превью из библиотеки
+                           основы Whisper (neon/royal/steam/lolitta) как стили без файла, theme_file (сам файл для ядра), превью
 src-tauri/src/themelib.rs  библиотека тем: whisper-themes на raw.githubusercontent.com (reqwest)
 src-tauri/src/vk.rs        ВКонтакте: al_audio.php с куками сессии, разбор ответов, ссылка на поток одного трека;
                            API с web-токеном сайта (VK Микс, плейлисты): web_token, api, home, my_playlists, playlist, mix
@@ -74,12 +78,13 @@ src-tauri/src/secret.rs    ключ Whisper Archive: Secret Service (keyring), �
 src-tauri/src/deeplink.rs  ссылки whisper://room/КОД: deep-link + single-instance, room_link_take, событие room-link
 src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
+src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, PolyForm Noncommercial) — не править
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
 src/core/                  ядро Whisper — git-подмодуль whisper-core (здесь не правится, см. «Ядро Whisper»)
 themes/<id>/               исходники встроенной темы: theme.wmt, background.*, preview.jpg
 themes/<id>.wmt            собранная тема — именно она вшивается в бинарник
-docs/THEMES.md             формат тем для авторов: переменные, роли, разметка, ограничения
+docs/THEMES.md             темы для VK Music: что от Whisper, что своё (id, секция whisper-vk, роли, ограничения)
 ```
 
 ### Связь интерфейса и Rust
@@ -102,10 +107,9 @@ docs/THEMES.md             формат тем для авторов: перем
 
 * Порядок в `index.html` важен: `core/whisper-core.js` → i18n, `icons.js`, `app.js` → `whisper-vk.js` →
   `core/wmt.js`, `core/theme-css.js` → модули `archive`, `queue`, `discord`, `obs`, `together` (порядок модулей =
-  порядок карточек в «Интеграциях»). CSS: `core/base.css` (слой `whisper-base` и `:where()` — оформление окон и полей
-  модулей, любое правило `app.css` главнее) → `app.css` → `core/together.css`, `archive.css`, `queue.css`,
-  `discord.css`, `obs.css`. `app.js` запускается по `DOMContentLoaded` (`boot`), когда роли и движок тем уже подключены.
-  Классы, совпавшие с `base.css`: `.nav` в боковой панели оформлен как `.side .nav` (у кнопок модулей `.nav` — их).
+  порядок карточек в «Интеграциях»). CSS: `core/base.css` → `whisper.css` → `core/together.css` → `app.css` →
+  `core/archive.css`, `queue.css`, `discord.css`, `obs.css` → `<style id="theme-css">`. `app.js` запускается по
+  `DOMContentLoaded` (`boot`), когда роли и движок тем уже подключены.
 * Ядру о плеере сообщает `app.js` — `Whisper.player.report(…)`: смена трека (`playAt`: `track`, `started` — кроме
   повтора со свежей ссылкой, `source`, `queue`), пуск/пауза (`player://event`), перемотка (`seekTo`), громкость
   (`syncVolume`), режимы (`syncModes`), догрузка микса. Новое место, где меняется что-то из этого, — тоже с отчётом.
@@ -120,10 +124,10 @@ docs/THEMES.md             формат тем для авторов: перем
 * Набор интерфейса (`ui.provide`): подсказка с кнопкой (`toast(…, action, ms)`), подтверждение — наше окошко у кнопки
   (`confirmClick` у последней нажатой кнопки), не `window.confirm`; меню трека `menu` / `trackMenu` — своё меню «⋯»
   (`openTrackMenu` в `whisper-vk.js`, `.popup.tmenu`: «Играть следующим», пункты модулей — `trackMenu.build`, слот
-  `top` — «Слушать вместе»); `settingsCard` — страница «Интеграции» (`#intPage`: постоянная, её показывает
-  `go("set-integrations")` вместо `#content` — модули ищут свои элементы по id, карточки не должны выпадать из документа);
+  `top` — «Слушать вместе»); `settingsCard` — вкладка «Интеграции» (`data-tab="int"`) постоянной `#settingsPage` —
+  модули ищут свои элементы по id, карточки не должны выпадать из документа (свои карточки `.own` перерисовываются);
   `accentColors`, `obsTheme` (секции `whisper-obs` из файла темы — `theme_file`, `WMT.open`, `obsCss`; только когда
-  спросил включённый виджет), `secretSaved` (ключ лёг в файл — предупредить).
+  спросил включённый виджет), `secretSaved` (ключ лёг в файл — предупредить). Роли — те же, что у Whisper Yandex.
 * Плеер для модулей (`player.bind`): `playTrack(t, { at, hold })` ставит трек сразу за играющим и включает его;
   `at` / `hold` — через `player_cue` (опции `start` и `pause` mpv до `loadfile`, действует 30 с, `player.rs`);
   `setRate` — `player_rate` (`speed` mpv); `media()` — `loading` (от включения до первой длительности от mpv),
@@ -170,14 +174,14 @@ docs/THEMES.md             формат тем для авторов: перем
 * Данные (названия треков, имена тем, ошибки) вставляются в DOM только через `textContent` / `el()`.
   Никакого `innerHTML` с данными; `innerHTML` используется только в `icons.js` для своих SVG (и в модулях ядра —
   для их постоянной разметки и значков; данные там тоже идут через `textContent`).
-* CSS тем очищается дважды. Rust — `themes::sanitize_css`: вырезается `@import`, `url()` — только `asset:` (→ vkm://)
-  и `data:`, `</` экранируется. Интерфейс — движок тем ядра (`WhisperThemeCss.scopeCss` в `applyTheme`): правила
-  привязываются к стилю `:root[data-style="<id>"]`, роли `[data-w]` → наши селекторы, из `url()` остаются только
-  адреса из `ThemeRender.assets`, `data:` и `#якоря` (проверка после раскрытия `\`-экранирования), `image-set()` и
-  подобные выбрасываются, `@keyframes` / `@font-face` / `@layer` темы получают префикс `wmt-<id>-`.
-  Значения из `tokens` проверяются (`hex6`, `css_value_ok`, диапазоны чисел). Новые места, куда попадает CSS темы,
-  должны идти через обе ступени. `tokensCss` ядра не используем: он красит `body` (у нас фон — в `#bg`, шрифт
-  выбирает пользователь) — переменные из `tokens` даёт Rust (`token_vars`).
+* CSS тем — только через движок тем ядра, как у Whisper Yandex (`applyTheme`: `WMT.open` файла из `theme_file` →
+  `WhisperThemeCss.themeCss(th, id, "whisper-music", { core, mutedIn, extra: whisper-vk })`): правила привязываются к
+  стилю `:root[data-style="<id>"]`, роли `[data-w]` → наши селекторы, из `url()` остаются только ресурсы самой темы
+  (`blob:`), `data:` и `#якоря` (проверка после раскрытия `\`-экранирования), `@import`, `image-set()` и подобные
+  выбрасываются, `@keyframes` / `@font-face` / `@layer` темы получают префикс `wmt-<id>-`. Новые места, куда попадает
+  CSS темы, — тоже через `themeCss` / `scopeCss`. Цвета и эффекты из `tokens` — переменные основы (`applyStyleVars`:
+  только `#rrggbb` и числа в диапазонах), шрифт пользователя — прямо на `body` (главнее шрифта темы). Rust CSS тем не
+  трогает; установка темы без `whisper-music` / `whisper-core` / `whisper-vk` и без `tokens.color` отклоняется.
 * Библиотека тем качает только `index.json`, `themes/[<категория>/]<id>.wmt`,
   `previews/[<категория>/]<id>.(jpg|jpeg|png|webp)` с фиксированного `BASE` и с лимитами размера
   (`themelib::limit_for`; категория — один уровень папок, имя как у id темы); путь темы и превью в записи каталога
@@ -253,7 +257,7 @@ docs/THEMES.md             формат тем для авторов: перем
   интерфейс сначала берёт текст из кэша без сети (`lyrics_cached`, `lyrics_translation_cached`) и показывает сразу —
   вместе с последним выбранным языком (`lyricsPrefLang`, localStorage; перевода нет в кэше — оригинал, перевод
   подгружается и подставляется). В сеть — только если в кэше нет: по включению трека, после задержки `LYRICS_DELAY`
-  и только когда правая панель видна; не чаще раза в секунду
+  и только когда текст на экране (`#full` в виде «Текст»: нажатие на обложку или карточку «Сейчас играет»); не чаще раза в секунду
   (`lyrics::GAP`), результат — в кэш `~/.cache/vkmusic/lyrics` («не нашли» — на 3 дня). Подбор (`clean_title`,
   `clean_artist`, `score`) проверяйте на библиотеке владельца: `VKM_LYRICS_SAMPLE=40 cargo test live_library -- --ignored
   --nocapture` (2026-10-30: 31/40 и 30/40, промахи — инструменталы и OST). Ссылку открывает только `lyrics_open` (genius.com).
@@ -272,7 +276,7 @@ docs/THEMES.md             формат тем для авторов: перем
 * VK Микс и плейлисты (просьба владельца, 2026-11-01; раздел «Миксы»): через API ВК с **web-токеном
   самого сайта** — `login.vk.ru/?act=web_token` (`version=1`, `app_id=6287487`, куки сессии, как браузер), методы
   `catalog.getAudio` (главная: миксы и подборки «Собрано алгоритмами / редакцией», «Слушайте друг друга»),
-  `audio.getPlaylists` (свои — строкой «Плейлисты» в библиотеке над треками, `vk_my_playlists`: при открытии
+  `audio.getPlaylists` (свои — разделом «Плейлисты» в библиотеке над треками, `vk_my_playlists`: при открытии
   библиотеки раз за запуск и по кнопке обновления; без входа и без сохранённых — не показываются), `audio.get` (треки плейлиста, по 200), `audio.getStreamMixAudios` (`mix_id=common`,
   каждый вызов — новые 2–3 трека), `audio.getById` (свежая ссылка). Версия API — `5.289`, как у сайта (`vk::API_V`).
   Токен — только в памяти (`Vk::token`), до срока; при ошибке 5 — один раз новый. Запросы — в той же очереди `GAP`
@@ -285,7 +289,7 @@ docs/THEMES.md             формат тем для авторов: перем
   кнопке обновления; открытый плейлист — первая страница при каждом открытии, `refreshVkPlaylist`). Изменения
   через `vk_playlist_*` правят и файл; выход из ВК его удаляет. Чужие плейлисты (подборки) не сохраняются. Ссылки из ответов — в кэше ссылок (`vkapi:<id>`), интерфейсу не
   отдаются; access_key — в `Vk::keys`. Треки из API (`Track.api`) играют `vk_play_api`. В библиотеку добавляются
-  «+» (просьба владельца, 2026-11-02; в строке плейлиста и у играющего трека — `#npAdd`): `Saved.api = true` без
+  «сердцем» (просьба владельца, 2026-11-02; в строке — `.likebtn`, у играющего трека — `#likeBtn`): `Saved.api = true` без
   reload, `access_key` кладёт `saved_add` из `Vk::keys` (не из интерфейса); такой трек играет `vk_play_api`, ссылка —
   `audio.getById` (`vk_api_stream`), кэшируется и скачивается, как остальные треки библиотеки. Вне библиотеки треки
   из API не кэшируются и не скачиваются. Проверка на настоящем ВК:
@@ -295,7 +299,7 @@ docs/THEMES.md             формат тем для авторов: перем
   нажатию (удаление трека/плейлиста — с подтверждением `confirmClick`). Менять можно только плейлист с owner_id = id
   из web-токена (`Vk::own`); `ApiPlaylist.mine` / `editable` (у добавленного чужого есть `original`). Имена методов
   проверены без изменений в аккаунте: `cargo test live_playlist_methods -- --ignored --nocapture` (на чужом плейлисте
-  owner_id=1; «Unknown method» — имя неверное). «+» не показывается, если трек уже в библиотеке по ключу или по
+  owner_id=1; «Unknown method» — имя неверное). «сердце» горит (трек уже в библиотеке), если он есть в ней по ключу или по
   исполнителю + названию + длительности ±3 с (`libraryMatch` в app.js): «Мои треки» — копии с вашим owner_id.
   Другие методы API (лайки, «Мои треки» через API, порядок треков в плейлисте) — только по явной просьбе владельца.
 * Скачивание треков ВК вне библиотеки, несколько аккаунтов, другие новые сервисы — только по явной просьбе владельца.
@@ -317,8 +321,15 @@ docs/THEMES.md             формат тем для авторов: перем
 * Подтверждение опасных действий — маленькое окошко у кнопки (`confirmClick(btn, fn, вопрос, кнопка)`,
   `.confirm-pop`), не `confirm()` и не двойное нажатие (по просьбе владельца, 2026-10-30).
   Исключение по просьбе владельца: установка/удаление в библиотеке тем — одним нажатием.
-* Классы и переменные, на которые опираются темы, — публичный контракт: менять их можно только вместе с
-  `docs/THEMES.md` и встроенными темами.
+* Разметка — контракт с темами Whisper: классы и id те же, что у Whisper Yandex (по ним написана библиотека тем).
+  Не переименовывать и не перестраивать `.app`, `.side`, `.main`, `.head` (`#title`, `#sub`, `#headImg`, `#back`),
+  `ul.list > li` (`img`, `div > .t/.a`, `.likebtn`, `.morebtn`), `.player` (`.pinfo` `#cover` `.meta` `#pTitle` `#pArtist`
+  `#likeBtn`, `.pcenter` `.seekrow` `#seek` `.ctrls` `#play` `#prev` `#next` `.modebtn`, `.pright` `#volWrap` `#volBtn`
+  `.volpop` `#vol` `#pMore`), `#settingsPage.settings` (`.settabs .chip`, `.card[data-tab]`), `.simcard`, `.lastAlbum`,
+  `#wavePage` (`.waveorbits`, `#waveBtn.wavebtn`), `#full`, `.titlebar`, `.tmenu`, `.toast`, `body.is-playing`.
+  Свои элементы — дополнительными классами и внутри этих (`.lq`, `.lacts`, `.ldur` в строке). `whisper.css` не правится:
+  своё — в `app.css`. Возможности тем сверх CSS (`settings whisper-music`): `features.animations`, `controls.volume:
+  "knob"` (`data-vol-knob`, `--vol`), `buttons` (`#thBtns .thbtn`, действия — только `TH_ACTIONS`).
 
 **Темы**
 * Встроенная тема: правьте `themes/<id>/theme.wmt`, затем пересоберите архив
@@ -326,11 +337,11 @@ docs/THEMES.md             формат тем для авторов: перем
   `cargo test` (`builtin_parses`). Новая встроенная тема — ещё и строка в `BUILTIN` в `themes.rs`.
   Картинки в собранных архивах `osaka-jade`, `vantablack`, `ashen-inventory` не совпадают с файлами в папках
   (2026-11-03): чтобы поменять только CSS, обновляйте в архиве один файл — `cd themes/<id> && zip -X ../<id>.wmt theme.wmt`.
-* id встроенных тем (`osaka-jade`, `vantablack`, `ashen-inventory`, `slate`) заняты — свои темы с ними не ставятся.
-* Секции: общая `@@ css whisper-core` (по ролям, одинаковая во всех приложениях Whisper), затем своя
-  `@@ css whisper-vk` / `@@ settings whisper-vk` (главнее). Прежнее имя `vkmusic` читается, только если секций
-  `whisper-vk` в теме нет (`themes::app_section`). Из чужих секций (`whisper-music` и т. п.) берутся только
-  `@font-face`; чужая разметка не применяется — у Whisper Music другой DOM. `whisper-obs` — для виджета OBS, не берётся.
+* id встроенных тем (`osaka-jade`, `vantablack`, `ashen-inventory`, `slate`) и основ Whisper (`neon`, `royal`, `steam`,
+  `lolitta` — стили без файла, CSS в `whisper.css`) заняты — свои темы с ними не ставятся.
+* Секции, как у Whisper Yandex: `@@ css whisper-core` (по ролям) → `@@ css whisper-music` (разметка Whisper — она же
+  наша) → `@@ css whisper-vk` (своё для VK Music, необязательно) → `tokens`; `@@ settings whisper-music` — возможности
+  темы. Встроенные темы пишутся в `whisper-music`. Старые секции `vkmusic` (прежняя разметка) не читаются.
 * Ассеты чужих игр, программ и брендов (арт, логотипы, шрифты без свободной лицензии) в темы не класть.
   Ashen Inventory «в духе» Dark Souls нарисована целиком на CSS, фон — процедурный.
   Обои Osaka Jade и Vantablack — из тем Omarchy (MIT). Фон «Грифеля» (`slate`) — процедурный (numpy + Pillow),

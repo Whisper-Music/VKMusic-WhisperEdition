@@ -11,52 +11,72 @@
   W.setApp({ id: "whisper-vk", name: "VK Music", version: "0.1.0", storage: "vkm_" });
 
   // ---------- роли интерфейса: [data-w="…"] в темах → наши селекторы ----------
-  // Классы и id ниже — публичный контракт с темами (docs/THEMES.md): меняются вместе с этим списком.
+  // Разметка — как у Whisper Yandex, поэтому и роли те же (yandex.js там). Публичный контракт с темами
+  // (docs/THEMES.md): меняются вместе с ним.
+  const NAV_BTN = ".main .nav, .settings .nav, .modalbox .nav, .login-box .nav, .tmenu .nav";
   W.ui.define({
-    sidebar: ".side",
-    nav: ".side .nav-item, .side-foot",
-    "nav:active": ".side .nav-item.active, .side-foot.active",
-    "search:global": "#searchBox",
-    "search:settings": ".content input[type=\"search\"]",
-    main: ".main",
-    "page.title": "#pageTitle",
-    button: ".btn",
-    "button:active": ".btn.primary",
-    "button:danger": ".btn.danger",
-    tabs: ".tabs",
-    tab: ".tab",
-    "tab:active": ".tab.active",
-    tracklist: ".tracks",
-    track: ".track",
-    "track:playing": ".track.playing",
-    "track.cover": ".t-cover",
-    "track.title": ".t-title",
-    "track.artist": ".t-artist",
-    card: ".svc-card, .theme-card, .stats-tile",
-    tile: ".vk-pl, .vk-mix",
-    player: ".player",
-    "player.cover": ".np-cover",
-    "player.title": "#npTitle",
-    "player.artist": "#npArtist",
-    "player.info": ".np-meta",
-    "player.controls": ".controls",
-    "player.play": "#playBtn",
-    "player.prev": "#prevBtn",
-    "player.next": "#nextBtn",
-    "player.mode": "#shuffleBtn, #repeatBtn",
-    "player.mode:on": "#shuffleBtn.on, #repeatBtn.on",
-    "player.seek": "#bar",
-    "player.time": ".progress .time",
-    "player.actions": ".vol",
-    "player.volume": ".vol-box",
+    "titlebar": ".titlebar",
+    "titlebar.button": ".tbctl button",
+    "tabs": ".tabs",
+    "tab": ".tabs .tab:not(.active)",
+    "tab:active": ".tabs .tab.active",
+    "sidebar": ".side",
+    "nav": ".side .nav:not(.active)",
+    "nav:active": ".side .nav.active",
+    "search:global": "#search",
+    "search:settings": ".tlfind",
+    "main": ".main",
+    "page.title": "#title",
+    "page.subtitle": "#sub",
+    "page.cover": "#headImg",
+    "button": NAV_BTN.split(", ").map((x) => x.replace(".nav", ".nav:not(.active)")).join(", "),
+    "button:active": ".main .nav.active:not(.danger), .modalbox .nav.active:not(.danger), .login-box .nav.active:not(.danger)",
+    "button:danger": ".nav.danger",
+    "chip": ".chip:not(.active)",
+    "chip:active": ".chip.active",
+    "tracklist": ".list",
+    "track": ".list li.track:not(.playing)",
+    "track:playing": ".list li.track.playing",
+    "track.cover": ".list li.track > img",
+    "track.title": ".list li.track .t",
+    "track.artist": ".list li.track .a",
+    "track.like": ".list .likebtn",
+    "track.more": ".list .morebtn",
+    "card": ".settings > .card, .stats .card",
+    "tile": ".simcard, .lastAlbum",
+    "player": ".player",
+    "player.cover": "#cover",
+    "player.info": ".player .meta",
+    "player.title": "#pTitle",
+    "player.artist": "#pArtist",
+    "player.like": "#likeBtn",
+    "player.controls": ".player .ctrls",
+    "player.play": "#play",
+    "player.prev": "#prev",
+    "player.next": "#next",
+    "player.mode": ".player .modebtn:not(.on)",
+    "player.mode:on": ".player .modebtn.on",
+    "player.seek": "#seek",
+    "player.time": ".player .time",
+    "player.actions": ".player .pright",
+    "player.extra": "#togetherBtn, #normBtn",
+    "player.volume": "#volWrap",
     "player.volume.button": "#volBtn",
     "player.volume.slider": "#vol",
-    radio: ".vk-mix",
-    menu: ".popup",
-    "menu.item": ".popup-item",
-    toast: ".toast",
-    queue: "#qPanel",
-    lyrics: "#npLyrics",
+    "player.more": "#pMore",
+    "radio": ".wavebtn",
+    "visualizer": ".stage",
+    "menu": ".tmenu",
+    "menu.item": ".tmenu .mi",
+    "toast": ".toast",
+    "dialog": ".modalbox, .login-box",
+    "dialog.backdrop": ".modal",
+    "queue": ".qpanel",
+    "fullplayer": "#full",
+    "fullplayer.seek": "#fSeek",
+    "fullplayer.prev": "#fPrev",
+    "fullplayer.next": "#fNext",
+    "lyrics": "#fLyrics",
   });
 
   // ---------- треки: наш объект трека (app.js: localTrack / svcTrack) ↔ сущность ядра ----------
@@ -301,7 +321,7 @@
   const menuAlive = (seq) => !tmenu.hidden && seq === menuSeq;
   // icon — SVG-строка (свои значки модулей ядра и наши Icons.svg), текст — только textContent
   function menuItem(icon, text, fn, { keep = false, arrow = false, danger = false, to = tmenu } = {}) {
-    const b = el("button", "popup-item mi" + (danger ? " danger" : ""));
+    const b = el("button", "mi" + (danger ? " danger" : ""));
     b.innerHTML = icon || "";
     b.append(el("span", "mt", text));
     if (arrow) b.append(el("i", "miarrow", "›"));
@@ -330,9 +350,11 @@
     tmenu.style.top = top + "px";
   }
   function trackMenuMain(t) {
+    const anchor = tmenuBtn;                                          // для окошка «В плейлист» после закрытия меню
     menuReset();
     if (W.ui.trackMenu.build(t, null, "top") > 0) menuSep();       // «Слушать вместе · КОД» (core/together.js)
     if (!t.room && !t.unavailable && !(S.current && S.current.key === t.key)) menuItem(Icons.svg("playnext"), L("Играть следующим"), () => window.playNext(t));
+    if (canAddToPlaylist(t)) menuItem(Icons.svg("listadd"), L("В плейлист ВК"), () => addToPlaylistMenu(anchor, t));
     W.ui.trackMenu.build(t, null);                                    // «Сохранить в архив» (core/archive.js)
     if (!tmenu.children.length) menuNote(L("Здесь пока нечего делать"));
     placeMenu();
@@ -344,22 +366,23 @@
   window.addEventListener("resize", closeTrackMenu);
   document.addEventListener("scroll", (e) => { if (!tmenu.contains(e.target)) closeTrackMenu(); }, true);
 
-  // ---------- карточки настроек модулей: страница «Интеграции» ----------
-  // Карточка вставляется сразу и остаётся в документе (модули ищут свои элементы по id): страница #intPage
-  // постоянная, её показывает go("set-integrations"). Все разделы модулей — на ней.
+  // ---------- карточки настроек модулей: вкладка «Интеграции» ----------
+  // Карточка вставляется сразу и остаётся в документе (модули ищут свои элементы по id): #settingsPage — постоянная
+  // секция, как у Whisper; видна ли карточка — решает вкладка (data-tab).
   function settingsCard(card, { first, colbreak } = {}) {
-    const page = document.getElementById("intPage");
+    const page = document.getElementById("settingsPage");
     if (!page) return false;
-    card.classList.add("card", "int-card");
+    card.classList.add("card");
     if (colbreak) card.classList.add("colbreak");
-    const firstCard = page.querySelector(":scope > .card");
-    if (first && firstCard) firstCard.before(card);
+    card.dataset.tab = "int";
+    const firstOf = page.querySelector(':scope > .card[data-tab="int"]');
+    if (first && firstOf) firstOf.before(card);
     else page.append(card);
     return true;
   }
-  // цвета стиля для виджета OBS: строго #rrggbb — из переменных темы, иначе по умолчанию
+  // цвета стиля для виджета OBS: строго #rrggbb — из переменных стиля (app.js ставит их на <html>), иначе по умолчанию
   function accentColors() {
-    const cs = getComputedStyle(document.documentElement), hex = (v) => (/^#[0-9a-f]{6}$/i.test(v) ? v : null);
+    const cs = document.documentElement.style, hex = (v) => (/^#[0-9a-f]{6}$/i.test(v) ? v : null);
     const accent = hex(cs.getPropertyValue("--accent").trim()), accent2 = hex(cs.getPropertyValue("--accent2").trim());
     return accent ? { accent, accent2: accent2 || accent } : null;
   }
@@ -389,7 +412,7 @@
   let lastButton = null;
   document.addEventListener("pointerdown", (ev) => { lastButton = ev.target.closest && ev.target.closest("button"); }, true);
   W.ui.provide({
-    toast: (text, ms, opts) => toast(text, opts && opts.kind === "err" ? "error" : null, opts && opts.action, ms),
+    toast: (text, ms, opts) => toast(text, opts && opts.kind === "err" ? "error" : opts && opts.kind === "ok" ? "ok" : null, opts && opts.action, ms),
     confirm: ({ title, text, ok } = {}) => new Promise((resolve) => {
       const btn = lastButton && lastButton.isConnected ? lastButton : document.activeElement;
       if (!btn || btn === document.body) return resolve(false);
