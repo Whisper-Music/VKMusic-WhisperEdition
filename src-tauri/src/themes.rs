@@ -17,10 +17,10 @@ pub const APP_ID: &str = "vkmusic";
 pub const DEFAULT_THEME: &str = "osaka-jade";
 
 const BUILTIN: &[(&str, &[u8])] = &[
-    ("osaka-jade", include_bytes!("../themes/osaka-jade.wmt")),
-    ("vantablack", include_bytes!("../themes/vantablack.wmt")),
-    ("ashen-inventory", include_bytes!("../themes/ashen-inventory.wmt")),
-    ("slate", include_bytes!("../themes/slate.wmt")),
+    ("osaka-jade", include_bytes!("../../themes/osaka-jade.wmt")),
+    ("vantablack", include_bytes!("../../themes/vantablack.wmt")),
+    ("ashen-inventory", include_bytes!("../../themes/ashen-inventory.wmt")),
+    ("slate", include_bytes!("../../themes/slate.wmt")),
 ];
 
 #[derive(Debug, Clone, Serialize)]

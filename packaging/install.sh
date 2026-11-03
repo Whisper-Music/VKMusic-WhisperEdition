@@ -7,7 +7,7 @@ for dep in mpv yt-dlp ffmpeg; do
 done
 cargo build --release
 install -Dm755 target/release/vkmusic "$HOME/.local/bin/vkmusic"
-install -Dm644 icons/icon.png "$HOME/.local/share/icons/hicolor/512x512/apps/vkmusic.png"
+install -Dm644 src-tauri/icons/icon.png "$HOME/.local/share/icons/hicolor/512x512/apps/vkmusic.png"
 install -Dm644 packaging/vkmusic.desktop "$HOME/.local/share/applications/vkmusic.desktop"
 mkdir -p "$HOME/Music/vk"
 command -v update-desktop-database >/dev/null && update-desktop-database "$HOME/.local/share/applications" || true

@@ -1,0 +1,32 @@
+[package]
+name = "vkmusic"
+version = "0.1.0"
+edition = "2021"
+description = "Локальный музыкальный плеер на Rust + Tauri: библиотека, загрузка через yt-dlp, темы .wmt"
+license = "MIT"
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+# custom-protocol: интерфейс встраивается в бинарник, поэтому хватает обычного `cargo build`/`cargo run`
+# unstable: страница входа ВК — второй webview в главном окне (Window::add_child), как в NK-Player
+tauri = { version = "2.12", features = ["custom-protocol", "unstable"] }
+# раскладка главного окна на время входа ВК (тот же gtk 0.18, что у Tauri)
+gtk = "0.18"
+# куки WebKit как есть: wry (Webview::cookies) теряет ведущую точку домена — «.vk.ru» становится «vk.ru»,
+# кука перестаёт уходить на login.vk.ru, а удалить её через wry нельзя (те же версии, что у wry)
+webkit2gtk = "2.0"
+soup3 = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+flate2 = "1"
+base64 = "0.22"
+regex = "1"
+lofty = "0.25"
+dirs = "6"
+libc = "0.2"
+# библиотека тем (raw.githubusercontent.com) и ВКонтакте (charset: страницы ВК бывают в windows-1251)
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "charset", "cookies"] }
+# уже есть в зависимостях Tauri; нужны пауза между запросами к ВК и асинхронный мьютекс
+tokio = { version = "1", features = ["time", "sync"] }
