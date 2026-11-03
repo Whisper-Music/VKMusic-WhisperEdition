@@ -1,6 +1,7 @@
 "use strict";
 // VK Music — плеер: библиотека (файлы + сохранённые треки сервисов), поиск во ВКонтакте и SoundCloud.
-// Всё общение с Rust — через invoke/события Tauri.
+// Всё общение с Rust — через invoke/события Tauri. Ядро Whisper (src/core) подключено раньше: о плеере и очереди
+// ему сообщает Whisper.player.report(…) отсюда, а привязка к ядру (роли, провайдер, плеер, очередь) — в whisper-vk.js.
 
 const TAURI = window.__TAURI__;
 const invoke = TAURI.core.invoke;
@@ -109,10 +110,17 @@ function fmtListened(sec) {
   return L("{0} с", s);
 }
 
-function toast(msg, kind) {
+/** action — кнопка в подсказке { label, fn } (например, «Вернуть» у панели очереди ядра); ms — сколько показывать. */
+function toast(msg, kind, action, ms) {
   const t = el("div", "toast" + (kind === "error" ? " error" : ""), String(msg));
+  if (action && typeof action.fn === "function") {
+    t.classList.add("has-action");
+    const b = el("button", "toast-action", String(action.label || ""));
+    b.addEventListener("click", () => (t.remove(), action.fn()));
+    t.append(b);
+  }
   $("#toasts").append(t);
-  setTimeout(() => t.remove(), kind === "error" ? 6000 : 3500);
+  setTimeout(() => t.remove(), ms || (kind === "error" ? 6000 : action ? 5000 : 3500));
 }
 
 const errText = (e) => (typeof e === "string" ? e : e && e.message ? e.message : JSON.stringify(e));
@@ -1697,7 +1705,8 @@ async function extendMix() {
       const have = new Set(S.queue.map((x) => x.key));
       S.queue.push(...more.filter((x) => !have.has(x.key)));
       // только строка «Очередь» — без перерисовки панели (не закрывать пояснение, не сбрасывать текст)
-      $("#queueInfo").textContent = L("Очередь: {0} из {1}", S.qi + 1, S.queue.length);
+      updateQueueInfo();
+      Whisper.player.report({ queue: true });
     }
   } catch (e) {
     // не догрузили — доиграет то, что есть
@@ -2246,9 +2255,13 @@ listen("dl://event", (ev) => {
 // ───────────────────────── темы ─────────────────────────
 
 function applyTheme(r) {
-  $("#theme-css").textContent = r.css || "";
-  $("#theme-vars").textContent = r.vars || "";
+  // Движок тем ядра Whisper: правила привязываются к стилю (:root[data-style="<id>"] …), роли [data-w="…"]
+  // становятся нашими селекторами (whisper-vk.js), из url() остаются только файлы этой темы (r.assets), data: и #якоря.
+  // Переменные из tokens идут в том же листе последними — главнее тех же переменных в CSS темы.
+  const css = (r.css || "") + "\n" + (r.vars || "");
+  $("#theme-css").textContent = WhisperThemeCss.scopeCss(css, r.id, new Set(r.assets || []));
   const root = document.documentElement;
+  root.dataset.style = r.id;
   root.dataset.theme = r.id;
   root.dataset.base = r.base || "";
   const bg = $("#bg");
@@ -2803,6 +2816,8 @@ async function playAt(i, fresh) {
   startListen(t);
   updateNowPlaying();
   markPlaying();
+  // ядру Whisper: новый трек (повтор со свежей ссылкой — не новое включение, в историю не идёт)
+  Whisper.player.report({ track: t, queue: true, ...(fresh ? {} : { started: t }), source: t.path ? "local" : "provider" });
   try {
     const title = `${t.artist} — ${t.title}`;
     let caching;
@@ -2842,10 +2857,16 @@ function next(auto) {
 }
 
 function prev() {
-  if (S.pl.pos > 3) return invoke("player_seek", { pos: 0 }).catch(() => {});
+  if (S.pl.pos > 3) return seekTo(0);
   if (S.shuffle && S.history.length) return playAt(S.history.pop());
   if (S.qi > 0) playAt(S.qi - 1);
-  else invoke("player_seek", { pos: 0 }).catch(() => {});
+  else seekTo(0);
+}
+
+/** Перемотка (и отчёт ядру: «Слушать вместе», Discord и т. п. узнают о скачке позиции). */
+function seekTo(pos) {
+  invoke("player_seek", { pos }).catch(() => {});
+  Whisper.player.report({ seek: pos });
 }
 
 function togglePlay() {
@@ -3380,6 +3401,11 @@ function updateNowPlaying() {
   document.title = t ? `${t.artist} — ${t.title}` : "VK Music";
   syncNpAdd();
   updateNpSide();
+  updateQueueInfo();
+}
+
+/** Очередь изменилась без смены трека (панель очереди ядра: «играть следующим», убрать, переставить). */
+function updateQueueInfo() {
   $("#queueInfo").textContent = S.queue.length ? L("Очередь: {0} из {1}", S.qi + 1, S.queue.length) : "";
 }
 
@@ -3478,7 +3504,7 @@ function initPlayer() {
     const d = S.pl.duration || (S.current && S.current.duration) || 0;
     const pos = Math.min(1, Math.max(0, frac(ev))) * d;
     S.pl.pos = pos;
-    invoke("player_seek", { pos }).catch(() => {});
+    seekTo(pos);
     updateProgress();
   });
 
@@ -3492,6 +3518,7 @@ function initPlayer() {
     const e = ev.payload;
     if (e.type === "state") {
       Object.assign(S.pl, { pos: e.pos, duration: e.duration, paused: e.paused, idle: e.idle });
+      Whisper.player.report({ playing: !e.paused && !e.idle });
       if (e.pos > 1) S.skips = 0;
       trackListen(e);
       updatePlayButton();
@@ -3527,6 +3554,7 @@ function onPlayError(message) {
 }
 
 function syncModes() {
+  Whisper.player.report({ modes: { available: true, shuffle: S.shuffle, repeat: { off: 0, all: 1, one: 2 }[S.repeat] } });
   $("#shuffleBtn").classList.toggle("on", S.shuffle);
   const rb = $("#repeatBtn");
   rb.classList.toggle("on", S.repeat !== "off");
@@ -3535,6 +3563,7 @@ function syncModes() {
 }
 
 function syncVolume() {
+  Whisper.player.report({ volume: S.muted ? 0 : S.volume / 100 });
   Icons.setIcon($("#volBtn"), S.muted || S.volume === 0 ? "mute" : "volume");
 }
 
@@ -3557,9 +3586,9 @@ document.addEventListener("keydown", (ev) => {
     ev.preventDefault();
     togglePlay();
   } else if (ev.key === "ArrowRight" && S.current) {
-    invoke("player_seek", { pos: S.pl.pos + (ev.shiftKey ? 30 : 5) }).catch(() => {});
+    seekTo(S.pl.pos + (ev.shiftKey ? 30 : 5));
   } else if (ev.key === "ArrowLeft" && S.current) {
-    invoke("player_seek", { pos: Math.max(0, S.pl.pos - (ev.shiftKey ? 30 : 5)) }).catch(() => {});
+    seekTo(Math.max(0, S.pl.pos - (ev.shiftKey ? 30 : 5)));
   } else if (ev.key === "n" && ev.ctrlKey) {
     next(false);
   } else if (ev.key === "p" && ev.ctrlKey) {
@@ -3647,4 +3676,6 @@ async function boot() {
     .catch(() => {});
 }
 
-boot();
+// после всех скриптов: привязка к ядру (whisper-vk.js) и движок тем подключаются после этого файла,
+// а тема при запуске уже должна знать роли
+document.addEventListener("DOMContentLoaded", boot);

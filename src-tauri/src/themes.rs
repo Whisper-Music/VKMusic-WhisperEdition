@@ -2,7 +2,9 @@
 //!
 //! * встроенная тема `osaka-jade` вшита в бинарник;
 //! * свои темы лежат в ~/.config/vkmusic/themes/<id>.wmt;
-//! * файлы темы раздаются интерфейсу по адресу vkm://localhost/theme/<id>/<имя>.
+//! * файлы темы раздаются интерфейсу по адресу vkm://localhost/theme/<id>/<имя>;
+//! * CSS темы здесь собирается и проходит первую очистку (`sanitize_css`), а привязку к стилю, роли
+//!   ядра Whisper и окончательный фильтр делает движок тем ядра в интерфейсе (`src/core/theme-css.js`).
 
 use crate::wmt::{self, Theme};
 use regex::Regex;
@@ -12,8 +14,14 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-/// id приложения в секциях `@@ css vkmusic` / `@@ settings vkmusic`
-pub const APP_ID: &str = "vkmusic";
+/// id приложения в секциях `@@ css whisper-vk` / `@@ settings whisper-vk` (как в ядре Whisper: `Whisper.setApp`)
+pub const APP_ID: &str = "whisper-vk";
+/// прежнее имя секций — темы, написанные до перехода на ядро Whisper, читаются, если своей секции нет
+pub const LEGACY_APP_ID: &str = "vkmusic";
+/// общая секция тем Whisper: правила по ролям интерфейса (`[data-w="player.play"]`), одинаковые во всех приложениях
+pub const CORE_ID: &str = "whisper-core";
+/// секция виджета OBS — не для окна приложения
+const OBS_ID: &str = "whisper-obs";
 pub const DEFAULT_THEME: &str = "osaka-jade";
 
 const BUILTIN: &[(&str, &[u8])] = &[
@@ -43,10 +51,13 @@ pub struct ThemeRender {
     pub id: String,
     pub name: String,
     pub base: Option<String>,
-    /// CSS темы (`@@ css vkmusic`), уже без @import/внешних адресов, asset: → vkm://
+    /// CSS темы (`@font-face` чужих секций, `@@ css whisper-core`, `@@ css whisper-vk`), уже без
+    /// @import/внешних адресов, asset: → vkm://. Интерфейс привязывает его к стилю движком тем ядра.
     pub css: String,
     /// :root { --accent: … } из tokens — подключается после CSS темы и главнее его
     pub vars: String,
+    /// адреса файлов темы (vkm://…) — единственные, которые движок тем ядра оставит в url()
+    pub assets: Vec<String>,
     pub settings: Value,
     pub background: Option<Background>,
 }
@@ -165,7 +176,12 @@ impl ThemeStore {
             base: t.manifest_str("base").map(str::to_string),
             css: sanitize_css(&theme_css(&t), &id, &t),
             vars: token_vars(&t.tokens),
-            settings: t.settings(APP_ID),
+            assets: {
+                let mut v: Vec<String> = t.files.keys().map(|n| asset_url(&id, n)).collect();
+                v.sort();
+                v
+            },
+            settings: app_settings(&t),
             background: t.background().map(|(name, video)| Background { url: asset_url(&id, &name), video }),
             id,
         })
@@ -199,21 +215,39 @@ fn re(cell: &'static OnceLock<Regex>, pat: &str) -> &'static Regex {
     cell.get_or_init(|| Regex::new(pat).expect("regex"))
 }
 
+/// Секция приложения в теме: `whisper-vk`, а у тем, написанных до перехода на ядро, — `vkmusic`.
+pub fn app_section(t: &Theme) -> &'static str {
+    let has = |app: &str| t.sections.iter().any(|s| matches!(s.kind.as_str(), "css" | "settings") && s.name.as_deref() == Some(app));
+    if !has(APP_ID) && has(LEGACY_APP_ID) {
+        LEGACY_APP_ID
+    } else {
+        APP_ID
+    }
+}
+
+pub fn app_settings(t: &Theme) -> Value {
+    t.settings(app_section(t))
+}
+
 /// CSS темы для VK Music: шрифты `@font-face` из секций других приложений (темы из библиотеки
-/// Whisper Music подключают свои шрифты в `@@ css whisper-music`), затем своя секция `@@ css vkmusic`.
+/// Whisper Music подключают свои шрифты в `@@ css whisper-music`), затем общая секция ролей
+/// `@@ css whisper-core` и своя `@@ css whisper-vk` (она главнее — идёт последней).
 /// Чужую разметку не берём — у приложений разный интерфейс, — а шрифты самодостаточны.
 pub fn theme_css(t: &Theme) -> String {
     static FACE: OnceLock<Regex> = OnceLock::new();
     let face = re(&FACE, r"(?s)@font-face\s*\{[^{}]*\}");
+    let app = app_section(t);
+    let own = |s: &crate::wmt::Section| matches!(s.name.as_deref(), Some(n) if n == app || n == CORE_ID || n == OBS_ID);
     let mut out = String::new();
-    for sec in t.sections.iter().filter(|s| s.kind == "css" && s.name.as_deref() != Some(APP_ID)) {
+    for sec in t.sections.iter().filter(|s| s.kind == "css" && !own(s)) {
         for m in face.find_iter(&sec.body) {
             out.push_str(m.as_str());
             out.push('\n');
         }
     }
-    if let Some(own) = t.css(APP_ID) {
-        out.push_str(&own);
+    for css in [t.css(CORE_ID), t.css(app)].into_iter().flatten() {
+        out.push_str(&css);
+        out.push('\n');
     }
     out
 }
@@ -317,7 +351,7 @@ mod tests {
             let t = wmt::open(bytes).unwrap_or_else(|e| panic!("{id}.wmt: {e}"));
             assert_eq!(t.id(), *id);
             assert!(t.background().is_some(), "{id}: нет фона");
-            assert!(t.css(APP_ID).is_some(), "{id}: нет CSS");
+            assert!(t.css(APP_ID).is_some(), "{id}: нет CSS секции {APP_ID}");
             assert!(token_vars(&t.tokens).contains("--accent:"), "{id}: нет --accent");
         }
     }
@@ -333,6 +367,21 @@ mod tests {
         assert!(css.contains("vkm://localhost/theme/a/f.woff2"));
         assert!(!css.contains("display: none"), "чужая разметка не должна попадать");
         assert!(css.contains(".x{color:red}"));
+        assert_eq!(app_section(&t), LEGACY_APP_ID);
+    }
+
+    #[test]
+    fn core_and_app_sections() {
+        let t = wmt::parse_text(
+            "#WMT 1\n@@ manifest\n{\"id\":\"a\",\"name\":\"a\"}\n@@ css whisper-vk\n.own{color:red}\n@@ css vkmusic\n.old{color:blue}\n@@ css whisper-core\n[data-w=\"player\"]{color:green}\n@@ css whisper-obs\n.obs{color:pink}\n@@ settings whisper-vk\n{\"x\":1}",
+        )
+        .unwrap();
+        assert_eq!(app_section(&t), APP_ID);
+        let css = theme_css(&t);
+        let (core, own) = (css.find("data-w").unwrap(), css.find(".own").unwrap());
+        assert!(core < own, "своя секция должна идти после общей");
+        assert!(!css.contains(".old") && !css.contains(".obs"));
+        assert_eq!(app_settings(&t)["x"], 1);
     }
 
     #[test]

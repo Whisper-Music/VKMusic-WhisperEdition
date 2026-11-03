@@ -1,6 +1,7 @@
 # VK Music
 
-Музыкальный плеер на Rust + Tauri 2 для Linux (Arch).
+Музыкальный плеер на Rust + Tauri 2 для Linux (Arch), построенный на ядре Whisper
+([whisper-core](https://github.com/Whisper-Music/whisper-core), в ядре — «Whisper VK»).
 Файлы лежат у вас в `~/Music/vk` и скачиваются через yt-dlp; по желанию — поиск и прослушивание
 ВКонтакте и SoundCloud под своим аккаунтом.
 
@@ -78,7 +79,11 @@
   (за всё время — по месяцам) и по часам суток, топ треков и исполнителей, сколько дней подряд с музыкой,
   «давно не слушали» (любимые, не игравшие больше месяца) и «ни разу не слушали». Клик по треку включает его.
   Всё хранится локально в `~/.config/vkmusic/stats.json`; история по дням копится с этой версии.
+* **Очередь и история** — панель ядра Whisper: кнопка рядом с громкостью или клавиша Q. Что играет, что дальше
+  (убрать, перетащить, «играть следующим») и история прослушивания по дням (хранится в самом интерфейсе).
 * **Темы `.wmt`** — формат Whisper Music Theme из YandexMusic-WhisperEdition (см. [docs/THEMES.md](docs/THEMES.md)).
+  Темы, написанные по ролям ядра Whisper (`@@ css whisper-core`), выглядят одинаково здесь и в других
+  приложениях Whisper.
   Встроенные:
   * **Osaka Jade** (по умолчанию) — палитра и обои *Glowing City* из темы Omarchy Osaka Jade
     (версия перед заменой на Jade Horse, `basecamp/omarchy@a1ea6096d^`);
@@ -94,8 +99,8 @@
   сгруппированы по папкам репозитория (Whisper Music, пользователи, по артистам — под именем исполнителя).
   Ненужную категорию можно скрыть значком у её заголовка; скрытые перечислены внизу, нажатие возвращает.
   Установка, обновление (если в библиотеке вышла новая версия) и удаление — одним нажатием;
-  установленная тема сразу включается. Темы сделаны для Whisper Music, поэтому здесь применяются
-  их цвета, шрифты (`@font-face` из темы) и фон, а особая разметка их интерфейса — нет.
+  установленная тема сразу включается. Из тем Whisper Music здесь применяются их цвета, шрифты
+  (`@font-face` из темы), фон и общая секция ролей `whisper-core`, а особая разметка их интерфейса — нет.
 * **Шрифт интерфейса** — «Оформление → Шрифт интерфейса»: любое семейство из установленных в системе
   (список из fontconfig), поверх шрифта темы; «Как в теме» возвращает шрифт темы.
 
@@ -115,9 +120,12 @@ yt-dlp запускается так, чтобы ничего не терять:
 
 ```sh
 sudo pacman -S --needed base-devel rust webkit2gtk-4.1 mpv yt-dlp ffmpeg python-mutagen
+git clone --recurse-submodules <адрес репозитория>   # ядро Whisper — подмодуль src/core
 cargo build --release
 ./target/release/vkmusic
 ```
+
+Уже склонировали без подмодуля — `git submodule update --init`. Свежее ядро — `git submodule update --remote src/core`.
 
 Установить в систему (бинарник в `~/.local/bin`, ярлык в меню приложений):
 
@@ -142,29 +150,31 @@ yt-dlp стоит держать свежим (`sudo pacman -Syu yt-dlp`): са�
 ## Структура
 
 ```
-src/main.rs      команды Tauri, протокол vkm:// (файлы тем, обложки)
-src/player.rs    mpv через JSON IPC
-src/ytdlp.rs     загрузки yt-dlp: лучшее качество, плейлисты, прогресс
-src/library.rs   локальная библиотека (теги, формат, битрейт — lofty)
-src/fonts.rs     список системных шрифтов (fontconfig)
-src/wmt.rs       чтение тем .wmt (текст и zip)
-src/themes.rs    хранилище тем, tokens → CSS-переменные, очистка CSS
-src/themelib.rs  библиотека тем: index.json и .wmt из whisper-themes
-src/vk.rs        ВКонтакте: свои треки, поиск, ссылка на поток; VK Микс и плейлисты (API с web-токеном сайта)
-src/sc.rs        SoundCloud: поиск, ссылки, ссылка на поток (api-v2 сайта)
-src/saved.rs     сохранённые треки сервисов (library.json)
-src/playlists.rs ваши плейлисты ВК (playlists.json): показываются сразу, ВК их обновляет
-src/streams.rs   кэш ссылок на потоки (в памяти, пока ссылка действует)
-src/cache.rs     кэш треков библиотеки (~/.cache/vkmusic/tracks) и загрузка в папку загрузок
-src/order.rs     порядок треков библиотеки (order.json)
-src/stats.rs     статистика прослушивания (stats.json)
-src/lyrics.rs    тексты песен с Genius
-ui/              интерфейс (HTML/CSS/JS без сборщика)
-ui/i18n/         локализация интерфейса: русский (исходный) и английский
-themes/          встроенные темы: папки-исходники и собранные .wmt
+src-tauri/src/main.rs      команды Tauri, протокол vkm:// (файлы тем, обложки)
+src-tauri/src/player.rs    mpv через JSON IPC
+src-tauri/src/ytdlp.rs     загрузки yt-dlp: лучшее качество, плейлисты, прогресс
+src-tauri/src/library.rs   локальная библиотека (теги, формат, битрейт — lofty)
+src-tauri/src/fonts.rs     список системных шрифтов (fontconfig)
+src-tauri/src/wmt.rs       чтение тем .wmt (текст и zip)
+src-tauri/src/themes.rs    хранилище тем, tokens → CSS-переменные, сборка и первая очистка CSS темы
+src-tauri/src/themelib.rs  библиотека тем: index.json и .wmt из whisper-themes
+src-tauri/src/vk.rs        ВКонтакте: свои треки, поиск, ссылка на поток; VK Микс и плейлисты (API с web-токеном сайта)
+src-tauri/src/sc.rs        SoundCloud: поиск, ссылки, ссылка на поток (api-v2 сайта)
+src-tauri/src/saved.rs     сохранённые треки сервисов (library.json)
+src-tauri/src/playlists.rs ваши плейлисты ВК (playlists.json): показываются сразу, ВК их обновляет
+src-tauri/src/streams.rs   кэш ссылок на потоки (в памяти, пока ссылка действует)
+src-tauri/src/cache.rs     кэш треков библиотеки (~/.cache/vkmusic/tracks) и загрузка в папку загрузок
+src-tauri/src/order.rs     порядок треков библиотеки (order.json)
+src-tauri/src/stats.rs     статистика прослушивания (stats.json)
+src-tauri/src/lyrics.rs    тексты песен с Genius
+src/                       интерфейс (HTML/CSS/JS без сборщика)
+src/whisper-vk.js          привязка к ядру Whisper: роли для тем, плеер и очередь для модулей ядра
+src/core/                  ядро Whisper (подмодуль whisper-core): события, движок тем, панель очереди
+src/i18n/                  локализация интерфейса: русский (исходный) и английский
+themes/                    встроенные темы: папки-исходники и собранные .wmt
 ```
 
-Тесты ядра: `cargo test`.
+Тесты Rust: `cargo test`.
 
 Если окно пустое на NVIDIA/Wayland, запустите `WEBKIT_DISABLE_DMABUF_RENDERER=1 vkmusic` (со старым драйвером
 NVIDIA < 560 приложение ставит это само). Обход медленный — кадры копируются через процессор, большое окно

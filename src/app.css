@@ -368,6 +368,7 @@ body.settings-mode .np-toggle { display: none; }
 .bar:hover .bar-knob, .bar.drag .bar-knob { opacity: 1; }
 .vol { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .vol input { width: 120px; accent-color: var(--accent); }
+.vol-box { display: flex; align-items: center; gap: 6px; }
 
 /* локальные / загрузки */
 .add-local { display: flex; gap: 8px; padding: 4px 8px 6px; }
@@ -421,6 +422,9 @@ body.login-mode .toasts { display: none; }
 .toasts { position: fixed; right: 20px; bottom: 110px; display: flex; flex-direction: column; gap: 8px; z-index: 50; pointer-events: none; }
 .toast { max-width: 380px; padding: 10px 14px; border-radius: var(--radius-sm); background: rgba(var(--bg-rgb), .96); border: 1px solid var(--border); border-left: 3px solid var(--accent); box-shadow: 0 6px 24px rgba(0, 0, 0, .4); animation: toast-in .18s ease-out; }
 .toast.error { border-left-color: var(--danger); }
+.toast.has-action { display: flex; align-items: center; gap: 12px; pointer-events: auto; }
+.toast-action { flex: none; padding: 4px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--hover); color: var(--accent); }
+.toast-action:hover { border-color: var(--accent); }
 @keyframes toast-in { from { transform: translateY(8px); opacity: 0; } }
 .drop-hint { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(0, 0, 0, .55); }
 .drop-hint div { padding: 26px 34px; border: 2px dashed var(--accent); border-radius: var(--radius); background: rgba(var(--bg-rgb), .9); font-size: 16px; }
@@ -578,3 +582,23 @@ body.side-collapsed #statsBtn { margin-top: auto; }
 .check-row input { margin: 0; accent-color: var(--accent); }
 .np-lyrics-src:disabled { cursor: default; opacity: 1; }
 .np-lyrics-src:disabled:hover { color: var(--muted); border-color: var(--border); }
+
+/* ───── модули ядра Whisper (src/core) ───── */
+/* переменные, на которые опираются модули ядра (свечение кнопок и рамок), — от акцента темы */
+:root { --glow-c: var(--accent); --btn-glow: var(--accent); }
+/* queue.css в узком окне перестраивает .player под три кнопки справа — у нас своя сетка, она главнее */
+.app > .player { grid-template-columns: minmax(200px, 1fr) minmax(320px, 2fr) minmax(160px, 1fr); }
+/* кнопка панели очереди в плеере — как остальные круглые кнопки */
+.player .qtoggle { display: inline-grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); transition: color .12s, background .12s; }
+.player .qtoggle:hover { color: var(--text); background: var(--hover); }
+/* панель «Очередь и история» (core/queue.js): строки списков и кнопки — base.css ядра не подключаем, у нас своё оформление */
+.qpanel button { border: 0; background: transparent; color: inherit; }
+.qpanel .list { list-style: none; margin: 0; padding: 0; }
+.qpanel .list li { display: flex; align-items: center; cursor: pointer; transition: background .12s; }
+.qpanel .list li:hover { background: var(--hover); }
+.qpanel .list li.playing .t { color: var(--accent); }
+.qpanel .list .a { color: var(--muted); }
+.qpanel .list img:not([src]) { visibility: hidden; }
+.qpanel .grip { display: grid; place-items: center; color: var(--muted); cursor: grab; touch-action: none; }
+.qpanel li.dragging { opacity: .6; }
+.qnext li.drop-before { box-shadow: inset 0 3px 0 var(--accent); }

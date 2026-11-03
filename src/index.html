@@ -1,13 +1,15 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-anim="on">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VK Music</title>
   <link rel="stylesheet" href="app.css" />
-  <!-- CSS темы (@@ css vkmusic), затем переменные из tokens — они главнее -->
+  <!-- общие модули ядра Whisper (src/core) — после своего оформления -->
+  <link rel="stylesheet" href="core/queue.css" />
+  <!-- CSS темы: @@ css whisper-core (роли) → @@ css whisper-vk → переменные из tokens; привязан к стилю
+       (:root[data-style]) движком тем ядра. data-anim="on" — сдвиги тем при наведении включены -->
   <style id="theme-css"></style>
-  <style id="theme-vars"></style>
 </head>
 <body>
   <div id="bg" class="bg" aria-hidden="true"></div>
@@ -121,8 +123,11 @@
       </div>
       <div class="vol">
         <button class="icon-btn" id="normBtn" title="Постоянный уровень громкости"><i data-icon="levels"></i></button>
-        <button class="icon-btn" id="volBtn" title="Без звука"><i data-icon="volume"></i></button>
-        <input id="vol" type="range" min="0" max="100" step="1" />
+        <!-- роль player.volume: перед ней панель очереди ядра ставит свою кнопку -->
+        <span class="vol-box">
+          <button class="icon-btn" id="volBtn" title="Без звука"><i data-icon="volume"></i></button>
+          <input id="vol" type="range" min="0" max="100" step="1" />
+        </span>
       </div>
     </footer>
   </div>
@@ -135,11 +140,18 @@
   <div class="drop-hint" id="dropHint" hidden><div>Отпустите файл .wmt, чтобы установить тему</div></div>
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
+  <!-- ядро Whisper — первым: app.js сообщает ему о плеере и очереди -->
+  <script src="core/whisper-core.js"></script>
   <!-- локализация: функции и словари (ключ — русский текст) -->
   <script src="i18n/i18n.js"></script>
   <script src="i18n/ru.js"></script>
   <script src="i18n/en.js"></script>
   <script src="icons.js"></script>
   <script src="app.js"></script>
+  <!-- привязка к ядру (роли, провайдер, плеер, очередь) — до движка тем и модулей; app.js запускается
+       по DOMContentLoaded, когда всё ниже уже подключено -->
+  <script src="whisper-vk.js"></script>
+  <script src="core/theme-css.js"></script>
+  <script src="core/queue.js"></script>
 </body>
 </html>

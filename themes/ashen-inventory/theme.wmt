@@ -12,7 +12,7 @@
   "description": "Мрачный инвентарь: каменные панели, бронзовые рамки, слоты-ячейки и тлеющий пепел",
   "version": "1.0",
   "base": "royal",
-  "apps": ["vkmusic"],
+  "apps": ["whisper-vk"],
   "created": "2026-10-29T00:00:00Z",
   "preview": "asset:preview.jpg"
 }
@@ -38,12 +38,12 @@
   }
 }
 
-@@ settings vkmusic
+@@ settings whisper-vk
 {
   "features": { "glow": false }
 }
 
-@@ css vkmusic
+@@ css whisper-vk
 :root {
   --heading: #ece1c0;
   --text-soft: #c9bfa5;

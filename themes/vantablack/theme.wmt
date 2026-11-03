@@ -10,7 +10,7 @@
   "description": "Абсолютный чёрный, белый текст и серые оттенки — без единого цвета",
   "version": "1.0",
   "base": "neon",
-  "apps": ["vkmusic"],
+  "apps": ["whisper-vk"],
   "created": "2026-10-29T00:00:00Z",
   "preview": "asset:preview.jpg"
 }
@@ -36,12 +36,12 @@
   }
 }
 
-@@ settings vkmusic
+@@ settings whisper-vk
 {
   "features": { "glow": false }
 }
 
-@@ css vkmusic
+@@ css whisper-vk
 :root {
   --heading: #ffffff;
   --text-soft: #ececec;

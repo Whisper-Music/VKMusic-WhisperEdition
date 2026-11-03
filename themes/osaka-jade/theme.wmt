@@ -14,7 +14,7 @@
   "description": "Нефритовая ночь Осаки: тёмно-зелёные панели, мятный акцент, обои Glowing City",
   "version": "1.0",
   "base": "neon",
-  "apps": ["vkmusic"],
+  "apps": ["whisper-vk"],
   "created": "2026-10-29T00:00:00Z",
   "preview": "asset:preview.jpg"
 }
@@ -40,12 +40,12 @@
   }
 }
 
-@@ settings vkmusic
+@@ settings whisper-vk
 {
   "features": { "glow": false }
 }
 
-@@ css vkmusic
+@@ css whisper-vk
 :root {
   /* остальная палитра Omarchy Osaka Jade */
   --heading: #f7e8b2;          /* bright_foreground */

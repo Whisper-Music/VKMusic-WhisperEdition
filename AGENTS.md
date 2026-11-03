@@ -8,6 +8,9 @@
 **VK Music** — локальный музыкальный плеер для Linux (Arch), Rust + Tauri 2.
 Библиотека — папка `~/Music/vk`; треки добавляются через yt-dlp; воспроизведение — mpv; оформление — темы `.wmt`
 (формат Whisper Music Theme из [YandexMusic-WhisperEdition](https://github.com/Whisper-Music/YandexMusic-WhisperEdition)).
+Приложение построено на **ядре Whisper** — [whisper-core](https://github.com/Whisper-Music/whisper-core), подмодуль
+в `src/core` (решение владельца, 2026-11-03; в ядре оно называется «Whisper VK», id `whisper-vk`): шина событий,
+плеер и очередь для общих модулей, роли интерфейса и движок CSS тем, панель «Очередь и история».
 ВКонтакте и SoundCloud — поиск и прослушивание под своим аккаунтом (см. правило «Сервисы»). Библиотека —
 файлы из папки музыки плюс сохранённые треки сервисов (`library.json`, описание трека). Звук треков
 библиотеки — в кэше `~/.cache/vkmusic/tracks`, скачать трек можно в папку загрузок (`~/Downloads`).
@@ -19,50 +22,57 @@
 sudo pacman -S --needed base-devel rust webkit2gtk-4.1 mpv yt-dlp ffmpeg python-mutagen
 cargo build --release        # интерфейс вшит в бинарник (tauri feature custom-protocol), tauri-cli не нужен
 ./target/release/vkmusic
-cargo test                   # тесты ядра (модули src/*.rs)
+cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
 ./packaging/install.sh       # установка в ~/.local/bin + ярлык
 ```
 
+* Клонировать — с подмодулем: `git clone --recurse-submodules …`; в уже склонированном — `git submodule update --init`.
+  Без `src/core` интерфейс не запустится (ядро — первый скрипт `index.html`).
+* Раскладка как у Tauri и приложений Whisper: интерфейс — `src/` (`frontendDist: "../src"`), приложение — `src-tauri/`.
+  Корневой `Cargo.toml` — рабочее пространство (`members = ["src-tauri"]`, там же `[profile.release]`), поэтому
+  `cargo build` / `cargo test` — из корня, бинарник — в `target/`.
 * Сборка и тесты требуют `webkit2gtk-4.1` — крейт один (бинарный), тесты собирают и Tauri.
 * `themes::tests::library_preview_saved_and_removed` создаёт и сразу удаляет тему `zz-preview-test`
   в настоящей `~/.config/vkmusic/themes`.
 * Интерфейс без Rust можно проверить в браузере (Playwright), подменив `window.__TAURI__` заглушкой с теми же
   командами и событиями — так проверялись все экраны.
 * Перед тем как считать работу готовой: `cargo build --release` без предупреждений, `cargo test`, и
-  `node --check ui/app.js`.
+  `node --check src/app.js src/whisper-vk.js`.
 
 ## Устройство
 
 ```
-src/main.rs      AppState, все #[tauri::command], протокол vkm://, запуск mpv в setup, выход
-src/config.rs    ~/.config/vkmusic/config.json (serde(default) — старые/лишние поля не ломают загрузку)
-src/player.rs    mpv в фоне: --idle, JSON IPC через unix-сокет в $XDG_RUNTIME_DIR, PR_SET_PDEATHSIG
-src/ytdlp.rs     загрузки yt-dlp: аргументы, разбор вывода по маркерам VKMPROG/VKMTITLE/VKMFILE, события
-src/library.rs   сканирование ~/Music/vk (глубина 3), теги/формат/битрейт/обложки — lofty; теги неизменённых файлов
-                 (путь, размер, время изменения) при повторном сканировании берутся из памяти (`TAGS`)
-src/fonts.rs     системные шрифты: `fc-list --format "%{family[0]}\n" :`
-src/wmt.rs       чтение .wmt: текст (#WMT 1, секции @@) и zip (свой ридер: stored/deflate, без zip64)
-src/themes.rs    встроенные темы (include_bytes!), ~/.config/vkmusic/themes, tokens → CSS-переменные,
-                 очистка CSS, @font-face из чужих секций, превью из библиотеки
-src/themelib.rs  библиотека тем: whisper-themes на raw.githubusercontent.com (reqwest)
-src/vk.rs        ВКонтакте: al_audio.php с куками сессии, разбор ответов, ссылка на поток одного трека;
-                 API с web-токеном сайта (VK Микс, плейлисты): web_token, api, home, my_playlists, playlist, mix
-src/sc.rs        SoundCloud: api-v2 с client_id из скриптов сайта, oauth_token из кук, поиск/resolve/поток
-src/saved.rs     сохранённые треки сервисов: ~/.config/vkmusic/library.json, Saved::validate
-src/playlists.rs ваши плейлисты ВК на диске: ~/.config/vkmusic/playlists.json — список, треки открывавшихся, access_key
-src/lyrics.rs    тексты песен с Genius: чистка названий, поиск api/search/song, оценка похожести, текст со страницы,
-                 кэш ~/.cache/vkmusic/lyrics
-src/streams.rs   кэш ссылок на потоки треков сервисов: в памяти, срок — из expires ссылки (до часа)
-src/cache.rs     кэш треков библиотеки ~/.cache/vkmusic/tracks: копия файла / поток через ffmpeg -c copy,
-                 одна задача за раз: включённый трек, затем следующий в очереди; имена для папки загрузок
-src/stats.rs     статистика прослушивания: ~/.config/vkmusic/stats.json (версия 2) — по ключу трека дослушан раз,
-                 секунд, первое/последнее прослушивание; журнал по местным дням (от интерфейса): секунды по трекам и часам
-src/order.rs     порядок библиотеки: ~/.config/vkmusic/order.json, ключи (путь файла | vk:/sc:+id), новые сверху
-ui/              index.html, app.css, app.js, icons.js — без сборщика и фреймворков
-ui/i18n/         локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
-themes/<id>/     исходники встроенной темы: theme.wmt, background.*, preview.jpg
-themes/<id>.wmt  собранная тема — именно она вшивается в бинарник
-docs/THEMES.md   формат тем для авторов: переменные, разметка, ограничения
+src-tauri/src/main.rs      AppState, все #[tauri::command], протокол vkm://, запуск mpv в setup, выход
+src-tauri/src/config.rs    ~/.config/vkmusic/config.json (serde(default) — старые/лишние поля не ломают загрузку)
+src-tauri/src/player.rs    mpv в фоне: --idle, JSON IPC через unix-сокет в $XDG_RUNTIME_DIR, PR_SET_PDEATHSIG
+src-tauri/src/ytdlp.rs     загрузки yt-dlp: аргументы, разбор вывода по маркерам VKMPROG/VKMTITLE/VKMFILE, события
+src-tauri/src/library.rs   сканирование ~/Music/vk (глубина 3), теги/формат/битрейт/обложки — lofty; теги неизменённых файлов
+                           (путь, размер, время изменения) при повторном сканировании берутся из памяти (`TAGS`)
+src-tauri/src/fonts.rs     системные шрифты: `fc-list --format "%{family[0]}\n" :`
+src-tauri/src/wmt.rs       чтение .wmt: текст (#WMT 1, секции @@) и zip (свой ридер: stored/deflate, без zip64)
+src-tauri/src/themes.rs    встроенные темы (include_bytes!), ~/.config/vkmusic/themes, tokens → CSS-переменные,
+                           CSS темы (@font-face чужих секций + whisper-core + whisper-vk) и первая очистка, превью из библиотеки
+src-tauri/src/themelib.rs  библиотека тем: whisper-themes на raw.githubusercontent.com (reqwest)
+src-tauri/src/vk.rs        ВКонтакте: al_audio.php с куками сессии, разбор ответов, ссылка на поток одного трека;
+                           API с web-токеном сайта (VK Микс, плейлисты): web_token, api, home, my_playlists, playlist, mix
+src-tauri/src/sc.rs        SoundCloud: api-v2 с client_id из скриптов сайта, oauth_token из кук, поиск/resolve/поток
+src-tauri/src/saved.rs     сохранённые треки сервисов: ~/.config/vkmusic/library.json, Saved::validate
+src-tauri/src/playlists.rs ваши плейлисты ВК на диске: ~/.config/vkmusic/playlists.json — список, треки открывавшихся, access_key
+src-tauri/src/lyrics.rs    тексты песен с Genius: чистка названий, поиск api/search/song, оценка похожести, текст со страницы,
+                           кэш ~/.cache/vkmusic/lyrics
+src-tauri/src/streams.rs   кэш ссылок на потоки треков сервисов: в памяти, срок — из expires ссылки (до часа)
+src-tauri/src/cache.rs     кэш треков библиотеки ~/.cache/vkmusic/tracks: копия файла / поток через ffmpeg -c copy,
+                           одна задача за раз: включённый трек, затем следующий в очереди; имена для папки загрузок
+src-tauri/src/stats.rs     статистика прослушивания: ~/.config/vkmusic/stats.json (версия 2) — по ключу трека дослушан раз,
+                           секунд, первое/последнее прослушивание; журнал по местным дням (от интерфейса): секунды по трекам и часам
+src-tauri/src/order.rs     порядок библиотеки: ~/.config/vkmusic/order.json, ключи (путь файла | vk:/sc:+id), новые сверху
+src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
+src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
+src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
+src/core/                  ядро Whisper — git-подмодуль whisper-core (здесь не правится, см. «Ядро Whisper»)
+themes/<id>/               исходники встроенной темы: theme.wmt, background.*, preview.jpg
+themes/<id>.wmt            собранная тема — именно она вшивается в бинарник
+docs/THEMES.md             формат тем для авторов: переменные, роли, разметка, ограничения
 ```
 
 ### Связь интерфейса и Rust
@@ -74,12 +84,38 @@ docs/THEMES.md   формат тем для авторов: переменные
 * События Rust → JS: `player://event` (`state` / `ended` / `error`), `dl://event`
   (`title` / `progress` / `saved` / `done` / `failed`), `svc://event` (`login` / `login_closed`, поле `service`: `vk` | `sc`) — после них интерфейс прячет полосу входа,
 `cache://event` (`cached` / `failed`, поле `key` — ключ трека в библиотеке) — после него кэшируется следующий трек. Плюс `tauri://drag-*` для перетаскивания `.wmt`.
-* Новая команда = функция в `main.rs` + строка в `generate_handler![…]` + вызов в `ui/app.js`.
+* Новая команда = функция в `main.rs` + строка в `generate_handler![…]` + вызов в `src/app.js`.
   Проверяйте, что каждая команда из JS есть в обработчике (и наоборот, лишних нет). `vk_status` / `sc_status`
   вызываются как `invoke(service + "_status")` — простым grep их не найти.
 * Файлы тем и обложки интерфейс получает по `vkm://localhost/…`: `/theme/<id>/<файл>`,
   `/themepreview/<id>`, `/cover?path=…`. Протокол отвечает только главному окну (`label == "main"`).
 * CSP выключен (`"csp": null`) — поэтому защита держится на правилах ниже, не нарушайте их.
+
+### Ядро Whisper (`src/core`)
+
+* Порядок в `index.html` важен: `core/whisper-core.js` → i18n, `icons.js`, `app.js` → `whisper-vk.js` →
+  `core/theme-css.js` → `core/queue.js`; CSS — `app.css`, затем `core/queue.css`. `app.js` запускается
+  по `DOMContentLoaded` (`boot`), когда роли и движок тем уже подключены. `core/base.css` не подключаем —
+  у приложения своё оформление (недостающее модулям — в конце `app.css`, «модули ядра Whisper»).
+* Ядру о плеере сообщает `app.js` — `Whisper.player.report(…)`: смена трека (`playAt`: `track`, `started` — кроме
+  повтора со свежей ссылкой, `source`, `queue`), пуск/пауза (`player://event`), перемотка (`seekTo`), громкость
+  (`syncVolume`), режимы (`syncModes`), догрузка микса. Новое место, где меняется что-то из этого, — тоже с отчётом.
+* Привязка — `whisper-vk.js`: id приложения `whisper-vk` (секция тем), приставка хранилища модулей `vkm_`
+  (история очереди — `vkm_history`; сменить = потерять историю), провайдер `vk` (трек ядра: `id` — ключ библиотеки,
+  длиннее 100 символов — хэш; `provider` — `local` | `vk` | `sc`; `raw` — трек `app.js`). Очередь для ядра — `S.queue`;
+  «что дальше» считает `order()` так же, как `upcoming()` в `app.js` (при перемешивании известен только следующий).
+  Трек от модуля ядра превращается обратно в трек библиотеки по ключу (`fromCore`) — данные из хранилища модулей
+  (история) не доверенные так же, как всё из интерфейса: Rust проверяет пути и ключи сам.
+* Роли (`Whisper.ui.define` в `whisper-vk.js`) — публичный контракт с темами, как классы: меняются вместе с
+  `docs/THEMES.md`. Словарь ролей — `VOCAB` в `core/whisper-core.js`.
+* Набор интерфейса (`ui.provide`): подсказка с кнопкой (`toast(…, action, ms)`), подтверждение — наше окошко у кнопки
+  (`confirmClick` у последней нажатой кнопки), не `window.confirm`.
+* Код ядра здесь не правится: репозиторий whisper-core общий с Whisper Yandex и не наш (права — только чтение).
+  Нужно что-то в ядре — предложить владельцу whisper-core; своё — в `whisper-vk.js` / `app.js`.
+  Новая версия ядра: `git submodule update --remote src/core`, проверить (`cargo build`, Playwright), закоммитить `src/core`.
+  `rust/check` ядра внутри `src/core` не запускать: Tauri встроил бы его `target/` в бинарник.
+* Модули ядра (панель очереди) — по-русски, без нашего `L()`: перевод — только в самом ядре.
+* Rust-часть ядра (Whisper Archive, «Слушать вместе», Discord, OBS) пока не подключена — только по просьбе владельца.
 
 ## Правила
 
@@ -87,10 +123,16 @@ docs/THEMES.md   формат тем для авторов: переменные
 * Пути от интерфейса не доверенные: играть, удалять и отдавать обложки можно только для файлов внутри папки
   музыки (`library::inside`, сравнение после `canonicalize`).
 * Данные (названия треков, имена тем, ошибки) вставляются в DOM только через `textContent` / `el()`.
-  Никакого `innerHTML` с данными; `innerHTML` используется только в `icons.js` для своих SVG.
-* CSS тем проходит `themes::sanitize_css`: вырезается `@import`, `url()` — только `asset:` и `data:`,
-  `</` экранируется. Значения из `tokens` проверяются (`hex6`, `css_value_ok`, диапазоны чисел).
-  Новые места, куда попадает CSS темы, должны идти через эти функции.
+  Никакого `innerHTML` с данными; `innerHTML` используется только в `icons.js` для своих SVG (и в модулях ядра —
+  для их постоянной разметки и значков; данные там тоже идут через `textContent`).
+* CSS тем очищается дважды. Rust — `themes::sanitize_css`: вырезается `@import`, `url()` — только `asset:` (→ vkm://)
+  и `data:`, `</` экранируется. Интерфейс — движок тем ядра (`WhisperThemeCss.scopeCss` в `applyTheme`): правила
+  привязываются к стилю `:root[data-style="<id>"]`, роли `[data-w]` → наши селекторы, из `url()` остаются только
+  адреса из `ThemeRender.assets`, `data:` и `#якоря` (проверка после раскрытия `\`-экранирования), `image-set()` и
+  подобные выбрасываются, `@keyframes` / `@font-face` / `@layer` темы получают префикс `wmt-<id>-`.
+  Значения из `tokens` проверяются (`hex6`, `css_value_ok`, диапазоны чисел). Новые места, куда попадает CSS темы,
+  должны идти через обе ступени. `tokensCss` ядра не используем: он красит `body` (у нас фон — в `#bg`, шрифт
+  выбирает пользователь) — переменные из `tokens` даёт Rust (`token_vars`).
 * Библиотека тем качает только `index.json`, `themes/[<категория>/]<id>.wmt`,
   `previews/[<категория>/]<id>.(jpg|jpeg|png|webp)` с фиксированного `BASE` и с лимитами размера
   (`themelib::limit_for`; категория — один уровень папок, имя как у id темы); путь темы и превью в записи каталога
@@ -220,8 +262,8 @@ docs/THEMES.md   формат тем для авторов: переменные
 
 **Интерфейс и тексты**
 * Язык исходников, сообщений об ошибках, комментариев и документации — русский. Интерфейс — русский и английский
-  (просьба владельца, 2026-10-30; «Настройки → Общее», `Config::lang`): строки в `ui/app.js` — через `L("Русский текст {0}", x)`
-  (ключ — русский текст), множественное число — `plural(n, "трек", "трека", "треков")`, словари — `ui/i18n/<язык>.js`
+  (просьба владельца, 2026-10-30; «Настройки → Общее», `Config::lang`): строки в `src/app.js` — через `L("Русский текст {0}", x)`
+  (ключ — русский текст), множественное число — `plural(n, "трек", "трека", "треков")`, словари — `src/i18n/<язык>.js`
   (`en.js`: ключ → перевод, для `plural` — `[одна, много]`). Новую строку интерфейса — сразу в `en.js`; проверка, что
   переведены все ключи, — скриптом из истории или вручную. Статичная разметка `index.html` переводится сама (`applyStatic`).
   Не оборачивайте в `L()` строки-данные (сравнения, ключи) и константы уровня модуля — их переводят при показе
@@ -237,9 +279,13 @@ docs/THEMES.md   формат тем для авторов: переменные
 * Встроенная тема: правьте `themes/<id>/theme.wmt`, затем пересоберите архив
   `scripts/pack-theme.sh themes/<id>` (или тем же составом файлов через zip) и проверьте
   `cargo test` (`builtin_parses`). Новая встроенная тема — ещё и строка в `BUILTIN` в `themes.rs`.
+  Картинки в собранных архивах `osaka-jade`, `vantablack`, `ashen-inventory` не совпадают с файлами в папках
+  (2026-11-03): чтобы поменять только CSS, обновляйте в архиве один файл — `cd themes/<id> && zip -X ../<id>.wmt theme.wmt`.
 * id встроенных тем (`osaka-jade`, `vantablack`, `ashen-inventory`, `slate`) заняты — свои темы с ними не ставятся.
-* Секция приложения — `@@ css vkmusic` / `@@ settings vkmusic`. Из чужих секций (`whisper-music` и т. п.)
-  берутся только `@font-face`; чужая разметка не применяется — у Whisper Music другой DOM.
+* Секции: общая `@@ css whisper-core` (по ролям, одинаковая во всех приложениях Whisper), затем своя
+  `@@ css whisper-vk` / `@@ settings whisper-vk` (главнее). Прежнее имя `vkmusic` читается, только если секций
+  `whisper-vk` в теме нет (`themes::app_section`). Из чужих секций (`whisper-music` и т. п.) берутся только
+  `@font-face`; чужая разметка не применяется — у Whisper Music другой DOM. `whisper-obs` — для виджета OBS, не берётся.
 * Ассеты чужих игр, программ и брендов (арт, логотипы, шрифты без свободной лицензии) в темы не класть.
   Ashen Inventory «в духе» Dark Souls нарисована целиком на CSS, фон — процедурный.
   Обои Osaka Jade и Vantablack — из тем Omarchy (MIT). Фон «Грифеля» (`slate`) — процедурный (numpy + Pillow),
@@ -266,7 +312,7 @@ docs/THEMES.md   формат тем для авторов: переменные
 * WebKitGTK + NVIDIA/Wayland: `WEBKIT_DISABLE_DMABUF_RENDERER=1` приложение ставит только со старым драйвером
   NVIDIA (< 560, `old_nvidia`). Этот обход копирует каждый кадр через процессор: на 2560×1440 интерфейс падал
   до ~10 кадров/с (с DMA-BUF — 60, NVIDIA 615, Hyprland, замер 2026-10-30). Не включайте его безусловно.
-  Замерять удобно `MiniBrowser` из webkit2gtk с копией `ui/` и заглушкой `__TAURI__`: на DMA-BUF стеклянные
+  Замерять удобно `MiniBrowser` из webkit2gtk с копией `src/` и заглушкой `__TAURI__`: на DMA-BUF стеклянные
   эффекты (`backdrop-filter`, размытие фона) на FPS не влияли.
 * Выше 60 кадров/с WebKitGTK 2.54 интерфейс не рисует (замер 2026-10-30, монитор 165 Гц, NVIDIA 615). Две причины:
   драйвер NVIDIA отвечает `EOPNOTSUPP` на `DRM_IOCTL_WAIT_VBLANK`, и WebKit берёт таймер на 60 Гц

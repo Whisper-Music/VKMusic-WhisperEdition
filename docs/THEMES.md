@@ -3,9 +3,15 @@
 VK Music читает темы в формате **Whisper Music Theme** — том же, что у
 [YandexMusic-WhisperEdition](https://github.com/Whisper-Music/YandexMusic-WhisperEdition)
 (описание формата — [`docs/WMT-FORMAT.md`](https://github.com/Whisper-Music/YandexMusic-WhisperEdition/blob/main/docs/WMT-FORMAT.md) там).
-Реализация в `src/wmt.rs` своя и проверена на примерах тем WhisperEdition.
+Файл читает `src-tauri/src/wmt.rs` (своя реализация, проверена на примерах тем WhisperEdition), а CSS темы
+к окну применяет **движок тем ядра Whisper** — `src/core/theme-css.js` из
+[whisper-core](https://github.com/Whisper-Music/whisper-core) (строгое описание формата — `docs/WMT-FORMAT.md` там же).
 
-* **id приложения** для секций: `vkmusic` → `@@ css vkmusic`, `@@ settings vkmusic`.
+* **id приложения** для секций: `whisper-vk` → `@@ css whisper-vk`, `@@ settings whisper-vk` (как «Whisper VK» в ядре).
+  Прежнее имя `vkmusic` (`@@ css vkmusic`) по-прежнему читается — если секций `whisper-vk` в теме нет.
+* **`@@ css whisper-core`** — общая секция тем Whisper: правила по **ролям** интерфейса (`[data-w="player.play"]`,
+  таблица ниже), а не по нашим классам. Такая тема одинаково ложится на все приложения Whisper. Порядок:
+  `whisper-core` → `whisper-vk` (своя секция главнее) → переменные из `tokens`.
 * **`tokens`** понимаются целиком — поэтому любая тема WhisperEdition сразу перекрашивает VK Music
   (её `@@ css whisper-music` пропускается: там другая разметка).
 * Тема с фоном — zip, переименованный в `.wmt`: `theme.wmt` + `background.<jpg|png|webp|gif|avif|bmp|mp4|webm|m4v|mov>` + любые файлы
@@ -115,11 +121,15 @@ body(.settings-mode)(.login-mode)(.side-collapsed)(.np-off)(.np-over)(.drag-sort
 │       ├── .np > .np-cover > img, .np-meta > .np-title, .np-artist; button.icon-btn.np-add#npAdd «в библиотеку», button.icon-btn.np-add.np-topl#npToPl «в плейлист»
 │       ├── .center > .controls > #shuffleBtn, #prevBtn, button.play#playBtn, #nextBtn, #repeatBtn (.on)
 │       │           > .progress > .time, .bar#bar > .bar-fill, .bar-knob
-│       └── .vol > #normBtn(.on) «постоянный уровень громкости», #volBtn, input#vol
+│       └── .vol > #normBtn(.on) «постоянный уровень громкости», button.qtoggle#qBtn(.on) (очередь, ядро),
+│                  .vol-box > #volBtn, input#vol
 ├── .login-bar#loginBar > span, .btn          полоса над страницей входа сервиса (окно сжато до неё)
 ├── .popup.confirm-pop#confirmPop > .confirm-text, .confirm-actions > .btn.danger, .btn   подтверждение
 │   (.prompt-pop — с input.prompt-input и .btn.primary: название плейлиста; .pl-menu > .popup-title, .popup-item — выбор плейлиста; меню «⋯» плейлиста — .pl-menu > .popup-item(.danger))
-└── .toasts > .toast(.error)
+├── aside.panel.qpanel#qPanel              «Очередь и история» (core/queue.js, классы — его):
+│     > .qhead > b, .qclose; .qbody > section.qsec > h4, ul.list(.qnow|.qnext) > li(.playing|.dragging) > .grip, img,
+│       div > .t, .a; .qx, .qmore, .qempty; .qhist > .qday, ul.list.qhlist > li > .qtime; .qclear
+└── .toasts > .toast(.error)(.has-action > button.toast-action)
 ```
 
 Общие классы: `.panel`, `.btn`, `.btn.primary`, `.icon-btn(.on)`, `.input`, `.ic` (значок SVG, цвет — `currentColor`),
@@ -127,8 +137,49 @@ body(.settings-mode)(.login-mode)(.side-collapsed)(.np-off)(.np-over)(.drag-sort
 
 `.search` — общий поиск сверху.
 
-Ограничения CSS темы: `@import` вырезается, `url()` работает только с `asset:` и `data:` — внешние адреса заменяются пустыми.
+## Роли (`@@ css whisper-core`)
+
+Роль в селекторе — `[data-w="имя"]`; движок ядра заменяет её на наши элементы. Разновидность — через `:`
+(`[data-w="track"]` совпадает и с `track:playing`), часть — через `.` (`player` ≠ `player.play`). Роль, которой здесь
+нет (например, `titlebar` — у окна системная рамка), выбрасывает селектор, остальные из того же списка остаются.
+
+| роль | у нас |
+|---|---|
+| `sidebar` | `.side` |
+| `nav`, `nav:active` | `.side .nav-item`, `.side-foot` (`.active`) |
+| `search:global`, `search:settings` | `#searchBox`; поле поиска в «Магазине тем» |
+| `main`, `page.title` | `.main`, `#pageTitle` |
+| `button`, `button:active`, `button:danger` | `.btn`, `.btn.primary`, `.btn.danger` |
+| `tabs`, `tab`, `tab:active` | `.tabs`, `.tab`, `.tab.active` |
+| `tracklist`, `track`, `track:playing` | `.tracks`, `.track`, `.track.playing` |
+| `track.cover`, `track.title`, `track.artist` | `.t-cover`, `.t-title`, `.t-artist` |
+| `card`, `tile` | `.svc-card`, `.theme-card`, `.stats-tile`; `.vk-pl`, `.vk-mix` |
+| `player`, `player.info`, `player.cover`, `player.title`, `player.artist` | `.player`, `.np-meta`, `.np-cover`, `#npTitle`, `#npArtist` |
+| `player.controls`, `player.play`, `player.prev`, `player.next` | `.controls`, `#playBtn`, `#prevBtn`, `#nextBtn` |
+| `player.mode`, `player.mode:on` | `#shuffleBtn`, `#repeatBtn` (`.on`) |
+| `player.seek`, `player.time` | `#bar`, `.progress .time` |
+| `player.actions`, `player.volume`, `player.volume.button`, `player.volume.slider` | `.vol`, `.vol-box`, `#volBtn`, `#vol` |
+| `radio` | `.vk-mix` (VK Микс) |
+| `menu`, `menu.item`, `toast` | `.popup`, `.popup-item`, `.toast` |
+| `queue`, `lyrics` | `#qPanel` (панель очереди ядра), `#npLyrics` |
+
+Полный словарь ролей Whisper — `VOCAB` в `src/core/whisper-core.js`.
+
+## Что делает движок тем
+
+* Каждое правило темы привязывается к её стилю: `.track { … }` → `:root[data-style="<id>"] .track { … }`
+  (`:root` / `html` в начале селектора — к самому `<html>`). Поэтому правила темы сильнее таких же правил приложения.
+* `@keyframes`, `@font-face` и `@layer` темы получают префикс `wmt-<id>-` (ссылки на них внутри темы переименовываются
+  тоже): тема не может подменить анимации и шрифты приложения, свои — сколько угодно.
+* Сдвиги, повороты и увеличение (`transform`, `translate`, `scale`, `rotate`) в правилах с `:hover` / `:active`
+  действуют только при `html[data-anim="on"]` (сейчас — всегда).
+* `@import`, `@property`, `@page` и прочие @-правила, кроме `@media`, `@supports`, `@container`, `@layer`, `@scope`,
+  `@starting-style`, `@keyframes`, `@font-face`, не поддерживаются.
+
+Ограничения CSS темы: `@import` вырезается, `url()` работает только с `asset:` (файлы темы), `data:` и `#якорями` —
+объявление с внешним адресом выбрасывается целиком; `image-set()`, `src()` и подобные — тоже.
 
 Анимации интерфейса — короткие, с замедлением в конце: переменные `--ease-out` и `--anim`, ключевые кадры
 `np-in` (правая панель), `page-in` (страница), `pop-in` (всплывашки), `lyr-in` (текст песни). Тема может их
-переопределить или выключить (`animation: none`). При «уменьшении движения» в системе анимаций нет.
+выключить (`animation: none`) или назначить свои (`@keyframes` темы получают префикс, поэтому одноимённые
+кадры приложения тема не подменяет — задайте `animation` своим кадрам). При «уменьшении движения» в системе анимаций нет.

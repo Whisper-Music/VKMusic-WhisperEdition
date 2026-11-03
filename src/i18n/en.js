@@ -266,6 +266,7 @@ window.I18N_DICTS.en = {
   // ── миксы и плейлисты ВК ──
   "Миксы": "Mixes",
   "VK Микс": "VK Mix",
+  "«{0}» заиграет следующим": "“{0}” will play next",
   "Бесконечная подборка по вашему вкусу": "An endless selection to your taste",
   "Слушать": "Play",
   "Ваши плейлисты": "Your playlists",
@@ -286,6 +287,16 @@ window.I18N_DICTS.en = {
   "Текст предоставлен {0}": "Lyrics provided by {0}",
   "Текст из ВКонтакте": "Lyrics from VK",
 
+  // ── панель «Очередь и история» ядра Whisper (core/queue.js): переводится только её постоянная разметка ──
+  "Очередь и история": "Queue and history",
+  "Закрыть (Esc)": "Close (Esc)",
+  "Сейчас играет": "Now playing",
+  "Далее": "Up next",
+  "История прослушивания": "Listening history",
+  "Очистить историю": "Clear history",
+  "Здесь появятся треки, которые ты слушал.": "Tracks you've listened to will appear here.",
+  "Очередь и история прослушивания (Q)": "Queue and listening history (Q)",
+  "Очередь и история прослушивания": "Queue and listening history",
   // ── ошибки Rust (точные сообщения) ──
   "Неверный ключ кэша": "Invalid cache key",
   "Неизвестный формат файла": "Unknown file format",
