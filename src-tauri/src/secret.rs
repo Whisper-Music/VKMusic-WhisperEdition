@@ -14,13 +14,23 @@ use std::io::{Read, Write};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 
-const SERVICE: &str = "ru.bobrik.vkmusic";
+const SERVICE: &str = crate::IDENT;
 const ACCOUNT: &str = "wa_token";
 const FILE: &str = "wa_token.secret";
 const MAX_SECRET: u64 = 16 * 1024;
 
 fn entry() -> Result<Entry, String> {
     Entry::new(SERVICE, ACCOUNT).map_err(|e| e.to_string())
+}
+
+/// Ключ, сохранённый под прежним идентификатором приложения, — переносится под новый (один раз).
+fn from_old() -> Option<String> {
+    let old = Entry::new(crate::OLD_IDENT, ACCOUNT).ok()?;
+    let t = old.get_password().ok()?;
+    if entry().ok()?.set_password(&t).is_ok() {
+        let _ = old.delete_credential();
+    }
+    Some(t)
 }
 
 fn file() -> PathBuf {
@@ -85,6 +95,9 @@ pub fn get() -> Result<Option<String>, String> {
             Ok(Some(t))
         }
         Err(keyring::Error::NoEntry) => {
+            if let Some(t) = from_old() {
+                return Ok(Some(t));
+            }
             // связка ключей появилась после того, как ключ лёг в файл, — переносим
             let Some(t) = file_read() else { return Ok(None) };
             if entry()?.set_password(&t).is_ok() {

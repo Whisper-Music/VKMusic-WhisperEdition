@@ -1,5 +1,5 @@
 name: release
-# Сборка выпуска: Linux x64 (.deb, .AppImage) и Windows x64 (установщик NSIS) — черновиком в GitHub Releases.
+# Сборка выпуска: Linux x64 (.deb, .AppImage) — черновиком в GitHub Releases. Windows пока нет: код только под Linux.
 # Запуск: вручную (Actions → release → Run workflow) или тегом vX.Y.Z (git tag v0.2.0 && git push --tags).
 # Когда публикуешь черновик, GitHub сам создаёт тег vX.Y.Z — это тоже «push тега»; такой запуск ничего
 # не собирает (выпуск уже вышел) и завершается без ошибки, см. guard. Как у Whisper Yandex.
@@ -64,8 +64,6 @@ jobs:
         include:
           - os: ubuntu-22.04        # Linux x64: .deb и .AppImage (старая glibc — запускается на большинстве дистрибутивов)
             bundles: deb,appimage
-          - os: windows-latest      # Windows x64: установщик NSIS (setup.exe)
-            bundles: nsis
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

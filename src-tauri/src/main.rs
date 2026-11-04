@@ -1679,7 +1679,27 @@ fn show_main(app: &AppHandle) {
     }
 }
 
+/// Идентификатор приложения (tauri.conf.json → identifier): по нему WebKit хранит куки входа и localStorage
+/// (~/.local/share/<id>), а связка ключей — ключ Whisper Archive (secret.rs).
+pub const IDENT: &str = "vkmusic-whisper";
+/// Прежний идентификатор (до выхода в Whisper-Music, 2026-11-04).
+pub const OLD_IDENT: &str = "ru.bobrik.vkmusic";
+
+/// Данные WebKit со старого идентификатора — на новое место (один раз, до создания окна): иначе после обновления
+/// пришлось бы заново входить во ВКонтакте и SoundCloud и пропали бы история очереди и настройки модулей.
+fn migrate_ident() {
+    for base in [dirs::data_dir(), dirs::config_dir(), dirs::cache_dir()].into_iter().flatten() {
+        let (old, new) = (base.join(OLD_IDENT), base.join(IDENT));
+        if old.is_dir() && !new.exists() {
+            if let Err(e) = std::fs::rename(&old, &new) {
+                eprintln!("vkmusic: не удалось перенести {}: {e}", old.display());
+            }
+        }
+    }
+}
+
 fn main() {
+    migrate_ident();
     // Обход WEBKIT_DISABLE_DMABUF_RENDERER дорог: кадр копируется через процессор, и чем больше окно, тем
     // медленнее (2560×1440: ~10 кадров/с против 60 с DMA-BUF на NVIDIA 615, проверено 2026-10-30). Поэтому
     // включаем его только со старым драйвером NVIDIA; переменная, заданная пользователем, главнее.
@@ -1899,6 +1919,12 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::old_nvidia;
+
+    #[test]
+    fn ident_matches_config() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(conf["identifier"], super::IDENT, "IDENT и identifier в tauri.conf.json должны совпадать");
+    }
 
     #[test]
     fn dmabuf_workaround_only_for_old_nvidia() {

@@ -1365,7 +1365,7 @@ mod tests {
     }
 
 
-    /// Живая проверка API на сессии приложения: VKM_COOKIES=~/.local/share/ru.bobrik.vkmusic/cookies
+    /// Живая проверка API на сессии приложения: VKM_COOKIES=~/.local/share/vkmusic-whisper/cookies
     /// cargo test live_api -- --ignored --nocapture. Печатает только количества и названия, не токен.
     #[test]
     #[ignore]

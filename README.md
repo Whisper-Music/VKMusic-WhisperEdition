@@ -137,6 +137,10 @@ cargo build --release
 
 Уже склонировали без подмодуля — `git submodule update --init`. Свежее ядро — `git submodule update --remote src/core`.
 
+Готовые сборки для Linux x64 (`.deb` для Debian/Ubuntu, `.AppImage`) — на странице
+[Releases](https://github.com/Whisper-Music/VKMusic-WhisperEdition/releases). Нужны mpv и ffmpeg (для загрузок —
+yt-dlp и python-mutagen); `.deb` ставит mpv и ffmpeg сам. Версии для Windows пока нет.
+
 Установить в систему (бинарник в `~/.local/bin`, ярлык в меню приложений):
 
 ```sh
@@ -155,7 +159,7 @@ yt-dlp стоит держать свежим (`sudo pacman -Syu yt-dlp`): са�
 | свои темы | `~/.config/vkmusic/themes/*.wmt` |
 | сохранённые треки сервисов | `~/.config/vkmusic/library.json` |
 | порядок треков библиотеки | `~/.config/vkmusic/order.json` |
-| сессии ВК и SoundCloud | куки WebKit в `~/.local/share/ru.bobrik.vkmusic/` |
+| сессии ВК и SoundCloud | куки WebKit в `~/.local/share/vkmusic-whisper/` |
 
 ## Структура
 

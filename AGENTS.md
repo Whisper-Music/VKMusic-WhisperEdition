@@ -45,10 +45,15 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
 * Перед тем как считать работу готовой: `cargo build --release` без предупреждений, `cargo test`, и
   `node --check src/app.js src/whisper-vk.js`.
 * Выпуски — `.github/workflows/release.yml` (как у Whisper Yandex): тег `vX.Y.Z` или запуск вручную → черновик в
-  GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc) и
-  Windows x64 (NSIS). Версия — одинаковая в `src-tauri/tauri.conf.json` и `src-tauri/Cargo.toml` (проверяет `guard`).
+  GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc).
+  Windows пока нет: код только под Linux (mpv через unix-сокет, куки WebKitGTK, GTK, Secret Service, fc-list) —
+  порт и автообновление (tauri-plugin-updater) возьмёт на себя другой разработчик; обновления — AUR или вручную. Версия — одинаковая в `src-tauri/tauri.conf.json` и `src-tauri/Cargo.toml` (проверяет `guard`).
   CLI Tauri — `npx @tauri-apps/cli@2` (своего package.json нет); локально: `npx --yes @tauri-apps/cli@2 build --bundles deb`.
   Ярлык в `.deb` — `packaging/vkmusic.desktop` (`bundle.linux.deb.desktopTemplate`: нужен `%u` для ссылок whisper://).
+* Идентификатор — `vkmusic-whisper` (`IDENT` в main.rs = `identifier` в tauri.conf.json, тест `ident_matches_config`):
+  папки WebKit `~/.local/share/vkmusic-whisper` (куки входа, localStorage), запись ключа архива в связке ключей.
+  Прежний `ru.bobrik.vkmusic` переносится при запуске (`migrate_ident`, `secret::from_old`). Настройки приложения —
+  по-прежнему `~/.config/vkmusic`, кэш — `~/.cache/vkmusic` (не зависят от идентификатора).
 * Лицензия — PolyForm Noncommercial 1.0.0 (`LICENSE`, как у Whisper Yandex и ядра); строку `Required Notice` не трогать.
 * Репозиторий — https://github.com/Whisper-Music/VKMusic-WhisperEdition. В нём только приложение: ядро — подмодуль
   (`src/core`, своё — в whisper-core), темы библиотеки — в whisper-themes (здесь — только 4 встроенные, `themes/`).
@@ -301,7 +306,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   reload, `access_key` кладёт `saved_add` из `Vk::keys` (не из интерфейса); такой трек играет `vk_play_api`, ссылка —
   `audio.getById` (`vk_api_stream`), кэшируется и скачивается, как остальные треки библиотеки. Вне библиотеки треки
   из API не кэшируются и не скачиваются. Проверка на настоящем ВК:
-  `VKM_COOKIES=~/.local/share/ru.bobrik.vkmusic/cookies cargo test live_api -- --ignored --nocapture`.
+  `VKM_COOKIES=~/.local/share/vkmusic-whisper/cookies cargo test live_api -- --ignored --nocapture`.
   Управление своими плейлистами (просьба владельца, 2026-11-02): `audio.createPlaylist`, `editPlaylist` (название),
   `deletePlaylist`, `addToPlaylist`, `removeFromPlaylist`, `followPlaylist` — команды `vk_playlist_*`, только по
   нажатию (удаление трека/плейлиста — с подтверждением `confirmClick`). Менять можно только плейлист с owner_id = id
