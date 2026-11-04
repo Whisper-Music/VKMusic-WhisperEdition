@@ -190,3 +190,11 @@ themes/                    встроенные темы: папки-исход�
 Если окно пустое на NVIDIA/Wayland, запустите `WEBKIT_DISABLE_DMABUF_RENDERER=1 vkmusic` (со старым драйвером
 NVIDIA < 560 приложение ставит это само). Обход медленный — кадры копируются через процессор, большое окно
 заметно тормозит, — поэтому без нужды он не включается. Если не помогло, попробуйте `WEBKIT_DISABLE_COMPOSITING_MODE=1 vkmusic`.
+
+## Лицензия
+
+[PolyForm Noncommercial 1.0.0](LICENSE), как у Whisper Yandex и ядра Whisper: пользоваться, изменять и распространять
+можно в некоммерческих целях, сохраняя строку `Required Notice` из [LICENSE](LICENSE). Основа оформления
+`src/whisper.css` — из [YandexMusic-WhisperEdition](https://github.com/Whisper-Music/YandexMusic-WhisperEdition),
+ядро `src/core` — [whisper-core](https://github.com/Whisper-Music/whisper-core) (подмодуль). Обои Osaka Jade и Vantablack —
+из тем Omarchy (MIT).

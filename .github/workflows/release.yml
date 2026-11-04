@@ -1,0 +1,105 @@
+name: release
+# Сборка выпуска: Linux x64 (.deb, .AppImage) и Windows x64 (установщик NSIS) — черновиком в GitHub Releases.
+# Запуск: вручную (Actions → release → Run workflow) или тегом vX.Y.Z (git tag v0.2.0 && git push --tags).
+# Когда публикуешь черновик, GitHub сам создаёт тег vX.Y.Z — это тоже «push тега»; такой запуск ничего
+# не собирает (выпуск уже вышел) и завершается без ошибки, см. guard. Как у Whisper Yandex.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  # Перед сборкой: версия одинакова в tauri.conf.json и Cargo.toml, тег совпадает с ней,
+  # и опубликованного выпуска с этим тегом ещё нет (иначе файлы молча добавились бы в уже вышедший).
+  guard:
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      skip: ${{ steps.v.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Версия и существующий выпуск
+        id: v
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          conf=$(jq -r .version src-tauri/tauri.conf.json)
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -n1)
+          echo "tauri.conf.json=$conf Cargo.toml=$cargo"
+          if [ "$conf" != "$cargo" ]; then
+            echo "::error::Версии не совпадают: tauri.conf.json=$conf, Cargo.toml=$cargo"
+            exit 1
+          fi
+          tag="v$conf"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "$tag" ]; then
+            echo "::error::Тег ${GITHUB_REF_NAME} не совпадает с версией приложения ($tag)"
+            exit 1
+          fi
+          draft=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || echo none)
+          if [ "$draft" = "false" ] && [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            echo "::notice::Выпуск $tag уже опубликован — тег создан публикацией, сборка не нужна"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$draft" = "false" ]; then
+            echo "::error::Выпуск $tag уже опубликован. Подними версию в tauri.conf.json и Cargo.toml и запусти снова."
+            exit 1
+          fi
+          if [ "$draft" = "true" ]; then
+            echo "::notice::Черновик $tag уже есть — сборки будут добавлены в него"
+          fi
+          echo "version=$conf" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: guard
+    if: needs.guard.outputs.skip != 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04        # Linux x64: .deb и .AppImage (старая glibc — запускается на большинстве дистрибутивов)
+            bundles: deb,appimage
+          - os: windows-latest      # Windows x64: установщик NSIS (setup.exe)
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }  # ядро Whisper (src/core) — подмодуль whisper-core
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }  # только для CLI Tauri (npx @tauri-apps/cli): своего package.json у проекта нет
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target' # рабочее пространство Cargo в корне, сборка — в target/
+          key: ${{ matrix.os }}
+
+      - name: Системные библиотеки (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
+
+      - name: Проверки
+        shell: bash
+        run: |
+          node --check src/app.js
+          node --check src/whisper-vk.js
+          cargo test --locked
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: npx --yes @tauri-apps/cli@2
+          args: --bundles ${{ matrix.bundles }}
+          tagName: v__VERSION__
+          releaseName: 'VK Music Whisper Edition v__VERSION__'
+          releaseBody: 'Что нового — допиши перед публикацией.'
+          releaseDraft: true
+          prerelease: false

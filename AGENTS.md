@@ -44,6 +44,14 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   командами и событиями — так проверялись все экраны.
 * Перед тем как считать работу готовой: `cargo build --release` без предупреждений, `cargo test`, и
   `node --check src/app.js src/whisper-vk.js`.
+* Выпуски — `.github/workflows/release.yml` (как у Whisper Yandex): тег `vX.Y.Z` или запуск вручную → черновик в
+  GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc) и
+  Windows x64 (NSIS). Версия — одинаковая в `src-tauri/tauri.conf.json` и `src-tauri/Cargo.toml` (проверяет `guard`).
+  CLI Tauri — `npx @tauri-apps/cli@2` (своего package.json нет); локально: `npx --yes @tauri-apps/cli@2 build --bundles deb`.
+  Ярлык в `.deb` — `packaging/vkmusic.desktop` (`bundle.linux.deb.desktopTemplate`: нужен `%u` для ссылок whisper://).
+* Лицензия — PolyForm Noncommercial 1.0.0 (`LICENSE`, как у Whisper Yandex и ядра); строку `Required Notice` не трогать.
+* Репозиторий — https://github.com/Whisper-Music/VKMusic-WhisperEdition. В нём только приложение: ядро — подмодуль
+  (`src/core`, своё — в whisper-core), темы библиотеки — в whisper-themes (здесь — только 4 встроенные, `themes/`).
 
 ## Устройство
 

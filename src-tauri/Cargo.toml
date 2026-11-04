@@ -2,8 +2,9 @@
 name = "vkmusic"
 version = "0.1.0"
 edition = "2021"
-description = "Локальный музыкальный плеер на Rust + Tauri: библиотека, загрузка через yt-dlp, темы .wmt"
-license = "MIT"
+description = "VK Music Whisper Edition — музыкальный плеер на Rust + Tauri: ВКонтакте, SoundCloud, свои файлы, темы Whisper"
+license = "PolyForm-Noncommercial-1.0.0"
+repository = "https://github.com/Whisper-Music/VKMusic-WhisperEdition"
 
 [build-dependencies]
 tauri-build = { version = "2.7", features = [] }
