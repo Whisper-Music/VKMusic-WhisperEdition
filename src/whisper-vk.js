@@ -160,14 +160,17 @@
         cover_url: https(a.coverUrl), cover_bytes: a.coverBytes });
     },
     // id файла из папки музыки — не путь (в нём имя пользователя), а хэш: гостю файл всё равно не открыть,
-    // он ищет трек у себя по названию и исполнителю
+    // он ищет трек у себя по названию и исполнителю.
+    // coverUri — всегда null: сервер комнат общий с Whisper Yandex и принимает только обложки Яндекса
+    // (avatars.yandex.net/…/%%); адрес ВКонтакте/SoundCloud он считает «некорректным треком» и отклоняет трек
+    // целиком — и предложение, и состояние ведущего (гости не получали трек). Обложку гость берёт у себя.
     toRoom: (e) => ({
       id: e.raw && e.raw.path && !e.raw.roomId ? "local:" + fnv(e.raw.key) + fnv("vkm" + e.raw.key) : e.id,
       albumId: null,
       title: String(e.title || "Без названия").slice(0, 300),
       version: null,
       artists: e.artists.slice(0, 10).map((a) => ({ id: null, name: String(a.name).slice(0, 200) })),
-      coverUri: https(e.cover),
+      coverUri: null,
       durationMs: Math.max(0, Math.round(e.durationMs || 0)),
     }),
     fromRoom,
