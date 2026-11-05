@@ -22,6 +22,7 @@ mod order;
 mod os;
 mod player;
 mod playlists;
+mod relay;
 mod saved;
 mod sc;
 mod secret;
@@ -273,11 +274,6 @@ fn player_cue(st: State<'_, AppState>, at: f64, hold: bool) -> Res<()> {
 #[tauri::command(rename_all = "snake_case")]
 fn player_rate(st: State<'_, AppState>, rate: f64) -> Res<()> {
     st.player()?.set_speed(if rate.is_finite() { rate } else { 1.0 })
-}
-
-#[tauri::command(rename_all = "snake_case")]
-fn player_toggle(st: State<'_, AppState>) -> Res<()> {
-    st.player()?.toggle()
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -1025,12 +1021,20 @@ async fn vk_play_api(app: AppHandle, st: State<'_, AppState>, id: String, title:
             vk_api_stream(&app, &st, &id, saved.as_ref().and_then(|s| s.access_key.as_deref())).await?
         }
     };
+    // поток — через ретранслятор (relay.rs): ссылка CDN подписана под IP запроса к API
+    let s = via_relay(s);
     p.load_stream(&s.url, &title, vk::USER_AGENT, &s.referrer)?;
     if let (Some(k), Some(t)) = (ckey, saved) {
         st.cache.enqueue(cache_job(k, &s, &t));
         return Ok(true);
     }
     Ok(false)
+}
+
+/// Ссылка на поток трека из API — локальным адресом ретранслятора (mp3 целиком, не HLS: относительные адреса
+/// сегментов через него не открылись бы — поэтому только для `vkapi:`).
+fn via_relay(s: streams::Stream) -> streams::Stream {
+    streams::Stream { url: relay::url_for(&s.url, &s.referrer), referrer: s.referrer }
 }
 
 /// Новая ссылка на трек из API (audio.getById) — сразу в кэш ссылок.
@@ -1512,10 +1516,10 @@ async fn library_file(app: &AppHandle, st: &AppState, key: &str) -> Res<(PathBuf
 /// Задача кэша для трека сервиса из библиотеки. Ссылка на поток — из кэша ссылок или новый запрос к сервису.
 async fn service_job(app: &AppHandle, st: &AppState, t: &saved::Saved) -> Res<cache::Job> {
     let s = match t.service.as_str() {
-        "vk" if t.api => match st.streams.get(&format!("vkapi:{}", t.id)) {
+        "vk" if t.api => via_relay(match st.streams.get(&format!("vkapi:{}", t.id)) {
             Some(s) => s,
             None => vk_api_stream(app, st, &t.id, t.access_key.as_deref()).await?,
-        },
+        }),
         "vk" => {
             let reload = t.reload.as_deref().ok_or("Этот трек ВК недоступен")?;
             match st.streams.get(&format!("vk:{reload}")) {
@@ -1989,7 +1993,6 @@ fn main() {
             player_play,
             player_cue,
             player_rate,
-            player_toggle,
             player_pause,
             player_seek,
             player_volume,

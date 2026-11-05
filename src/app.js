@@ -2066,51 +2066,11 @@ function statsRow(rank, t, title, sub, value, share, onClick) {
   return row;
 }
 
-/** Сводка по играющему треку — на узком окне, где правой панели нет. */
-function renderStatsNow() {
-  const box = $("#statsNow");
-  if (!box) return;
-  const t = S.current;
-  box.hidden = !t;
-  if (!t) return;
-  // обложку и название строим один раз на трек, дальше (4 раза в секунду) меняется только строка цифр
-  if (box.dataset.key !== t.key) {
-    box.dataset.key = t.key;
-    box.replaceChildren();
-    if (t.cover) {
-      const img = el("img");
-      img.alt = "";
-      img.src = t.cover;
-      img.onerror = () => img.replaceWith(Icons.icon("note"));
-      box.append(img);
-    } else box.append(Icons.icon("note"));
-    const meta = el("div", "stats-now-meta");
-    meta.append(el("div", "stats-now-title", `${t.artist} — ${t.title}`), el("div", "stats-now-sub"));
-    box.append(meta);
-  }
-  const subEl = box.querySelector(".stats-now-sub");
-  subEl.textContent = "";
-  const st = heard.key === t.key ? heard.stat : null;
-  if (st) {
-    const parts = [
-      L("дослушан {0} {1}", st.plays, plural(st.plays, "раз", "раза", "раз")),
-      L("слушали {0}", fmtListened(st.seconds + heard.acc)),
-    ];
-    if (st.rank) parts.push(L("#{0} из {1}", st.rank, st.total));
-    if (heard.prevLast) parts.push(L("последний раз {0}", fmtWhen(heard.prevLast)));
-    subEl.textContent = parts.join(" · ");
-  }
-}
-
 async function renderStatsPage() {
   const c = $("#content");
   c.replaceChildren();
   const page = el("div", "stats-page");
   c.append(page);
-  const now = el("div", "stats-now");
-  now.id = "statsNow";
-  page.append(now);
-  renderStatsNow();
 
   const periods = el("div", "chips stats-periods");
   for (const [id, name] of PERIODS) {
@@ -3322,7 +3282,9 @@ async function playAt(i, fresh, opts) {
   S.qi = i;
   S.current = t;
   S.retried = !!fresh;
-  Object.assign(S, { loading: true, startAt: at, needAudible: true, holdPending: hold });
+  // состояния mpv о прошлом файле (номер file не вырос) больше не в счёт: ни позиция, ни «загрузился»
+  Object.assign(S, { loading: true, startAt: at, needAudible: true, holdPending: hold, fileAtPlay: S.pl.file || 0 });
+  Object.assign(S.pl, { pos: 0, duration: 0 });
   if (!t.room) startListen(t);
   updateNowPlaying();
   markPlaying();
@@ -3421,8 +3383,13 @@ function togglePlay() {
     if (items.length) playList(items, 0);
     return;
   }
-  if (S.pl.idle) return playAt(S.qi);
-  invoke("player_toggle").catch((e) => toast(errMsg(e), "error"));
+  if (S.pl.idle && !S.loading) return playAt(S.qi);
+  // явное состояние, а не «переключить»: кнопка делает то, что показывает (cycle pause иногда не срабатывал
+  // с первого раза — нажатие во время загрузки или после запоздавшего события)
+  const paused = !S.pl.paused;
+  S.pl.paused = paused;
+  updatePlayButton();
+  invoke("player_pause", { paused }).catch((e) => toast(errMsg(e), "error"));
 }
 
 // ───────────────────────── правая панель и статистика прослушивания ─────────────────────────
@@ -3817,7 +3784,6 @@ function renderNpStats() {
     else if (!st.first && !st.seconds) lines.push(L("Слушаете впервые"));
   }
   if (box) box.replaceChildren(...lines.map((x) => el("small", null, x)));
-  if (S.page === "stats") renderStatsNow();
 }
 
 /** Когда: «сегодня в 10:05», «вчера в 23:10», «12 марта», «12 марта 2025» (dateOnly — без времени). */
@@ -4227,9 +4193,11 @@ function initPlayer() {
   listen("player://event", (ev) => {
     const e = ev.payload;
     if (e.type === "state") {
-      Object.assign(S.pl, { pos: e.pos, duration: e.duration, paused: e.paused, idle: e.idle });
+      // пока новый трек не загрузился, позиция и длительность — от прошлого: не показываем и не отдаём ядру
+      const stale = S.loading && !(e.file > (S.fileAtPlay || 0));
+      Object.assign(S.pl, { pos: stale ? 0 : e.pos, duration: stale ? 0 : e.duration, paused: e.paused, idle: e.idle, file: e.file });
       // трек загрузился: загружали «без звука», а ведущий комнаты уже играет — не держать
-      if (S.loading && !e.idle && e.duration > 0) {
+      if (S.loading && !stale && !e.idle && e.duration > 0) {
         S.loading = false;
         const room = Whisper.modules.together;
         if (S.holdPending && room && room.wantsPlay && room.wantsPlay()) invoke("player_pause", { paused: false }).catch(() => {});

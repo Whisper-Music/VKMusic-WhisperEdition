@@ -18,6 +18,9 @@ pub struct PlayerState {
     pub paused: bool,
     pub idle: bool,
     pub volume: f64,
+    /// номер загруженного файла (растёт на каждом file-loaded): интерфейс отличает состояние нового трека от
+    /// запоздавших событий прошлого — иначе «загрузился» и позиция брались от старого трека
+    pub file: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -44,16 +47,20 @@ pub struct Player {
 
 const CUE_TTL: Duration = Duration::from_secs(30);
 
-/// Громкость интерфейса (0…100, линейная амплитуда — как `audio.volume` в Whisper Yandex) → громкость mpv.
-/// У mpv шкала кубическая (усиление = (v/100)³): ползунок на 14% давал −51 дБ — почти тишину. Поэтому
-/// mpv получает кубический корень: 14% → усиление 0,14 (−17 дБ), 50% → 0,5 (−6 дБ), как в браузере.
+/// Шкала громкости интерфейса: усиление = (v/100)^GAIN_POW. У mpv своя шкала кубическая (усиление = (m/100)³):
+/// с ней ползунок на 14% давал −51 дБ — почти тишину; линейная (как `audio.volume`) оказалась слишком громкой.
+/// Квадратичная — посередине (просьба владельца, 2026-11-05: «обычная громкость — около 20%»):
+/// 14% → −34 дБ, 20% → −28 дБ, 50% → −12 дБ, 100% → 0 дБ.
+const GAIN_POW: f64 = 2.0;
+
+/// Громкость интерфейса (0…100) → громкость mpv.
 pub fn to_mpv(v: f64) -> f64 {
-    100.0 * (v.max(0.0) / 100.0).cbrt()
+    100.0 * (v.max(0.0) / 100.0).powf(GAIN_POW / 3.0)
 }
 
 /// Обратно: громкость mpv → громкость интерфейса.
 pub fn from_mpv(m: f64) -> f64 {
-    100.0 * (m.max(0.0) / 100.0).powi(3)
+    100.0 * (m.max(0.0) / 100.0).powf(3.0 / GAIN_POW)
 }
 
 #[cfg(windows)]
@@ -181,7 +188,7 @@ impl Player {
     /// Играть поток по https (ВКонтакте): с User-Agent и Referer браузера, в котором выполнен вход.
     /// На диск поток не пишется — кэш mpv только в памяти (--cache-on-disk=no).
     pub fn load_stream(&self, url: &str, title: &str, user_agent: &str, referrer: &str) -> Result<(), String> {
-        if !url.starts_with("https://") {
+        if !url.starts_with("https://") && !crate::relay::is_relay(url) {
             return Err("Неверная ссылка на поток".into());
         }
         if !user_agent.is_empty() {
@@ -195,10 +202,6 @@ impl Player {
     pub fn set_normalize(&self, on: bool) -> Result<(), String> {
         let af = if on { "lavfi=[dynaudnorm=f=250:g=15:p=0.9:m=10]" } else { "" };
         self.send(json!(["set_property", "af", af]))
-    }
-
-    pub fn toggle(&self) -> Result<(), String> {
-        self.send(json!(["cycle", "pause"]))
     }
 
     pub fn set_pause(&self, paused: bool) -> Result<(), String> {
@@ -333,11 +336,23 @@ fn log_reason(text: &str) -> Option<String> {
     Some(clean.join(" ").chars().take(160).collect())
 }
 
+/// Причина для сообщения: первая и последняя строки журнала (если разные).
+fn reason_of(why: &[String]) -> Option<String> {
+    match why {
+        [] => None,
+        [one] => Some(one.clone()),
+        [first, .., last] => Some(format!("{first}; {last}")),
+    }
+}
+
 fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event: F) {
     let mut st = PlayerState { idle: true, ..Default::default() };
     let mut last_emit = Instant::now() - Duration::from_secs(1);
-    // последняя ошибка из журнала mpv для текущего файла
-    let mut why: Option<String> = None;
+    // ошибки из журнала mpv для текущего файла (первые — обычно причина: «HTTP error 403», последние — «Failed to open»)
+    let mut why: Vec<String> = Vec::new();
+    // последние значения от mpv: между start-file и file-loaded наружу уходят нули (позиция прошлого трека
+    // уже не в счёт), на file-loaded — то, что mpv успел сообщить о новом файле
+    let (mut raw_pos, mut raw_dur, mut loading) = (0.0, 0.0, false);
     for line in lines {
         let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
         match v.get("event").and_then(Value::as_str) {
@@ -348,10 +363,14 @@ fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event
                 let mut urgent = true;
                 match v.get("name").and_then(Value::as_str) {
                     Some("time-pos") => {
-                        st.pos = f.unwrap_or(0.0);
+                        raw_pos = f.unwrap_or(0.0);
+                        st.pos = if loading { 0.0 } else { raw_pos };
                         urgent = false;
                     }
-                    Some("duration") => st.duration = f.unwrap_or(0.0),
+                    Some("duration") => {
+                        raw_dur = f.unwrap_or(0.0);
+                        st.duration = if loading { 0.0 } else { raw_dur };
+                    }
                     Some("pause") => st.paused = b.unwrap_or(false),
                     Some("idle-active") => st.idle = b.unwrap_or(false),
                     Some("volume") => st.volume = f.map(from_mpv).unwrap_or(st.volume),
@@ -362,13 +381,28 @@ fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event
                     on_event(PlayerEvent::State(st.clone()));
                 }
             }
-            Some("start-file") => why = None,
+            Some("start-file") => {
+                why.clear();
+                loading = true;
+                st.pos = 0.0;
+                st.duration = 0.0;
+                on_event(PlayerEvent::State(st.clone()));
+            }
+            Some("file-loaded") => {
+                loading = false;
+                st.file += 1;
+                st.pos = raw_pos;
+                st.duration = raw_dur;
+                on_event(PlayerEvent::State(st.clone()));
+            }
             Some("log-message") => {
                 let level = v.get("level").and_then(Value::as_str).unwrap_or("");
                 let text = v.get("text").and_then(Value::as_str).unwrap_or("");
                 if matches!(level, "error" | "fatal" | "warn") {
                     if let Some(t) = log_reason(text) {
-                        why = Some(t);
+                        if !why.contains(&t) && why.len() < 8 {
+                            why.push(t);
+                        }
                     }
                 }
             }
@@ -380,9 +414,10 @@ fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event
                         .and_then(Value::as_str)
                         .unwrap_or("не удалось воспроизвести")
                         .to_string();
-                    if let Some(w) = why.take() {
+                    if let Some(w) = reason_of(&why) {
                         msg = format!("{msg} ({w})");
                     }
+                    why.clear();
                     on_event(PlayerEvent::Error { message: msg });
                 }
                 _ => {}
@@ -411,11 +446,11 @@ mod tests {
     }
 
     #[test]
-    fn volume_is_linear_amplitude() {
-        // усиление mpv = (v/100)³ — должно совпасть с долей ползунка
-        for v in [0.0, 14.0, 50.0, 100.0] {
+    fn volume_scale() {
+        // усиление mpv = (m/100)³ — должно быть (v/100)²
+        for v in [0.0, 14.0, 20.0, 50.0, 100.0] {
             let gain = (to_mpv(v) / 100.0).powi(3);
-            assert!((gain - v / 100.0).abs() < 1e-9, "{v}");
+            assert!((gain - (v / 100.0).powi(2)).abs() < 1e-9, "{v}");
             assert!((from_mpv(to_mpv(v)) - v).abs() < 1e-9);
         }
     }

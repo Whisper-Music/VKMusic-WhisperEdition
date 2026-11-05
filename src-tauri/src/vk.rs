@@ -1435,6 +1435,42 @@ mod tests {
         println!("свежая ссылка getById: {}", url.starts_with("https://"));
     }
 
+    /// Ретранслятор (relay.rs) на настоящем VK Миксе: ссылка CDN через 127.0.0.1 отдаёт звук, перемотка (Range) работает.
+    /// VKM_COOKIES=… cargo test live_relay -- --ignored --nocapture. VKM_RELAY_OUT=файл — записать локальный адрес
+    /// (чтобы проиграть его mpv, пока тест ждёт VKM_RELAY_WAIT секунд).
+    #[test]
+    #[ignore]
+    fn live_relay() {
+        let path = std::env::var("VKM_COOKIES").expect("VKM_COOKIES");
+        let mut cookies = Vec::new();
+        for l in std::fs::read_to_string(path).unwrap().lines() {
+            let l = l.strip_prefix("#HttpOnly_").unwrap_or(l);
+            if l.starts_with('#') || l.trim().is_empty() {
+                continue;
+            }
+            let p: Vec<&str> = l.split('\t').collect();
+            if p.len() >= 7 {
+                cookies.push(Cookie { domain: p[0].into(), path: p[2].into(), name: p[5].into(), value: p[6].into() });
+            }
+        }
+        let s = Session { base: "https://vk.ru", cookies: vk_cookies(cookies) };
+        let vk = Vk::new();
+        let m = tauri::async_runtime::block_on(vk.mix(&s, "common")).unwrap();
+        let url = m.iter().find_map(|x| x.1.clone()).expect("ссылка");
+        let local = crate::relay::url_for(&url, &s.referrer());
+        assert!(crate::relay::is_relay(&local));
+        let c = reqwest::Client::new();
+        let r = tauri::async_runtime::block_on(c.get(&local).header("Range", "bytes=1000-1999").send()).unwrap();
+        println!("через ретранслятор: {} {:?}", r.status(), r.headers().get("content-range"));
+        assert_eq!(r.status().as_u16(), 206);
+        assert_eq!(tauri::async_runtime::block_on(r.bytes()).unwrap().len(), 1000);
+        if let Ok(out) = std::env::var("VKM_RELAY_OUT") {
+            std::fs::write(out, &local).unwrap();
+            let wait = std::env::var("VKM_RELAY_WAIT").ok().and_then(|x| x.parse().ok()).unwrap_or(0);
+            std::thread::sleep(std::time::Duration::from_secs(wait));
+        }
+    }
+
     /// Методы управления плейлистами — без изменений в аккаунте: всё на чужом плейлисте (owner_id=1),
     /// ВК отказывает. Код 3 («Unknown method») — имя метода неверное.
     /// VKM_COOKIES=… cargo test live_playlist_methods -- --ignored --nocapture

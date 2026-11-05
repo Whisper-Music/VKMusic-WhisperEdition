@@ -106,6 +106,7 @@ src-tauri/src/secret.rs    ключ Whisper Archive: Secret Service (keyring), �
 src-tauri/src/deeplink.rs  ссылки whisper://room/КОД: deep-link + single-instance, room_link_take, событие room-link
 src-tauri/src/hotkeys.rs   глобальные горячие клавиши (tauri-plugin-global-shortcut; Windows, Linux X11): hotkeys_set, событие hotkey
 src-tauri/src/update.rs    автообновление (только Windows): update_check, update_install, `with_updater`
+src-tauri/src/relay.rs     ретранслятор потоков треков ВК из API: 127.0.0.1/r/<токен> → CDN тем же клиентом, что и API
 src-tauri/src/os.rs        Linux/Windows: права на файлы (`Private`), внешние программы (`tool`, `bin_dir`), `open`
 src-tauri/src/host.rs      `--host [ПОРТ]`: интерфейс в браузере — HTTP-сервер на 127.0.0.1 (invoke, SSE-события, vkm/wa)
 src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
@@ -442,9 +443,17 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * mpv читает `mpv.conf` пользователя: если там включено сохранение позиции, трек продолжал бы играть с места,
   где его переключили. Поэтому mpv запускается с `--resume-playback=no --save-position-on-quit=no`.
   `af` плеер задаёт сам («постоянный уровень громкости»), перекрывая `af` из конфига пользователя.
-* Громкость у mpv кубическая (усиление = (v/100)³): ползунок на 14% давал −51 дБ. Интерфейс и конфиг хранят
-  линейную амплитуду, как `audio.volume` у Whisper Yandex; в mpv она уходит через `player::to_mpv` (кубический корень),
-  обратно — `from_mpv`. Не передавайте в mpv громкость ползунка напрямую.
+* Громкость у mpv кубическая (усиление = (v/100)³): ползунок на 14% давал −51 дБ, линейная шкала оказалась слишком
+  громкой. Шкала интерфейса — квадратичная (`player::GAIN_POW`, «обычная громкость — около 20%», просьба владельца
+  2026-11-05); в mpv — через `player::to_mpv`, обратно — `from_mpv`. Не передавайте в mpv громкость ползунка напрямую.
+* Смена трека: после `loadfile` mpv ещё присылает позицию и длительность прошлого файла. Поэтому у состояния есть
+  номер файла (`PlayerState.file`, растёт на `file-loaded`), а между `start-file` и `file-loaded` позиция — 0;
+  интерфейс не верит состояниям с прежним номером (`S.fileAtPlay`) — иначе «Слушать вместе» отдавало гостям новый
+  трек с позицией старого. Пауза — явным `player_pause` (не `cycle`).
 * «loading failed» от mpv ничего не говорит: плеер подписан на журнал mpv (`request_log_messages warn`) и дописывает
   к ошибке последнюю строку (`log_reason`, ссылки вырезаются — в них подписи). Новые ссылки ВК на официальные треки
   (с альбомом и обложкой) — CDN `*.okcdn.ru`, без расширения, подписаны под IP (`srcIp`) того, кто запросил API.
+  На Windows API ходит через системный прокси / VPN, mpv — напрямую: «Failed to open». Поэтому потоки треков из API
+  (`vk_play_api`, кэш через `service_job`) идут через ретранслятор `relay.rs` (127.0.0.1, токен, только ссылки,
+  зарегистрированные Rust; `via_relay`). HLS через него не пускать: относительные адреса сегментов не откроются.
+  Проверка: `VKM_COOKIES=… cargo test live_relay -- --ignored --nocapture`.

@@ -305,7 +305,7 @@ impl TrackCache {
                 Ok(dst)
             }
             Source::Stream { url, referrer } => {
-                if !url.starts_with("https://") {
+                if !url.starts_with("https://") && !crate::relay::is_relay(url) {
                     return Err("Неверная ссылка на поток".into());
                 }
                 // 1) поток (mp3 или HLS) как есть — в Matroska, она примет любой кодек
