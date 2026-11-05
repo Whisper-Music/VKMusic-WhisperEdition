@@ -12,7 +12,7 @@
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[derive(Debug, Clone, Deserialize)]
@@ -46,7 +46,7 @@ const FILE_MARK: &str = "VKMFILE";
 const TITLE_MARK: &str = "VKMTITLE";
 
 fn run_ok(cmd: &str, args: &[&str]) -> Option<String> {
-    let out = Command::new(cmd).args(args).stdin(Stdio::null()).output().ok()?;
+    let out = crate::os::tool(cmd).args(args).stdin(Stdio::null()).output().ok()?;
     out.status
         .success()
         .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
@@ -57,7 +57,8 @@ pub fn caps() -> &'static Caps {
     CAPS.get_or_init(|| Caps {
         ytdlp: run_ok("yt-dlp", &["--version"]),
         ffmpeg: run_ok("ffmpeg", &["-hide_banner", "-version"]).is_some(),
-        mutagen: run_ok("python3", &["-c", "import mutagen"]).is_some(),
+        // yt-dlp.exe для Windows собран вместе с mutagen
+        mutagen: cfg!(windows) || run_ok("python3", &["-c", "import mutagen"]).is_some(),
     })
 }
 
@@ -131,7 +132,15 @@ where
     }
     std::fs::create_dir_all(&dir).map_err(|e| format!("Не удалось создать {}: {e}", dir.display()))?;
     let args = args_for(&req, &dir, caps)?;
-    let mut child = Command::new("yt-dlp")
+    let mut cmd = crate::os::tool("yt-dlp");
+    // Windows: ffmpeg — из папки приложения, вывод — в UTF-8 (иначе имена файлов придут в кодировке консоли)
+    if let Some(bin) = crate::os::bin_dir() {
+        cmd.arg("--ffmpeg-location").arg(bin);
+    }
+    if cfg!(windows) {
+        cmd.env("PYTHONUTF8", "1").env("PYTHONIOENCODING", "utf-8");
+    }
+    let mut child = cmd
         .args(&args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

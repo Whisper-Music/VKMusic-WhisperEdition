@@ -7,7 +7,7 @@
 
 use std::collections::HashSet;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
+use crate::os::Private;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -111,7 +111,7 @@ impl OrderStore {
                 .write(true)
                 .create(true)
                 .truncate(true)
-                .mode(0o600)
+                .private()
                 .open(&tmp)
                 .map_err(|e| format!("Не удалось сохранить порядок треков: {e}"))?;
             f.write_all(&data).map_err(|e| e.to_string())?;

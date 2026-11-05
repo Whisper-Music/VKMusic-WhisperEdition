@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
+use crate::os::Private;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,7 +98,7 @@ impl Config {
                 .write(true)
                 .create(true)
                 .truncate(true)
-                .mode(0o600)
+                .private()
                 .open(&tmp)
                 .map_err(|e| format!("Не удалось записать настройки: {e}"))?;
             f.write_all(&data).map_err(|e| e.to_string())?;

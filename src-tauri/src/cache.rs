@@ -310,14 +310,14 @@ impl TrackCache {
                 }
                 // 1) поток (mp3 или HLS) как есть — в Matroska, она примет любой кодек
                 let raw = self.dir.join(format!("{key}.part1"));
-                let res = run(Command::new("ffmpeg")
+                let res = run(crate::os::tool("ffmpeg")
                     .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y"])
                     .args(["-rw_timeout", "30000000", "-user_agent", crate::vk::USER_AGENT, "-referer", referrer])
                     .args(["-i", url, "-map", "0:a:0", "-c", "copy", "-f", "matroska"])
                     .arg(&raw))
                 // 2) кодек — и в «родной» контейнер с тегами (локально, без сети)
                 .and_then(|_| {
-                    run(Command::new("ffprobe")
+                    run(crate::os::tool("ffprobe")
                         .args(["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=codec_name"])
                         .args(["-of", "default=nw=1:nk=1"])
                         .arg(&raw))
@@ -325,7 +325,7 @@ impl TrackCache {
                 .and_then(|codec| {
                     let (ext, format) = container_for(codec.trim());
                     let tmp = self.dir.join(format!("{key}.part2"));
-                    run(Command::new("ffmpeg")
+                    run(crate::os::tool("ffmpeg")
                         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"])
                         .arg(&raw)
                         .args(["-map", "0:a:0", "-c", "copy"])

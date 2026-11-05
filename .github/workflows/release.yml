@@ -1,5 +1,6 @@
 name: release
-# Сборка выпуска: Linux x64 (.deb, .AppImage) — черновиком в GitHub Releases. Windows пока нет: код только под Linux.
+# Сборка выпуска: Linux x64 (.deb, .AppImage) и Windows x64 (установщик NSIS, -setup.exe) — черновиком в GitHub Releases.
+# В установщик Windows кладутся mpv, ffmpeg/ffprobe и yt-dlp (папка bin рядом с vkmusic.exe, tauri.windows.conf.json).
 # Запуск: вручную (Actions → release → Run workflow) или тегом vX.Y.Z (git tag v0.2.0 && git push --tags).
 # Когда публикуешь черновик, GitHub сам создаёт тег vX.Y.Z — это тоже «push тега»; такой запуск ничего
 # не собирает (выпуск уже вышел) и завершается без ошибки, см. guard. Как у Whisper Yandex.
@@ -64,6 +65,8 @@ jobs:
         include:
           - os: ubuntu-22.04        # Linux x64: .deb и .AppImage (старая glibc — запускается на большинстве дистрибутивов)
             bundles: deb,appimage
+          - os: windows-latest      # Windows x64: установщик NSIS (WebView2 ставится загрузчиком, если его нет)
+            bundles: nsis
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -83,12 +86,43 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev build-essential curl wget file \
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
 
+      # Windows: mpv (сборка shinchiro), ffmpeg/ffprobe (BtbN, LGPL, shared — DLL рядом) и yt-dlp — в src-tauri/bin,
+      # оттуда установщик кладёт их в папку bin приложения (os::bin_dir)
+      - name: mpv, ffmpeg и yt-dlp (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin=src-tauri/bin
+          tmp="$RUNNER_TEMP/tools"
+          mkdir -p "$bin" "$tmp"
+          mpv=$(gh release view --repo shinchiro/mpv-winbuild-cmake --json assets --jq '.assets[].name' | grep -E '^mpv-x86_64-[0-9]{8}-git-[0-9a-f]+\.7z$' | head -n1)
+          ff=$(gh release view latest --repo BtbN/FFmpeg-Builds --json assets --jq '.assets[].name' | grep -E '^ffmpeg-n[0-9.]+-latest-win64-lgpl-shared-[0-9.]+\.zip$' | sort -V | tail -n1)
+          echo "mpv: $mpv; ffmpeg: $ff"
+          gh release download --repo shinchiro/mpv-winbuild-cmake --pattern "$mpv" --dir "$tmp"
+          gh release download latest --repo BtbN/FFmpeg-Builds --pattern "$ff" --dir "$tmp"
+          7z e -y "$tmp/$mpv" mpv.exe -o"$bin"
+          7z x -y "$tmp/$ff" -o"$tmp/ff"
+          cp "$tmp"/ff/*/bin/ffmpeg.exe "$tmp"/ff/*/bin/ffprobe.exe "$tmp"/ff/*/bin/*.dll "$bin"/
+          curl -fsSL -o "$bin/yt-dlp.exe" https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
+          ls -la "$bin"
+          test -s "$bin/mpv.exe"
+          "$bin/ffmpeg.exe" -hide_banner -version | head -n1
+          "$bin/yt-dlp.exe" --version
+
       - name: Проверки
         shell: bash
         run: |
           node --check src/app.js
           node --check src/whisper-vk.js
-          cargo test --locked
+          node --check src/host.js
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            cargo test --locked
+          else
+            cargo check --locked
+          fi
 
       - uses: tauri-apps/tauri-action@v0
         env:

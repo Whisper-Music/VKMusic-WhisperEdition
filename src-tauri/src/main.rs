@@ -15,6 +15,7 @@ mod lyrics;
 #[path = "../../src/core/rust/obs.rs"]
 mod obs;
 mod order;
+mod os;
 mod player;
 mod playlists;
 mod saved;
@@ -358,7 +359,10 @@ fn login_layout(app: &AppHandle, login: bool) {
     if host::active() {
         return;
     }
+    // Windows: страница входа — дочерний webview поверх интерфейса (ниже полосы), раскладывать нечего
+    #[cfg(target_os = "linux")]
     let Some(w) = app.get_window("main") else { return };
+    #[cfg(target_os = "linux")]
     let _ = app.run_on_main_thread(move || {
         use gtk::prelude::*;
         let Ok(vbox) = w.default_vbox() else { return };
@@ -410,6 +414,7 @@ fn login_close(app: &AppHandle) {
 /// Не `Webview::cookies` из wry: он отдаёт домен без ведущей точки («.vk.ru» → «vk.ru»), и кука сайта
 /// становится кукой одного хоста — не уходит на login.vk.ru, где ВК после перезапуска обновляет сессию
 /// (было: «Сессия ВКонтакте не распознана» до «Выйти»); и удалить такую куку через wry нельзя.
+#[cfg(target_os = "linux")]
 fn with_cookie_manager<T: Send + 'static>(
     app: &AppHandle,
     f: impl FnOnce(webkit2gtk::CookieManager, std::sync::mpsc::Sender<Res<T>>) + Send + 'static,
@@ -431,6 +436,7 @@ fn with_cookie_manager<T: Send + 'static>(
 }
 
 /// webkit_cookie_manager_get_all_cookies: в webkit2gtk 2.0 обёртки нет, у wry она закрытая — та же привязка.
+#[cfg(target_os = "linux")]
 mod wk {
     use gtk::gio;
     use gtk::glib::{self, translate::*};
@@ -476,6 +482,7 @@ mod wk {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn plain_cookie(c: &mut soup::Cookie) -> vk::Cookie {
     vk::Cookie {
         name: c.name().map(|s| s.to_string()).unwrap_or_default(),
@@ -486,6 +493,7 @@ fn plain_cookie(c: &mut soup::Cookie) -> vk::Cookie {
 }
 
 /// Все куки WebKit с настоящими доменами (с точкой — кука сайта и его поддоменов).
+#[cfg(target_os = "linux")]
 fn all_cookies(app: &AppHandle) -> Res<Vec<vk::Cookie>> {
     with_cookie_manager(app, |cm, tx| {
         wk::all_cookies(&cm, move |r| {
@@ -496,6 +504,7 @@ fn all_cookies(app: &AppHandle) -> Res<Vec<vk::Cookie>> {
 }
 
 /// Удалить куки, домен которых подходит под `own` (выход из сервиса).
+#[cfg(target_os = "linux")]
 fn delete_cookies(app: &AppHandle, own: fn(&str) -> bool) -> Res<()> {
     with_cookie_manager(app, move |cm, tx| {
         use webkit2gtk::CookieManagerExt;
@@ -529,6 +538,93 @@ fn delete_cookies(app: &AppHandle, own: fn(&str) -> bool) -> Res<()> {
         });
     })
 }
+
+/// Куки WebView2 (Windows): как на Linux, напрямую из хранилища — `ICoreWebView2CookieManager`, с доменом как есть
+/// (у куки сайта — с точкой); удаляется та же самая кука, что пришла из хранилища.
+#[cfg(windows)]
+mod wv2 {
+    use super::Res;
+    use tauri::{AppHandle, Manager};
+    use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2Cookie, ICoreWebView2CookieManager, ICoreWebView2_2};
+    use webview2_com::{take_pwstr, GetCookiesCompletedHandler};
+    use windows::core::{Interface, PCWSTR, PWSTR};
+
+    /// `f` получает все куки хранилища — в главном потоке; сам вызов — не из главного потока.
+    fn with_cookies<T: Send + 'static>(
+        app: &AppHandle,
+        f: impl FnOnce(ICoreWebView2CookieManager, Vec<ICoreWebView2Cookie>) -> Res<T> + Send + 'static,
+    ) -> Res<T> {
+        let w = app.get_webview("main").ok_or("Нет главного окна")?;
+        let (tx, rx) = std::sync::mpsc::channel::<Res<T>>();
+        w.with_webview(move |pw| {
+            let cm = unsafe { pw.controller().CoreWebView2().and_then(|v| v.cast::<ICoreWebView2_2>()).and_then(|v| v.CookieManager()) };
+            let cm = match cm {
+                Ok(cm) => cm,
+                Err(e) => {
+                    let _ = tx.send(Err(format!("Куки недоступны: {e}")));
+                    return;
+                }
+            };
+            let mgr = cm.clone();
+            let fail = tx.clone();
+            let done = GetCookiesCompletedHandler::create(Box::new(move |code, list| {
+                let r = (|| -> windows::core::Result<Vec<ICoreWebView2Cookie>> {
+                    code?;
+                    let mut out = Vec::new();
+                    if let Some(list) = list {
+                        let mut n = 0u32;
+                        unsafe { list.Count(&mut n)? };
+                        for i in 0..n {
+                            out.push(unsafe { list.GetValueAtIndex(i)? });
+                        }
+                    }
+                    Ok(out)
+                })();
+                let _ = tx.send(r.map_err(|e| format!("Куки недоступны: {e}")).and_then(|v| f(mgr, v)));
+                Ok(())
+            }));
+            if let Err(e) = unsafe { cm.GetCookies(PCWSTR::null(), &done) } {
+                let _ = fail.send(Err(format!("Куки недоступны: {e}")));
+            }
+        })
+        .map_err(|e| format!("Куки недоступны: {e}"))?;
+        rx.recv_timeout(std::time::Duration::from_secs(10)).map_err(|_| "Куки недоступны: нет ответа WebView2".to_string())?
+    }
+
+    fn text(get: impl FnOnce(*mut PWSTR) -> windows::core::Result<()>) -> String {
+        let mut p = PWSTR::null();
+        if get(&mut p).is_err() {
+            return String::new();
+        }
+        take_pwstr(p)
+    }
+
+    fn plain(c: &ICoreWebView2Cookie) -> crate::vk::Cookie {
+        unsafe {
+            crate::vk::Cookie {
+                name: text(|p| c.Name(p)),
+                value: text(|p| c.Value(p)),
+                domain: text(|p| c.Domain(p)),
+                path: Some(text(|p| c.Path(p))).filter(|p| !p.is_empty()).unwrap_or_else(|| "/".into()),
+            }
+        }
+    }
+
+    pub fn all_cookies(app: &AppHandle) -> Res<Vec<crate::vk::Cookie>> {
+        with_cookies(app, |_, all| Ok(all.iter().map(plain).collect()))
+    }
+
+    pub fn delete_cookies(app: &AppHandle, own: fn(&str) -> bool) -> Res<()> {
+        with_cookies(app, move |cm, all| {
+            for c in all.iter().filter(|c| own(&plain(c).domain)) {
+                unsafe { cm.DeleteCookie(c) }.map_err(|e| format!("Не удалось удалить куки: {e}"))?;
+            }
+            Ok(())
+        })
+    }
+}
+#[cfg(windows)]
+use wv2::{all_cookies, delete_cookies};
 
 /// Вход выполнен, если у сервиса есть кука сессии.
 fn logged_in(app: &AppHandle, service: &str) -> bool {
@@ -582,6 +678,9 @@ async fn svc_login(app: AppHandle, service: String) -> Res<()> {
             // как в NK-Player (Electron): со своим UA WebKitGTK страница vk.ru/login не догружается
             .user_agent(vk::USER_AGENT)
             .on_new_window(popup);
+        // Windows: GTK-раскладки нет — страница входа сама следует за размером окна
+        #[cfg(windows)]
+        let builder = builder.auto_resize();
         let size = main.inner_size().map_err(|e| e.to_string())?;
         let scale = main.scale_factor().unwrap_or(1.0);
         let size = size.to_logical::<f64>(scale);
@@ -1253,11 +1352,7 @@ fn local_delete(st: State<'_, AppState>, path: String) -> Res<()> {
 fn open_music_dir(st: State<'_, AppState>) -> Res<()> {
     let dir = st.music_dir();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    std::process::Command::new("xdg-open")
-        .arg(&dir)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("xdg-open: {e}"))
+    os::open(&dir)
 }
 
 // ───────────────────────── тексты песен (Genius) ─────────────────────────
@@ -1328,11 +1423,7 @@ fn lyrics_open(url: String) -> Res<()> {
     if !ok {
         return Err("Недопустимая ссылка".into());
     }
-    std::process::Command::new("xdg-open")
-        .arg(&url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("xdg-open: {e}"))
+    os::open(&url)
 }
 
 // ───────────────────────── статистика прослушивания ─────────────────────────

@@ -1,15 +1,13 @@
-//! Плеер: mpv в фоне, управление через JSON IPC (unix-сокет).
+//! Плеер: mpv в фоне, управление через JSON IPC (unix-сокет; на Windows — именованный канал).
 //!
 //! mpv играет любые локальные форматы (Opus, M4A/AAC, FLAC, MP3, OGG, WAV…) без потерь.
 //! Если стоит mpv-mpris, медиаклавиши тоже работают.
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::io::{BufRead, BufReader, Write};
-use std::os::unix::net::UnixStream;
-use std::os::unix::process::CommandExt;
+use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -33,7 +31,7 @@ pub enum PlayerEvent {
 }
 
 pub struct Player {
-    writer: Mutex<UnixStream>,
+    writer: Mutex<ipc::Writer>,
     child: Mutex<Child>,
     sock: PathBuf,
     /// с какой секунды и на паузе ли начать следующий загружаемый трек («Слушать вместе»: гость встаёт на позицию
@@ -44,6 +42,12 @@ pub struct Player {
 
 const CUE_TTL: Duration = Duration::from_secs(30);
 
+#[cfg(windows)]
+fn sock_path() -> PathBuf {
+    PathBuf::from(format!(r"\\.\pipe\vkmusic-mpv-{}", std::process::id()))
+}
+
+#[cfg(unix)]
 fn sock_path() -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -57,8 +61,9 @@ impl Player {
         F: Fn(PlayerEvent) + Send + 'static,
     {
         let sock = sock_path();
+        #[cfg(unix)]
         let _ = std::fs::remove_file(&sock);
-        let mut cmd = Command::new("mpv");
+        let mut cmd = crate::os::tool("mpv");
         cmd.args([
             "--idle=yes",
             "--no-video",
@@ -81,7 +86,9 @@ impl Player {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
         // mpv закроется вместе с приложением, даже если оно упадёт
+        #[cfg(target_os = "linux")]
         unsafe {
+            use std::os::unix::process::CommandExt;
             cmd.pre_exec(|| {
                 libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
                 Ok(())
@@ -94,10 +101,12 @@ impl Player {
                 format!("Не удалось запустить mpv: {e}")
             }
         })?;
+        #[cfg(windows)]
+        ipc::kill_with_app(&child);
 
         let started = Instant::now();
-        let stream = loop {
-            match UnixStream::connect(&sock) {
+        let (writer, reader) = loop {
+            match ipc::connect(&sock) {
                 Ok(s) => break s,
                 Err(_) if started.elapsed() < Duration::from_secs(6) => {
                     if let Ok(Some(st)) = child.try_wait() {
@@ -111,8 +120,7 @@ impl Player {
                 }
             }
         };
-        let reader = stream.try_clone().map_err(|e| e.to_string())?;
-        let player = Player { writer: Mutex::new(stream), child: Mutex::new(child), sock, cue: Mutex::new(None) };
+        let player = Player { writer: Mutex::new(writer), child: Mutex::new(child), sock, cue: Mutex::new(None) };
 
         for (id, prop) in [(1, "time-pos"), (2, "duration"), (3, "pause"), (4, "idle-active"), (5, "volume")] {
             player.send(json!(["observe_property", id, prop]))?;
@@ -199,16 +207,109 @@ impl Player {
         std::thread::sleep(Duration::from_millis(80));
         let _ = c.kill();
         let _ = c.wait();
+        #[cfg(unix)]
         let _ = std::fs::remove_file(&self.sock);
     }
 }
 
-fn read_events<F: Fn(PlayerEvent)>(reader: UnixStream, on_event: F) {
+/// Связь с mpv: на Linux — unix-сокет (отдельные дескрипторы на чтение и запись).
+#[cfg(unix)]
+mod ipc {
+    use std::io::{BufRead, BufReader};
+    use std::os::unix::net::UnixStream;
+    use std::path::Path;
+
+    pub type Writer = UnixStream;
+
+    pub fn connect(sock: &Path) -> std::io::Result<(Writer, impl Iterator<Item = String> + Send + 'static)> {
+        let w = UnixStream::connect(sock)?;
+        let r = w.try_clone()?;
+        Ok((w, BufReader::new(r).lines().map_while(Result::ok)))
+    }
+}
+
+/// Связь с mpv на Windows: именованный канал. Синхронный дескриптор канала не даёт писать, пока поток событий
+/// ждёт чтения, поэтому канал асинхронный (tokio): запись — через очередь, строки событий — в канал std.
+#[cfg(windows)]
+mod ipc {
+    use std::path::Path;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::windows::named_pipe::ClientOptions;
+    use tokio::sync::mpsc;
+
+    pub struct Writer(mpsc::UnboundedSender<Vec<u8>>);
+
+    impl std::io::Write for Writer {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0.send(buf.to_vec()).map_err(|_| std::io::ErrorKind::BrokenPipe)?;
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    pub fn connect(sock: &Path) -> std::io::Result<(Writer, impl Iterator<Item = String> + Send + 'static)> {
+        let rt = tauri::async_runtime::handle();
+        let pipe = {
+            let _ctx = rt.inner().enter();
+            ClientOptions::new().open(sock)?
+        };
+        let (rd, mut wr) = tokio::io::split(pipe);
+        let (wtx, mut wrx) = mpsc::unbounded_channel::<Vec<u8>>();
+        rt.spawn(async move {
+            while let Some(buf) = wrx.recv().await {
+                if wr.write_all(&buf).await.is_err() {
+                    break;
+                }
+            }
+        });
+        let (ltx, lrx) = std::sync::mpsc::channel::<String>();
+        rt.spawn(async move {
+            let mut lines = BufReader::new(rd).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                if ltx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        Ok((Writer(wtx), lrx.into_iter()))
+    }
+
+    /// mpv — в задание (Job Object) с KILL_ON_JOB_CLOSE: задание закрывается вместе с приложением,
+    /// даже если оно упало, — и mpv завершается (аналог PR_SET_PDEATHSIG на Linux).
+    pub fn kill_with_app(child: &std::process::Child) {
+        use std::os::windows::io::AsRawHandle;
+        use std::sync::OnceLock;
+        use windows_sys::Win32::System::JobObjects::*;
+        static JOB: OnceLock<usize> = OnceLock::new();
+        let job = *JOB.get_or_init(|| unsafe {
+            let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+            if job.is_null() {
+                return 0;
+            }
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const _,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            job as usize
+        });
+        if job != 0 {
+            unsafe {
+                AssignProcessToJobObject(job as _, child.as_raw_handle() as _);
+            }
+        }
+    }
+}
+
+fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event: F) {
     let mut st = PlayerState { idle: true, ..Default::default() };
     let mut last_emit = Instant::now() - Duration::from_secs(1);
-    let rd = BufReader::new(reader);
-    for line in rd.lines() {
-        let Ok(line) = line else { break };
+    for line in lines {
         let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
         match v.get("event").and_then(Value::as_str) {
             Some("property-change") => {

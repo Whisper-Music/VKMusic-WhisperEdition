@@ -7,7 +7,7 @@ use crate::vk::{ApiPlaylist, Track};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
-use std::os::unix::fs::OpenOptionsExt;
+use crate::os::Private;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -183,7 +183,7 @@ impl PlaylistStore {
         let tmp = self.path.with_extension("json.tmp");
         let data = serde_json::to_vec(d).map_err(|e| e.to_string())?;
         {
-            let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp).map_err(|e| e.to_string())?;
+            let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).private().open(&tmp).map_err(|e| e.to_string())?;
             f.write_all(&data).map_err(|e| e.to_string())?;
         }
         std::fs::rename(&tmp, &self.path).map_err(|e| e.to_string())

@@ -10,7 +10,6 @@
 use crate::whisper::{self, upload, WaResponse};
 use crate::{library, AppState};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tauri::{AppHandle, State};
 
 type Res<T> = Result<T, String>;
@@ -69,7 +68,7 @@ fn accepted_audio(src: &Path) -> Res<Vec<u8>> {
     let tmp = std::env::temp_dir().join(format!("vkmusic-wa-{}", std::process::id()));
     for (fmt, ext) in [("ogg", "ogg"), ("ipod", "m4a")] {
         let out = tmp.with_extension(ext);
-        let ok = Command::new("ffmpeg")
+        let ok = crate::os::tool("ffmpeg")
             .args(["-v", "error", "-y", "-i"])
             .arg(src)
             .args(["-map", "0:a:0", "-c", "copy", "-f", fmt])

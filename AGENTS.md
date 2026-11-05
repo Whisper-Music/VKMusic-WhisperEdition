@@ -5,7 +5,7 @@
 
 ## Что это
 
-**VK Music** — локальный музыкальный плеер для Linux (Arch), Rust + Tauri 2.
+**VK Music** — локальный музыкальный плеер для Linux (Arch) и Windows, Rust + Tauri 2.
 Библиотека — папка `~/Music/vk`; треки добавляются через yt-dlp; воспроизведение — mpv; оформление — темы `.wmt`
 (формат Whisper Music Theme из [YandexMusic-WhisperEdition](https://github.com/Whisper-Music/YandexMusic-WhisperEdition)).
 Приложение построено на **ядре Whisper** — [whisper-core](https://github.com/Whisper-Music/whisper-core), подмодуль
@@ -45,11 +45,22 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
 * Перед тем как считать работу готовой: `cargo build --release` без предупреждений, `cargo test`, и
   `node --check src/app.js src/whisper-vk.js src/host.js`.
 * Выпуски — `.github/workflows/release.yml` (как у Whisper Yandex): тег `vX.Y.Z` или запуск вручную → черновик в
-  GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc).
-  Windows пока нет: код только под Linux (mpv через unix-сокет, куки WebKitGTK, GTK, Secret Service, fc-list) —
-  порт и автообновление (tauri-plugin-updater) возьмёт на себя другой разработчик; обновления — AUR или вручную. Версия — одинаковая в `src-tauri/tauri.conf.json` и `src-tauri/Cargo.toml` (проверяет `guard`).
+  GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc) и
+  Windows x64 (NSIS `-setup.exe`, просьба владельца 2026-11-05). Автообновления (tauri-plugin-updater) нет: AUR
+  или новым установщиком. Версия — одинаковая в `src-tauri/tauri.conf.json` и `src-tauri/Cargo.toml` (проверяет `guard`).
   CLI Tauri — `npx @tauri-apps/cli@2` (своего package.json нет); локально: `npx --yes @tauri-apps/cli@2 build --bundles deb`.
   Ярлык в `.deb` — `packaging/vkmusic.desktop` (`bundle.linux.deb.desktopTemplate`: нужен `%u` для ссылок whisper://).
+* Windows (`src-tauri/tauri.windows.conf.json` — Tauri сам подмешивает его при сборке на Windows): установщик NSIS
+  для текущего пользователя; `bin/*` → папка `bin` рядом с `vkmusic.exe` — mpv (shinchiro), ffmpeg/ffprobe с DLL
+  (BtbN, LGPL shared), yt-dlp.exe: их качает `release.yml` в `src-tauri/bin` (в git не входит). Без этой папки
+  сборка под Windows не пройдёт (tauri-build проверяет ресурсы). Всё платформенное — в `os.rs` (права на файлы —
+  `Private`, программы — `os::tool`: на Windows — из `bin` и без консольного окна, папки/ссылки — `os::open`) и под
+  `cfg`: mpv — именованный канал `\\.\pipe\vkmusic-mpv-<pid>` через tokio (синхронный канал не даёт писать,
+  пока поток событий ждёт чтения) и Job Object вместо `PR_SET_PDEATHSIG`; куки — `ICoreWebView2CookieManager`
+  (`wv2` в `main.rs`, не `Webview::cookies` из wry — по той же причине, что на Linux); страница входа —
+  дочерний webview с `auto_resize` (GTK-раскладки нет); ключ архива — диспетчер учётных данных (без запасного файла);
+  шрифты — `InstalledFontCollection` через PowerShell; `vkm://` в WebView2 — `http://vkm.localhost/`
+  (`host::vkm_base`). Тесты на Windows не гоняются (только `cargo check` в CI).
 * Идентификатор — `vkmusic-whisper` (`IDENT` в main.rs = `identifier` в tauri.conf.json, тест `ident_matches_config`):
   папки WebKit `~/.local/share/vkmusic-whisper` (куки входа, localStorage), запись ключа архива в связке ключей.
   Прежний `ru.bobrik.vkmusic` переносится при запуске (`migrate_ident`, `secret::from_old`). Настройки приложения —
@@ -89,6 +100,7 @@ src-tauri/src/whisper_host.rs  что приложение даёт Rust ядр�
 src-tauri/src/whisper_vk.rs    архив для VK Music: wa_save_track (файл трека библиотеки по ключу), wa_play (трек архива → mpv)
 src-tauri/src/secret.rs    ключ Whisper Archive: Secret Service (keyring), без связки ключей — файл 0600 (secret_backend)
 src-tauri/src/deeplink.rs  ссылки whisper://room/КОД: deep-link + single-instance, room_link_take, событие room-link
+src-tauri/src/os.rs        Linux/Windows: права на файлы (`Private`), внешние программы (`tool`, `bin_dir`), `open`
 src-tauri/src/host.rs      `--host [ПОРТ]`: интерфейс в браузере — HTTP-сервер на 127.0.0.1 (invoke, SSE-события, vkm/wa)
 src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков

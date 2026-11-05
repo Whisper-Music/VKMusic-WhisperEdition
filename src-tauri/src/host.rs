@@ -55,6 +55,9 @@ pub fn active() -> bool {
 pub fn vkm_base() -> &'static str {
     if active() {
         "/p/vkm/"
+    } else if cfg!(windows) {
+        // WebView2 открывает свои схемы как http://<схема>.localhost
+        "http://vkm.localhost/"
     } else {
         "vkm://localhost/"
     }
@@ -107,8 +110,8 @@ pub fn start(app: &AppHandle, port: u16) -> Result<String, String> {
 pub fn open_browser() {
     let Some(h) = HOST.get() else { return };
     let url = format!("http://127.0.0.1:{}/?key={}", h.port, h.key);
-    if let Err(e) = std::process::Command::new("xdg-open").arg(&url).spawn() {
-        eprintln!("vkmusic: не удалось открыть браузер (xdg-open: {e}); откройте адрес сами");
+    if let Err(e) = crate::os::open(&url) {
+        eprintln!("vkmusic: не удалось открыть браузер ({e}); откройте адрес сами");
     }
 }
 
@@ -139,26 +142,34 @@ pub fn exit_on_signal(app: &AppHandle) {
 
 /// Ключ доступа: из файла или новый (32 шестнадцатеричных знака).
 fn load_key() -> Result<String, String> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+    use crate::os::Private;
     let dir = crate::config::config_dir();
     let path = dir.join(KEY_FILE);
     if let Ok(k) = std::fs::read_to_string(&path) {
         let k = k.trim();
         if valid_key(k) {
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            }
             return Ok(k.to_string());
         }
     }
     let mut r = [0u8; 16];
     getrandom::fill(&mut r).map_err(|e| e.to_string())?;
     let key: String = r.iter().map(|b| format!("{b:02x}")).collect();
-    std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir).map_err(|e| e.to_string())?;
+    let mut d = std::fs::DirBuilder::new();
+    d.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut d, 0o700);
+    d.create(&dir).map_err(|e| e.to_string())?;
     let _ = std::fs::remove_file(&path);
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true).create_new(true).private();
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut o, libc::O_NOFOLLOW);
+    let mut f = o
         .open(&path)
         .map_err(|e| format!("Не удалось сохранить ключ доступа: {e}"))?;
     f.write_all(key.as_bytes()).map_err(|e| format!("Не удалось сохранить ключ доступа: {e}"))?;

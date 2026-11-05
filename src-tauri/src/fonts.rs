@@ -1,9 +1,29 @@
-//! Системные шрифты для выбора шрифта интерфейса — список семейств из fontconfig (`fc-list`).
+//! Системные шрифты для выбора шрифта интерфейса — список семейств из fontconfig (`fc-list`), на Windows — из .NET.
 
 use std::collections::BTreeMap;
 use std::process::{Command, Stdio};
 
+/// Семейства шрифтов, установленных в системе, по алфавиту, без повторов (Windows — через .NET:
+/// `InstalledFontCollection`, вывод — в UTF-8, иначе русские имена придут в кодировке консоли).
+#[cfg(windows)]
+pub fn list() -> Result<Vec<String>, String> {
+    let script = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; Add-Type -AssemblyName System.Drawing; \
+                  (New-Object System.Drawing.Text.InstalledFontCollection).Families | ForEach-Object { $_.Name }";
+    let mut cmd = Command::new("powershell");
+    crate::os::hide_console(&mut cmd);
+    let out = cmd
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("Список шрифтов недоступен: {e}"))?;
+    if !out.status.success() {
+        return Err("Список шрифтов недоступен".into());
+    }
+    Ok(parse(&String::from_utf8_lossy(&out.stdout)))
+}
+
 /// Семейства шрифтов, установленных в системе, по алфавиту, без повторов.
+#[cfg(not(windows))]
 pub fn list() -> Result<Vec<String>, String> {
     let out = Command::new("fc-list")
         .args(["--format", "%{family[0]}\n", ":"])

@@ -1,6 +1,7 @@
 //! Секреты приложения — сейчас один: API-ключ Whisper Archive (wa_…).
 //!
-//! * Обычно — Secret Service (GNOME Keyring, KWallet, KeePassXC…) через крейт keyring.
+//! * Обычно — Secret Service (GNOME Keyring, KWallet, KeePassXC…) через крейт keyring; на Windows — диспетчер
+//!   учётных данных.
 //! * Если «связки ключей» в системе нет (минимальные оконные менеджеры), ключ кладётся в файл
 //!   `~/.config/vkmusic/wa_token.secret` с правами 0600. Это открытый текст на диске, поэтому тихо это не происходит:
 //!   `secret_backend` сообщает интерфейсу, где лежит ключ, и он предупреждает. Появилась связка ключей —
@@ -9,9 +10,7 @@
 //! В JavaScript ключ не отдаётся никогда: интерфейс передаёт его один раз (`wa_token_set` ядра).
 
 use keyring::Entry;
-use std::fs::{self, OpenOptions};
-use std::io::{Read, Write};
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::fs;
 use std::path::PathBuf;
 
 const SERVICE: &str = crate::IDENT;
@@ -42,10 +41,24 @@ fn no_keyring(e: &keyring::Error) -> bool {
     matches!(e, keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_))
 }
 
+/// Windows: связка ключей — диспетчер учётных данных, он есть всегда; запасного файла нет.
+#[cfg(not(unix))]
+fn file_read() -> Option<String> {
+    None
+}
+
+#[cfg(not(unix))]
+fn file_write(_: &str) -> Result<(), String> {
+    Err("Диспетчер учётных данных Windows недоступен".into())
+}
+
 /// Файл читается, только если это обычный файл (не ссылка), он наш и не больше 16 КБ. Проверка — по открытому
 /// дескриптору (O_NOFOLLOW): подменить файл между проверкой и чтением нельзя.
+#[cfg(unix)]
 fn file_read() -> Option<String> {
-    let mut f = OpenOptions::new()
+    use std::io::Read;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
+    let mut f = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(file())
@@ -67,14 +80,17 @@ fn file_read() -> Option<String> {
 
 /// Запись через новый временный файл (O_EXCL, 0600) и переименование: старый файл на запись не открывается,
 /// подложенная на его место ссылка не уведёт ключ в чужой файл, прерванная запись не оставит половину ключа.
+#[cfg(unix)]
 fn file_write(token: &str) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let p = file();
     let dir = p.parent().ok_or("Не найдена папка настроек")?;
     fs::DirBuilder::new().recursive(true).mode(0o700).create(dir).map_err(|e| e.to_string())?;
     let mut r = [0u8; 8];
     getrandom::fill(&mut r).map_err(|e| e.to_string())?;
     let tmp = dir.join(format!(".{FILE}.{:016x}", u64::from_le_bytes(r)));
-    let mut f = OpenOptions::new()
+    let mut f = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)

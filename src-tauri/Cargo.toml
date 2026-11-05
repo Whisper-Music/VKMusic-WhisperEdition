@@ -13,12 +13,6 @@ tauri-build = { version = "2.7", features = [] }
 # custom-protocol: интерфейс встраивается в бинарник, поэтому хватает обычного `cargo build`/`cargo run`
 # unstable: страница входа ВК — второй webview в главном окне (Window::add_child), как в NK-Player
 tauri = { version = "2.12", features = ["custom-protocol", "unstable"] }
-# раскладка главного окна на время входа ВК (тот же gtk 0.18, что у Tauri)
-gtk = "0.18"
-# куки WebKit как есть: wry (Webview::cookies) теряет ведущую точку домена — «.vk.ru» становится «vk.ru»,
-# кука перестаёт уходить на login.vk.ru, а удалить её через wry нельзя (те же версии, что у wry)
-webkit2gtk = "2.0"
-soup3 = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 flate2 = "1"
@@ -41,6 +35,25 @@ getrandom = "0.3"
 tauri-plugin-deep-link = "2"
 # второй запуск (в том числе по ссылке whisper://) не открывает новую копию, а отдаёт ссылку уже запущенной
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# раскладка главного окна на время входа ВК (тот же gtk 0.18, что у Tauri)
+gtk = "0.18"
+# куки WebKit как есть: wry (Webview::cookies) теряет ведущую точку домена — «.vk.ru» становится «vk.ru»,
+# кука перестаёт уходить на login.vk.ru, а удалить её через wry нельзя (те же версии, что у wry)
+webkit2gtk = "2.0"
+soup3 = "0.5"
 # ключ Whisper Archive — в системной «связке ключей» (Secret Service: GNOME Keyring, KWallet, KeePassXC);
 # vendored — libdbus собирается вместе с приложением
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
+
+[target.'cfg(windows)'.dependencies]
+# ключ Whisper Archive — в диспетчере учётных данных Windows
+keyring = { version = "3", features = ["windows-native"] }
+# куки WebView2 как есть (те же версии, что у wry)
+webview2-com = "0.39"
+windows = "0.62"
+# mpv: именованный канал (асинхронный — чтение и запись одновременно)
+tokio = { version = "1", features = ["time", "sync", "net", "io-util", "rt"] }
+# mpv закрывается вместе с приложением (Job Object)
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects"] }
