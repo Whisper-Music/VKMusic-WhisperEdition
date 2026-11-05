@@ -472,14 +472,27 @@ function quality(t) {
  * «в библиотеку» / «убрать из библиотеки» и (SoundCloud) «скачать через yt-dlp».
  */
 /** Значок трека для строки списка: обложка или заглушка (у Whisper — img прямо в li). */
+/**
+ * Заглушка обложки: трек без обложки (или она не загрузилась) — нота на приглушённом фоне, а не пустое место.
+ * Своя постоянная SVG (без данных), цвета полупрозрачные — ложится на фон любой темы.
+ */
+const NO_COVER = "data:image/svg+xml," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" fill="rgba(255,255,255,0.07)"/>' +
+  '<g fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M20 31V15l12-2.5v15.5"/><circle cx="17" cy="31" r="3"/><circle cx="29" cy="28" r="3"/></g></svg>');
+
+/** Обложка или заглушка; не загрузилась — заглушка. */
+function setCover(img, src) {
+  img.onerror = src ? () => ((img.onerror = null), (img.src = NO_COVER)) : null;
+  img.src = src || NO_COVER;
+  img.classList.toggle("nocover", !src);
+}
+
 function trackImg(src) {
   const img = el("img");
   img.alt = "";
   img.loading = "lazy";
-  if (src) {
-    img.src = src;
-    img.onerror = () => img.removeAttribute("src");
-  }
+  setCover(img, src);
   return img;
 }
 
@@ -1000,13 +1013,89 @@ function searchChips() {
   }));
 }
 
+// ── история поиска (как у Whisper Yandex): пустое поле в фокусе — список прошлых запросов. Попадают запросы,
+// подтверждённые Enter, и те, по которым что-то включили из результатов. Только в localStorage этого компьютера.
+const SEARCH_HIST_KEY = "vkm_search_hist", SEARCH_HIST_MAX = 30;
+const searchHist = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(SEARCH_HIST_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 200)).slice(0, SEARCH_HIST_MAX) : [];
+  } catch {
+    return [];
+  }
+})();
+function saveSearchHist() {
+  try { localStorage.setItem(SEARCH_HIST_KEY, JSON.stringify(searchHist)); } catch {}
+}
+function pushSearchHist(q) {
+  q = String(q || "").trim().slice(0, 200);
+  if (!q || isUrl(q)) return;
+  const i = searchHist.findIndex((x) => x.toLowerCase() === q.toLowerCase());
+  if (i >= 0) searchHist.splice(i, 1);
+  searchHist.unshift(q);
+  if (searchHist.length > SEARCH_HIST_MAX) searchHist.length = SEARCH_HIST_MAX;
+  saveSearchHist();
+}
+/** Пустое поле поиска — страница истории. */
+function showSearchHistory() {
+  S.sr = { kind: "history", q: "", lib: [] };
+  if (S.page !== "search") go("search");
+  else rerender();
+}
+function renderSearchHist(c) {
+  if (!searchHist.length) {
+    c.append(el("p", "status", L("История поиска пуста.")));
+    return;
+  }
+  const list = el("ul", "list");
+  const CLOCK = '<svg viewBox="0 0 24 24" width="18" height="18"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7v5.2l3.4 2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+  for (const q of searchHist) {
+    const li = el("li", "histitem");
+    const ico = el("span", "hico");
+    ico.innerHTML = CLOCK; // свой постоянный значок, данных в разметке нет
+    const del = el("button", "hdel", "✕");
+    del.title = L("Удалить из истории");
+    del.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const i = searchHist.indexOf(q);
+      if (i >= 0) searchHist.splice(i, 1);
+      saveSearchHist();
+      rerender();
+    });
+    li.append(ico, el("span", "t", q), del);
+    li.addEventListener("click", () => {
+      $("#search").value = q;
+      pushSearchHist(q);
+      runSearch(q, true);
+    });
+    list.append(li);
+  }
+  const clr = el("li", "histclear");
+  clr.append(button(null, L("Очистить историю"), "nav", () => {
+    searchHist.length = 0;
+    saveSearchHist();
+    rerender();
+  }));
+  list.append(clr);
+  c.append(list);
+}
+$("#search").addEventListener("focus", () => {
+  if (!$("#search").value.trim()) showSearchHistory();
+});
+// включили трек из результатов — запрос в историю
+$("#content").addEventListener("click", (ev) => {
+  if (S.page === "search" && S.sr && S.sr.kind === "text" && ev.target.closest("ul.list > li")) pushSearchHist(S.sr.q);
+}, true);
+
 let searchTimer = null;
 $("#search").addEventListener("input", () => {
   clearTimeout(searchTimer);
   const q = $("#search").value.trim();
   if (!q) {
     endSearch();
-    if (S.page === "search") go(S.lastPage || "library");
+    // поле в фокусе — история, иначе обратно
+    if (document.activeElement === $("#search")) showSearchHistory();
+    else if (S.page === "search") go(S.lastPage || "library");
     return;
   }
   searchTimer = setTimeout(() => runSearch(q), SEARCH_DELAY);
@@ -1019,6 +1108,7 @@ $("#search").addEventListener("keydown", (ev) => {
     if (!q) return;
     // Enter по ссылке (не SoundCloud) — скачать через yt-dlp
     if (isUrl(q) && !isScUrl(q)) return downloadLink(q);
+    pushSearchHist(q);
     runSearch(q, true);
   } else if (ev.key === "Escape") {
     ev.currentTarget.value = "";
@@ -1136,6 +1226,12 @@ function renderSearch() {
   if (!sr) return go(S.lastPage || "library");
   const keep = scroller().scrollTop;
   c.replaceChildren();
+  if (sr.kind === "history") {
+    setHead(L("Поиск"), "");
+    syncBack();
+    setChips([]);
+    return renderSearchHist(c);
+  }
   setHead(L("Поиск"), `«${sr.q}»`);
   syncBack();
   searchChips();
@@ -1223,14 +1319,8 @@ listen("svc://event", (ev) => {
 });
 
 const NOTES = {
-  vk:
-    "«Мои треки» ВКонтакте синхронизируются с библиотекой: при запуске, после входа и по кнопке обновления; после выхода они из библиотеки убираются. " +
-    "Треки ВК из библиотеки кэшируются при прослушивании и скачиваются кнопкой со стрелкой. " +
-    "Ссылка запрашивается при нажатии «играть». ВКонтакте не разрешает сторонние клиенты для музыки — пользуйтесь на свой риск: аккаунт могут ограничить.",
-  sc:
-    "Ваши лайки SoundCloud синхронизируются с библиотекой: при запуске, после входа и по кнопке обновления. " +
-    "Поиск и прослушивание работают и без входа; со входом SoundCloud узнаёт ваш аккаунт (например, полные треки Go+ при подписке). " +
-    "Трек SoundCloud можно скачать файлом через yt-dlp кнопкой со стрелкой. Это неофициальный клиент сайта.",
+  vk: "«Мои треки» синхронизируются с библиотекой. ВКонтакте не разрешает сторонние клиенты — пользуйтесь на свой риск.",
+  sc: "Лайки синхронизируются с библиотекой. Поиск работает и без входа.",
 };
 
 function renderServiceCard(id) {
@@ -2193,7 +2283,8 @@ function switchRow(text, on, onChange) {
 
 function renderSettings() {
   const page = $("#settingsPage");
-  const tab = S.setTab || "look";
+  // «Текст песен» теперь — карточка вкладки «Общее» (прежняя вкладка "play" — туда же)
+  const tab = !S.setTab || S.setTab === "play" ? (S.setTab ? "ui" : "look") : S.setTab;
   page.dataset.tab = tab;
   page.querySelectorAll("#setTabs .chip").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   page.querySelectorAll(":scope > .card.own").forEach((x) => x.remove());
@@ -2215,7 +2306,7 @@ document.querySelectorAll("#setTabs .chip").forEach((b) =>
 );
 
 function renderLyricsSettings() {
-  const c = setCard("play", L("Текст песен"));
+  const c = setCard("ui", L("Текст песен"));
   const toggle = (label, key, pref) =>
     c.append(switchRow(L(label), S[key], async (on) => {
       S[key] = on;
@@ -2224,7 +2315,7 @@ function renderLyricsSettings() {
     }));
   toggle("Скрывать строки частей песни: [Куплет], [Припев], [Бридж]…", "lyrHideParts", "lyrics_hide_parts");
   toggle("Убирать пустые строки между частями", "lyrCompact", "lyrics_compact");
-  c.append(el("p", "status", L("Текст играющего трека — нажатием на обложку в плеере или на карточку «Сейчас играет» в библиотеке.")));
+  c.append(el("p", "status", L("Текст — кнопкой в плеере или нажатием на обложку.")));
 }
 
 // ───────────────────────── настройки: общее (язык) ─────────────────────────
@@ -2233,7 +2324,6 @@ const LANGS = [["ru", "Русский"], ["en", "English"]];
 
 function renderGeneral() {
   const c = setCard("ui", L("Язык"));
-  c.append(el("p", "status", L("Язык интерфейса. Сообщения сервисов и названия треков остаются как есть.")));
   const row = el("div", "lyseg lang-switch");
   for (const [code, name] of LANGS) {
     const b = el("button", "chip" + (I18N.lang === code ? " active" : ""), name);
@@ -2268,7 +2358,7 @@ const tilde = (p) => p.replace(/^\/home\/[^/]+/, "~");
 
 function renderStorage() {
   const c = setCard("out", L("Загрузки"));
-  c.append(el("p", "status", L("Кнопка со стрелкой у трека библиотеки сохраняет его файлом в эту папку. Пустое поле — ~/Downloads.")));
+  c.append(el("p", "status", L("Куда кнопка со стрелкой сохраняет треки. Пусто — ~/Downloads.")));
   const row = el("form", "row storage-row");
   const input = el("input", "field");
   input.type = "text";
@@ -2304,8 +2394,7 @@ function renderStorage() {
     el(
       "p",
       "status",
-      L("Включённый трек библиотеки — файл или трек сервиса — сохраняется в кэш и дальше играет оттуда, без запросов к сервису. Следом кэшируется следующий трек очереди. ") +
-        L("Трек, убранный из библиотеки, удаляется из кэша.")
+      L("Включённые треки библиотеки сохраняются сюда и дальше играют без запросов к сервису.")
     )
   );
   // размер — отдельной заметной строкой между описанием и кнопкой
@@ -2807,7 +2896,11 @@ function styleCard(id, name, desc, author, preview, colors, removable) {
 function renderThemes() {
   const c = setCard("look", null);
   const head = el("div", "stylehead");
-  head.append(el("h3", null, L("Стиль оформления")));
+  // компактный вид — стили кружочками (как у Whisper Yandex): выбор запоминается, пока не выбирали — сам, когда стилей много
+  const view = el("button", "stview");
+  view.type = "button";
+  view.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="6" cy="6" r="3" fill="currentColor"/><circle cx="18" cy="6" r="3" fill="currentColor"/><circle cx="6" cy="18" r="3" fill="currentColor"/><circle cx="18" cy="18" r="3" fill="currentColor"/></svg>';
+  head.append(el("h3", null, L("Стиль оформления")), view);
   c.append(head);
   const pick = el("div", "stylepick");
   for (const [id, name, desc] of BASE_CARDS) pick.append(styleCard(id, L(name), L(desc), "Whisper Music", null, []));
@@ -2815,6 +2908,22 @@ function renderThemes() {
     pick.append(styleCard(t.id, t.name, t.description || "", t.author || "", t.preview, [t.accent, t.accent2].filter(Boolean), !t.builtin));
   }
   c.append(pick);
+  const applyView = () => {
+    let saved = null;
+    try { saved = localStorage.getItem("vkm_style_view"); } catch {}
+    const compact = saved ? saved === "compact" : pick.children.length >= 6;
+    pick.classList.toggle("compact", compact);
+    view.classList.toggle("on", compact);
+    view.setAttribute("aria-pressed", String(compact));
+    view.title = compact ? L("Обычный вид: карточки с описанием") : L("Компактный вид: стили кружочками");
+    // в компактном виде описание прячется — остаётся во всплывающей подсказке
+    for (const card of pick.children) if (!card.title) card.title = card.querySelector("small")?.textContent || "";
+  };
+  view.addEventListener("click", () => {
+    try { localStorage.setItem("vkm_style_view", pick.classList.contains("compact") ? "full" : "compact"); } catch {}
+    applyView();
+  });
+  applyView();
   const input = el("input");
   input.type = "file";
   input.accept = ".wmt,.zip";
@@ -2826,7 +2935,7 @@ function renderThemes() {
   });
   const row = el("div", "row");
   row.append(button("download", L("Магазин тем"), "primary", () => go("store")), button("upload", L("Загрузить .wmt"), "", () => input.click()), input);
-  c.append(row, el("p", "status stylecap", L("Темы Whisper (.wmt) применяются целиком: их можно перетащить прямо в окно. Свои темы лежат в ~/.config/vkmusic/themes.")));
+  c.append(row, el("p", "status stylecap", L("Файл темы .wmt можно перетащить прямо в окно.")));
   // список тем — с диска (свои могли появиться), карточка перерисуется
   invoke("themes_list").then((list) => {
     const same = JSON.stringify(list) === JSON.stringify(S.themes);
@@ -3325,7 +3434,7 @@ function updateNpSide() {
   const src = !t ? "" : t.service ? SERVICES[t.service].name : quality(t);
   $("#fInfo").textContent = t ? [src, t.duration ? fmt(t.duration) : ""].filter(Boolean).join(" · ") : "";
   const img = $("#fCover");
-  if (t && t.cover) img.src = t.cover;
+  if (t) setCover(img, t.cover);
   else img.removeAttribute("src");
   $("#fBg").style.backgroundImage = t && t.cover ? `url("${t.cover}")` : "none";
   $("#fLyrBtn").disabled = !t;
@@ -3775,7 +3884,7 @@ function updateNowPlaying() {
   $("#pTitle").textContent = t ? t.title : L("Ничего не играет");
   $("#pArtist").textContent = t ? t.artist : "";
   const img = $("#cover");
-  if (t && t.cover) img.src = t.cover;
+  if (t) setCover(img, t.cover);
   else img.removeAttribute("src");
   document.title = t ? `${t.artist} — ${t.title}` : "VK Music";
   syncNpAdd();

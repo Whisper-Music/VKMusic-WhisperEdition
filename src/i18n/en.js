@@ -111,10 +111,6 @@ window.I18N_DICTS.en = {
   "Ссылка на плейлист или альбом скачивается целиком. Ссылка на SoundCloud сначала показывается в поиске — скачать можно кнопкой со стрелкой.":
     "A playlist or album link is downloaded as a whole. A SoundCloud link is shown in search first — download it with the arrow button.",
   "Открыть папку с музыкой ({0})": "Open the music folder ({0})",
-  "«Мои треки» ВКонтакте синхронизируются с библиотекой: при запуске, после входа и по кнопке обновления; после выхода они из библиотеки убираются. Треки ВК из библиотеки кэшируются при прослушивании и скачиваются кнопкой со стрелкой. Ссылка запрашивается при нажатии «играть». ВКонтакте не разрешает сторонние клиенты для музыки — пользуйтесь на свой риск: аккаунт могут ограничить.":
-    "Your VK “My music” is synced with the library: on start, after login and with the refresh button; it is removed from the library when you log out. VK tracks in the library are cached while playing and downloaded with the arrow button. A stream link is requested when you press play. VK does not allow third-party music clients — use at your own risk: the account may be restricted.",
-  "Ваши лайки SoundCloud синхронизируются с библиотекой: при запуске, после входа и по кнопке обновления. Поиск и прослушивание работают и без входа; со входом SoundCloud узнаёт ваш аккаунт (например, полные треки Go+ при подписке). Трек SoundCloud можно скачать файлом через yt-dlp кнопкой со стрелкой. Это неофициальный клиент сайта.":
-    "Your SoundCloud likes are synced with the library: on start, after login and with the refresh button. Search and playback work without logging in; when logged in SoundCloud recognizes your account (e.g. full Go+ tracks with a subscription). A SoundCloud track can be downloaded as a file with yt-dlp using the arrow button. This is an unofficial client of the site.",
 
   // ── статистика ──
   "максимум — {0}": "max — {0}",
@@ -193,11 +189,9 @@ window.I18N_DICTS.en = {
 
   // ── настройки: общее ──
   "Язык": "Language",
-  "Язык интерфейса. Сообщения сервисов и названия треков остаются как есть.": "Interface language. Service messages and track titles stay as they are.",
 
   // ── настройки: хранилище ──
   "Загрузки": "Downloads",
-  "Кнопка со стрелкой у трека библиотеки сохраняет его файлом в эту папку. Пустое поле — ~/Downloads.": "The arrow button on a library track saves it as a file to this folder. Empty — ~/Downloads.",
   "Путь загрузки": "Download path",
   "Папка загрузок: {0}": "Download folder: {0}",
   "Кэш треков": "Track cache",
@@ -205,7 +199,6 @@ window.I18N_DICTS.en = {
   "Кэш пуст": "Cache is empty",
   "Включённый трек библиотеки — файл или трек сервиса — сохраняется в кэш и дальше играет оттуда, без запросов к сервису. Следом кэшируется следующий трек очереди. ":
     "A library track you play — a file or a service track — is saved to the cache and then plays from there, without requests to the service. The next track in the queue is cached right after. ",
-  "Трек, убранный из библиотеки, удаляется из кэша.": "A track removed from the library is deleted from the cache.",
   "Очистить кэш": "Clear cache",
   "Кэш очищен": "Cache cleared",
   "Удалить все треки из кэша?": "Delete all tracks from the cache?",
@@ -320,11 +313,9 @@ window.I18N_DICTS.en = {
   "Пауза": "Pause",
   "Войдите во ВКонтакте, чтобы слушать VK Микс": "Log in to VK to listen to VK Mix",
   "Нажми, чтобы включить VK Микс": "Press to start VK Mix",
-  "Текст играющего трека — нажатием на обложку в плеере или на карточку «Сейчас играет» в библиотеке.": "Lyrics of the playing track — click the cover in the player or the “Now playing” card in the library.",
   "Стиль оформления": "Style",
   "Шрифт": "Font",
   "Фон и панели": "Background and panels",
-  "Темы Whisper (.wmt) применяются целиком: их можно перетащить прямо в окно. Свои темы лежат в ~/.config/vkmusic/themes.": "Whisper themes (.wmt) apply in full; you can drop a file right into the window. Your themes live in ~/.config/vkmusic/themes.",
   "Темы из репозитория whisper-themes: у VK Music та же разметка, что у Whisper, поэтому тема применяется целиком — цвета, шрифты, фон и оформление.": "Themes from the whisper-themes repository: VK Music has the same layout as Whisper, so a theme applies in full — colors, fonts, background and styling.",
   "#{0} из {1} по времени прослушивания": "#{0} of {1} by listening time",
   "Последний раз — {0}": "Last time — {0}",
@@ -346,6 +337,17 @@ window.I18N_DICTS.en = {
   "Текст песни": "Lyrics",
   "Сначала включите трек": "Play a track first",
   "Совпадение {0}%": "{0}% match",
+  "История поиска пуста.": "Search history is empty.",
+  "Удалить из истории": "Remove from history",
+  "Очистить историю": "Clear history",
+  "Лайки синхронизируются с библиотекой. Поиск работает и без входа.": "Likes sync with your library. Search works without signing in.",
+  "«Мои треки» синхронизируются с библиотекой. ВКонтакте не разрешает сторонние клиенты — пользуйтесь на свой риск.": "“My music” syncs with your library. VK doesn't allow third-party clients — use at your own risk.",
+  "Файл темы .wmt можно перетащить прямо в окно.": "You can drop a .wmt theme file right into the window.",
+  "Включённые треки библиотеки сохраняются сюда и дальше играют без запросов к сервису.": "Library tracks you play are saved here and then play without requests to the service.",
+  "Куда кнопка со стрелкой сохраняет треки. Пусто — ~/Downloads.": "Where the arrow button saves tracks. Empty — ~/Downloads.",
+  "Текст — кнопкой в плеере или нажатием на обложку.": "Lyrics: the button in the player, or click the cover.",
+  "Обычный вид: карточки с описанием": "Regular view: cards with descriptions",
+  "Компактный вид: стили кружочками": "Compact view: styles as circles",
   "Добавить треки": "Add tracks",
   "В плейлисте пока нет треков. Добавьте их из библиотеки ниже или у любого трека ВКонтакте: «⋯» → «В плейлист».": "The playlist is empty. Add tracks from your library below, or from any VK track: “⋯” → “Add to playlist”.",
   "Добавить из библиотеки": "Add from library",

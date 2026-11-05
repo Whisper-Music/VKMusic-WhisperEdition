@@ -316,3 +316,33 @@ body.login-mode .toast { display: none; }
 .stats-row .t-cover svg { width: 18px; height: 18px; }
 /* плитки: число и подпись друг под другом (у .statcard Whisper — в строку, и длинное «3 ч 37 мин» наезжало на подпись) */
 .stats-tile.statcard { flex-direction: column; align-items: flex-start; gap: 2px; }
+
+/* ── список стилей (как theme.css у Whisper Yandex): переключатель вида, подсветка текущего, компактный вид ── */
+.stylehead { gap: 12px; }
+.stview {
+  display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: 8px;
+  color: var(--muted); background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
+  cursor: pointer; transition: background .15s, color .15s, border-color .15s;
+}
+.stview:hover { background: rgba(255,255,255,.1); color: var(--text); }
+.stview.on { color: var(--accent); border-color: var(--accent); }
+:root[data-style] .stylepick .stylecard { position: relative; transition: background .15s, border-color .15s, box-shadow .15s; }
+:root[data-style] .stylepick .stylecard.on { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); }
+.stylepick .stylecard.on::after {
+  content: "✓"; position: absolute; top: 6px; left: 6px; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 11px; line-height: 1; font-weight: 700;
+  color: #fff; background: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.45); pointer-events: none;
+}
+.stylepick .stylecard.on b { color: var(--accent); }
+:root[data-style] .stylepick.compact { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; }
+:root[data-style] .stylepick.compact .stylecard {
+  align-items: center; text-align: center; gap: 6px; padding: 10px 6px 8px; min-width: 0;
+  border-radius: 12px; outline: none; border: 1px solid transparent; background: transparent; box-shadow: none;
+}
+:root[data-style] .stylepick.compact .stylecard:hover { background: rgba(255,255,255,.07); }
+:root[data-style] .stylepick.compact .stylecard.on { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: var(--accent); }
+.stylepick.compact .stylecard .sprev { width: 48px; height: 48px; flex: none; border-radius: 50%; background-size: cover; }
+.stylepick.compact .stylecard b { max-width: 100%; font-size: 12px; font-weight: 600; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stylepick.compact .stylecard small, .stylepick.compact .stylecard .scauth { display: none; }
+.stylepick.compact .stylecard.on::after { top: 4px; left: auto; right: calc(50% - 32px); width: 16px; height: 16px; font-size: 10px; }
+.stylepick.compact .stylecard .scdel { top: 4px; right: 4px; width: 20px; height: 20px; font-size: 10px; }
