@@ -124,9 +124,13 @@ jobs:
             cargo check --locked
           fi
 
+      # Windows: автообновление — установщик подписывается (minisign), в выпуск кладётся latest.json (includeUpdaterJson);
+      # открытый ключ — tauri.windows.conf.json, закрытый — секреты репозитория (без них сборка Windows падает)
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ runner.os == 'Windows' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ runner.os == 'Windows' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         with:
           tauriScript: npx --yes @tauri-apps/cli@2
           args: --bundles ${{ matrix.bundles }}

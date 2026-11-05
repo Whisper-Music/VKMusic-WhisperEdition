@@ -48,6 +48,8 @@ soup3 = "0.5"
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
 
 [target.'cfg(windows)'.dependencies]
+# автообновление (только Windows: на Linux — пакеты/AUR): latest.json из GitHub Releases, подпись minisign
+tauri-plugin-updater = "2"
 # ключ Whisper Archive — в диспетчере учётных данных Windows
 keyring = { version = "3", features = ["windows-native"] }
 # куки WebView2 как есть (те же версии, что у wry)

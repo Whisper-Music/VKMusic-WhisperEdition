@@ -25,6 +25,7 @@ mod stats;
 mod streams;
 mod themelib;
 mod themes;
+mod update;
 mod vk;
 #[path = "../../src/core/rust/whisper/mod.rs"]
 mod whisper;
@@ -40,6 +41,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::http::{Response, StatusCode};
 use tauri::{AppHandle, Emitter, Manager, State};
+use update::WithUpdater;
 
 struct AppState {
     cfg: Mutex<Config>,
@@ -1888,6 +1890,8 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_deep_link::init())
+        // автообновление — только Windows (update.rs)
+        .with_updater()
         .manage(state)
         // wa:// — потоки Whisper Archive (ядро: whisper::stream), только главному окну
         .register_asynchronous_uri_scheme_protocol("wa", |ctx, request, responder| {
@@ -1955,6 +1959,8 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            update::update_check,
+            update::update_install,
             app_info,
             save_prefs,
             fonts_list,

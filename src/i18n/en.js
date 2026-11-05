@@ -221,6 +221,8 @@ window.I18N_DICTS.en = {
   "Скачано: {0}": "Downloaded: {0}",
   "Не скачалось «{0}»: {1}": "Failed to download “{0}”: {1}",
   "Для загрузки по ссылкам нужны yt-dlp и ffmpeg: sudo pacman -S yt-dlp ffmpeg": "yt-dlp and ffmpeg are needed for link downloads: sudo pacman -S yt-dlp ffmpeg",
+  "Доступна новая версия {0}": "New version {0} is available",
+  "Скачивается обновление…": "Downloading the update…",
 
   // ── оформление и темы ──
   "Как в теме": "As in theme",

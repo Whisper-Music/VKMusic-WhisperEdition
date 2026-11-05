@@ -4044,6 +4044,23 @@ async function boot() {
       if (!c.ytdlp || !c.ffmpeg) toast(L("Для загрузки по ссылкам нужны yt-dlp и ffmpeg: sudo pacman -S yt-dlp ffmpeg"), "error");
     })
     .catch(() => {});
+
+  // автообновление — только Windows (update.rs; на Linux update_check всегда отвечает «нет»): раз при запуске,
+  // установка — по кнопке в подсказке
+  setTimeout(checkUpdate, 4000);
+}
+
+async function checkUpdate() {
+  let u = null;
+  try { u = await invoke("update_check"); } catch { return; }
+  if (!u || !u.version) return;
+  toast(L("Доступна новая версия {0}", u.version), "", {
+    label: L("Обновить"),
+    fn: () => {
+      toast(L("Скачивается обновление…"), "", null, 0);
+      invoke("update_install").catch((e) => toast(errMsg(e), "error"));
+    },
+  }, 0);
 }
 
 // после всех скриптов: привязка к ядру (whisper-vk.js) и движок тем подключаются после этого файла,
