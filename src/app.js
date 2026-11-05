@@ -2618,7 +2618,9 @@ function applyStyleVars() {
   const r = document.documentElement.style, th = S.theme || {}, base = document.documentElement.dataset.base || "neon";
   const def = STYLE_DEF[base], c = (S.themeTokens && S.themeTokens.color) || {}, fx = (S.themeTokens && S.themeTokens.effects) || {};
   const hex = (x) => (/^#[0-9a-f]{6}$/i.test(x || "") ? x : null);
-  const accent = hex(c.accent) || def.accent, accent2 = hex(c.accent2) || def.accent2;
+  // свои основной и второй цвета пользователя для этого стиля (colors.js) главнее цветов темы
+  const uc = (window.Colors && window.Colors.main(document.documentElement.dataset.style)) || {};
+  const accent = uc.accent || hex(c.accent) || def.accent, accent2 = uc.accent2 || hex(c.accent2) || def.accent2;
   r.setProperty("--accent", accent);
   r.setProperty("--accent2", accent2);
   // старые переменные VK Music (rgb для rgba()) — их ещё зовут свои блоки app.css
@@ -2640,6 +2642,7 @@ function applyStyleVars() {
   document.documentElement.dataset.anim = f.animations === false ? "off" : "on";
   applyFont();
   applyHooks();
+  if (window.Colors) window.Colors.apply(); // тонкая настройка цветов — для нового стиля
 }
 
 // ───────────────────────── возможности тем сверх CSS (settings whisper-music), как у Whisper ─────────────────────────
@@ -2925,6 +2928,12 @@ function renderThemes() {
     S.themes = list;
     if (!same && S.page === "settings") renderSettings();
   }).catch((e) => toast(errMsg(e), "error"));
+
+  if (window.Colors) window.Colors.card(setCard("look", L("Цвета")), (full) => {
+    applyStyleVars();
+    saveBoot();
+    if (full) renderSettings();
+  });
 
   const fc = setCard("look", L("Шрифт"));
   fc.append(renderFontPicker());

@@ -113,6 +113,8 @@ src/core/rust/…            Rust ядра через #[path]: whisper/ (арх�
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
 src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, PolyForm Noncommercial) — не править
 src/boot.js                до первой отрисовки: стиль прошлого запуска (vkm_boot), интерфейс скрыт до применения темы
+src/layout.js, layout.css  расположение (как у Whisper Yandex, без закреплённых): мини-режимы панелей, размер за край (vkm_layout)
+src/colors.js              цвета темы: основной/второй и «Тонкая настройка…» по местам, для каждого стиля (vkm_colors), <style id="cc-css">
 src/hotkeys.js             горячие клавиши: карточка в «Общем», окно назначения, сочетания — localStorage vkm_hotkeys
 src/host.js                заглушка window.__TAURI__ для браузера (--host): сервер вставляет её первым скриптом index.html
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
@@ -215,7 +217,10 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   поменять константу в `whisper_host.rs`. Виджет OBS: обложки — только `https://*.userapi.com`, `*.vkuserphoto.ru`,
   `*.vk.me`, `*.sndcdn.com` (`OBS_IMG_SRC`, `cover_ok`); у файлов из папки музыки обложки в виджете нет (она `vkm://`).
 * Своё в `localStorage` (не модули): `vkm_boot` (снимок стиля для boot.js), `vkm_dyn` (фон по обложке),
-  `vkm_style_view` (компактный вид стилей), `vkm_search_hist` (история поиска, 30), `vkm_hotkeys`.
+  `vkm_style_view` (компактный вид стилей), `vkm_search_hist` (история поиска, 30), `vkm_hotkeys`, `vkm_layout`,
+  `vkm_colors` (цвета пользователя по стилям: в CSS попадают только `#rrggbb(aa)`).
+* Кэш треков: предел — `Config::cache_limit_mb` (0 — без ограничения, «Хранилище»); сверх него `TrackCache::prune`
+  удаляет давно не игравшие (по времени изменения файла; включение из кэша — `touch`), кроме только что докачанного.
 * Фон по обложке (как у Whisper Yandex; CSS — `.dynbg` в whisper.css, разметка `#dynBg` внутри `#bg`): обложку
   с CDN холст не прочитал бы — её отдаёт `cover_bytes` (только `whisper_host::cover_ok`, до 10 МБ), обложка файла —
   `fetch` по `vkm://` (там `Access-Control-Allow-Origin`).
