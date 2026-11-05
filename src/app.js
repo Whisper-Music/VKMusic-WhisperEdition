@@ -2291,6 +2291,7 @@ function renderGeneral() {
     row.append(b);
   }
   c.append(row);
+  if (window.Layout) window.Layout.card(setCard("ui", L("Расположение")));
   if (window.Hotkeys) window.Hotkeys.card(setCard("ui", L("Горячие клавиши")));
 }
 
@@ -2305,6 +2306,7 @@ async function switchLang(code) {
   setLang(code);
   // всё, что нарисовано с текстом, — заново
   rerender();
+  window.Layout?.refresh();
   updateNowPlaying();
   syncModes();
   syncVolume();
@@ -2362,6 +2364,26 @@ function renderStorage() {
   const size = el("div", "dlpath cache-size");
   size.append(el("small", null, ci && ci.dir ? tilde(ci.dir) : L("Кэш треков")), el("span", null, text));
   k.append(size);
+  // предел размера: сверх него удаляются давно не игравшие треки (Rust, TrackCache::prune)
+  const lim = el("div", "lyrow cache-limit");
+  const seg = el("div", "lyseg");
+  for (const [mb, name] of [[0, L("Без ограничения")], [1024, "1 ГБ"], [2048, "2 ГБ"], [5120, "5 ГБ"], [10240, "10 ГБ"]]) {
+    const b = el("button", "chip" + ((S.cacheLimit || 0) === mb ? " active" : ""), L(name));
+    b.type = "button";
+    b.addEventListener("click", async () => {
+      try {
+        await invoke("save_prefs", { cache_limit_mb: mb });
+        S.cacheLimit = mb;
+        S.cacheInfo = null;
+        renderSettings();
+      } catch (e) {
+        toast(errMsg(e), "error");
+      }
+    });
+    seg.append(b);
+  }
+  lim.append(el("span", null, L("Размер кэша")), seg);
+  k.append(lim);
   const clear = button("trash", L("Очистить кэш"), "danger", (b) =>
     confirmClick(b, async () => {
       try {
@@ -3983,7 +4005,31 @@ function dynShow(it) {
   }
   box.classList.add("ready");
 }
-/** Фон под играющий трек. Нет обложки — остаётся прежний фон. */
+/**
+ * Заглушка фона для трека без обложки: градиент в цветах темы и крупная нота (SVG без данных трека).
+ * Цвета — только проверенные #rrggbb темы, иначе цвета Неона.
+ */
+function dynPlaceholder() {
+  const cs = getComputedStyle(document.documentElement);
+  // --accent зарегистрирован как <color> (@property в whisper.css) — значение приходит как rgb(…)
+  const hex = (v, d) => {
+    v = (v || "").trim();
+    if (/^#[0-9a-f]{6}$/i.test(v)) return v;
+    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(v);
+    return m ? "#" + [m[1], m[2], m[3]].map((x) => Math.min(255, +x).toString(16).padStart(2, "0")).join("") : d;
+  };
+  const a = hex(cs.getPropertyValue("--accent"), "#a66bff"), b = hex(cs.getPropertyValue("--accent2"), "#e060ff");
+  const svg = (note) =>
+    "data:image/svg+xml," + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"><defs><radialGradient id="g" cx="30%" cy="25%" r="90%">` +
+      `<stop offset="0" stop-color="${a}" stop-opacity=".55"/><stop offset=".45" stop-color="${b}" stop-opacity=".25"/><stop offset=".9" stop-color="#0b0618" stop-opacity="0"/></radialGradient></defs>` +
+      `<rect width="400" height="400" fill="#0b0618"/><rect width="400" height="400" fill="url(#g)"/>` +
+      (note ? '<g fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"><path d="M160 270V120l120-25v145"/><circle cx="130" cy="270" r="30"/><circle cx="250" cy="240" r="30"/></g>' : "") +
+      "</svg>");
+  return { url: svg(true), soft: svg(false), echo: svg(false), pal: { a, b } };
+}
+
+/** Фон под играющий трек. Нет обложки — заглушка в цветах темы. */
 async function dynUpdate(t) {
   const my = ++dynSeq;
   document.body.classList.toggle("dyn-on", dynOn);
@@ -3996,7 +4042,12 @@ async function dynUpdate(t) {
   }
   if (!v.paused) v.pause(); // видеообои темы под фоном по обложке не видны — не тратим на них кадры
   const src = t && t.cover;
-  if (!src || src === dynKey) return;
+  if (!src) {
+    if (!t || dynKey === "-") return;
+    dynKey = "-";
+    return dynShow(dynPlaceholder());
+  }
+  if (src === dynKey) return;
   try {
     const it = await dynArt(src);
     if (my !== dynSeq) return;
@@ -4374,8 +4425,10 @@ async function boot() {
   }
   // язык интерфейса — до первой отрисовки
   setLang(info.lang || "ru");
+  window.Layout?.refresh(); // подписи кнопки «Свернуть» — на языке интерфейса
   S.musicDir = info.music_dir || "~/Music/vk";
   S.downloadDir = info.download_dir || "~/Downloads";
+  S.cacheLimit = info.cache_limit_mb || 0;
   S.volume = info.volume;
   S.overrides = info.overrides || {};
   S.shuffle = !!info.shuffle;

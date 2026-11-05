@@ -36,6 +36,8 @@ pub struct Config {
     pub lyrics_compact: bool,
     /// куда кнопка «Скачать» кладёт треки; по умолчанию ~/Downloads
     pub download_dir: Option<String>,
+    /// предел кэша треков, МБ; 0 — без ограничения (сверх — удаляются давно не игравшие)
+    pub cache_limit_mb: u64,
 }
 
 impl Default for Config {
@@ -55,6 +57,7 @@ impl Default for Config {
             lyrics_hide_parts: false,
             lyrics_compact: false,
             download_dir: None,
+            cache_limit_mb: 0,
         }
     }
 }

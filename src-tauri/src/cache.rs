@@ -40,6 +40,8 @@ pub struct TrackCache {
     queue: Mutex<Queue>,
     /// вызывается после каждой фоновой задачи: (ключ библиотеки, получилось ли)
     notify: OnceLock<Box<dyn Fn(&str, bool) + Send + Sync>>,
+    /// предел размера, байт; 0 — без ограничения
+    limit: std::sync::atomic::AtomicU64,
 }
 
 #[derive(Default)]
@@ -142,7 +144,7 @@ impl TrackCache {
     }
 
     fn at(dir: PathBuf) -> TrackCache {
-        TrackCache { dir, gate: Mutex::new(()), queue: Mutex::new(Queue::default()), notify: OnceLock::new() }
+        TrackCache { dir, gate: Mutex::new(()), queue: Mutex::new(Queue::default()), notify: OnceLock::new(), limit: Default::default() }
     }
 
     pub fn on_done(&self, f: impl Fn(&str, bool) + Send + Sync + 'static) {
@@ -163,6 +165,49 @@ impl TrackCache {
 
     pub fn dir(&self) -> &Path {
         &self.dir
+    }
+
+    /// Предел размера кэша (байт, 0 — без ограничения); сразу убирает лишнее.
+    pub fn set_limit(&self, bytes: u64) {
+        self.limit.store(bytes, std::sync::atomic::Ordering::Relaxed);
+        self.prune("");
+    }
+
+    /// Кэш больше предела — удалить давно не игравшие (по времени изменения файла: включение из кэша его
+    /// обновляет, `touch`), кроме `keep` (только что докачанный / играющий).
+    pub fn prune(&self, keep: &str) {
+        let limit = self.limit.load(std::sync::atomic::Ordering::Relaxed);
+        if limit == 0 {
+            return;
+        }
+        let mut e: Vec<_> = self
+            .entries()
+            .into_iter()
+            .map(|(k, p, size)| {
+                let t = std::fs::metadata(&p).and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                (k, p, size, t)
+            })
+            .collect();
+        let mut total: u64 = e.iter().map(|x| x.2).sum();
+        e.sort_by_key(|x| x.3);
+        for (k, p, size, _) in e {
+            if total <= limit {
+                break;
+            }
+            if k == keep {
+                continue;
+            }
+            if std::fs::remove_file(&p).is_ok() {
+                total = total.saturating_sub(size);
+            }
+        }
+    }
+
+    /// Трек включили из кэша — он «свежий» для `prune`.
+    pub fn touch(&self, path: &Path) {
+        if let Ok(f) = std::fs::File::options().write(true).open(path) {
+            let _ = f.set_modified(std::time::SystemTime::now());
+        }
     }
 
     /// Файл трека в кэше, если он есть.
@@ -272,6 +317,8 @@ impl TrackCache {
             let res = me.fetch(&job);
             if let Err(e) = &res {
                 eprintln!("vkmusic: кэш {}: {e}", job.key);
+            } else {
+                me.prune(&job.key);
             }
             if let Some(f) = me.notify.get() {
                 f(&job.lib, res.is_ok());
@@ -361,6 +408,28 @@ mod tests {
         assert_eq!(file_name("", "  "), "track");
         assert_eq!(container_for("aac"), ("m4a", "ipod"));
         assert_eq!(container_for("pcm_s16le"), ("mka", "matroska"));
+    }
+
+    #[test]
+    fn limit_drops_oldest_but_keeps_current() {
+        let dir = std::env::temp_dir().join(format!("vkmusic-cache-limit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let c = TrackCache::at(dir.clone());
+        let now = std::time::SystemTime::now();
+        for (i, k) in ["vk-1_1", "vk-1_2", "vk-1_3"].iter().enumerate() {
+            let p = dir.join(format!("{k}.mp3"));
+            std::fs::write(&p, vec![0u8; 100]).unwrap();
+            let f = std::fs::File::options().write(true).open(&p).unwrap();
+            f.set_modified(now - std::time::Duration::from_secs(100 - i as u64 * 10)).unwrap();
+        }
+        // старейший — vk-1_1, но он «текущий»: удаляются следующие по возрасту
+        c.limit.store(150, std::sync::atomic::Ordering::Relaxed);
+        c.prune("vk-1_1");
+        assert!(c.get("vk-1_1").is_some());
+        assert!(c.get("vk-1_2").is_none());
+        assert!(c.get("vk-1_3").is_none() || c.stats().1 <= 150);
+        c.set_limit(0);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

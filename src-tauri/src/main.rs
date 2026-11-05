@@ -123,6 +123,8 @@ struct Info {
     lyrics_compact: bool,
     /// папка загрузок (развёрнутый путь)
     download_dir: String,
+    /// предел кэша треков, МБ (0 — без ограничения)
+    cache_limit_mb: u64,
     player_error: Option<String>,
 }
 
@@ -132,6 +134,7 @@ fn app_info(st: State<'_, AppState>) -> Res<Info> {
     Ok(Info {
         music_dir: c.music_dir().display().to_string(),
         download_dir: c.download_dir().display().to_string(),
+        cache_limit_mb: c.cache_limit_mb,
         theme: c.theme,
         volume: c.volume,
         overrides: c.overrides,
@@ -164,6 +167,8 @@ fn save_prefs(
     lyrics_compact: Option<bool>,
     // Some("") — папка загрузок по умолчанию (~/Downloads)
     download_dir: Option<String>,
+    // предел кэша треков, МБ (0 — без ограничения)
+    cache_limit_mb: Option<u64>,
 ) -> Res<()> {
     {
         let mut c = st.cfg.lock().unwrap();
@@ -198,6 +203,10 @@ fn save_prefs(
         }
         if let Some(v) = volume {
             c.volume = v.clamp(0.0, 100.0);
+        }
+        if let Some(mb) = cache_limit_mb {
+            c.cache_limit_mb = mb.min(1024 * 1024);
+            st.cache.set_limit(c.cache_limit_mb * 1024 * 1024);
         }
         if let Some(d) = download_dir {
             let d = d.trim().to_string();
@@ -246,7 +255,10 @@ fn player_play(st: State<'_, AppState>, src: String, title: Option<String>) -> R
     let title = title.unwrap_or_default();
     let Some(job) = local_job(&src) else { return p.load(&src, &title).map(|_| false) };
     if let Some(c) = st.cache.get(&job.key) {
-        return p.load(&c.to_string_lossy(), &title).map(|_| false);
+        {
+                st.cache.touch(&c);
+                return p.load(&c.to_string_lossy(), &title).map(|_| false);
+            }
     }
     p.load(&src, &title)?;
     st.cache.enqueue(job);
@@ -806,7 +818,10 @@ async fn vk_play(app: AppHandle, st: State<'_, AppState>, reload: String, title:
         if fresh == Some(true) {
             st.cache.remove(k);
         } else if let Some(c) = st.cache.get(k) {
-            return p.load(&c.to_string_lossy(), &title).map(|_| false);
+            {
+                st.cache.touch(&c);
+                return p.load(&c.to_string_lossy(), &title).map(|_| false);
+            }
         }
     }
     let s = match st.streams.get(&key) {
@@ -1010,7 +1025,10 @@ async fn vk_play_api(app: AppHandle, st: State<'_, AppState>, id: String, title:
         if fresh == Some(true) {
             st.cache.remove(k);
         } else if let Some(c) = st.cache.get(k) {
-            return p.load(&c.to_string_lossy(), &title).map(|_| false);
+            {
+                st.cache.touch(&c);
+                return p.load(&c.to_string_lossy(), &title).map(|_| false);
+            }
         }
     }
     let key = format!("vkapi:{id}");
@@ -1112,7 +1130,10 @@ async fn sc_play(app: AppHandle, st: State<'_, AppState>, id: String, title: Opt
         if fresh == Some(true) {
             st.cache.remove(&ckey);
         } else if let Some(c) = st.cache.get(&ckey) {
-            return p.load(&c.to_string_lossy(), &title).map(|_| false);
+            {
+                st.cache.touch(&c);
+                return p.load(&c.to_string_lossy(), &title).map(|_| false);
+            }
         }
     }
     let s = match st.streams.get(&key) {
@@ -1874,6 +1895,7 @@ fn main() {
         let _ = cfg.save();
     }
     // сохранённые плейлисты играют и после перезапуска: их access_key — сразу в память клиента ВК
+    let cache_limit = cfg.cache_limit_mb * 1024 * 1024;
     let playlists = playlists::PlaylistStore::new();
     let vk = vk::Vk::new();
     vk.remember_keys(playlists.keys());
@@ -1890,7 +1912,11 @@ fn main() {
         player_error: Mutex::new(None),
         dl_seq: AtomicU64::new(0),
         streams: streams::StreamCache::new(),
-        cache: Arc::new(cache::TrackCache::new()),
+        cache: {
+            let c = Arc::new(cache::TrackCache::new());
+            c.set_limit(cache_limit);
+            c
+        },
         stats: stats::StatsStore::new(),
         genius: lyrics::Genius::new(),
     };
