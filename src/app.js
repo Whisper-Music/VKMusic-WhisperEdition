@@ -6,6 +6,10 @@
 const TAURI = window.__TAURI__;
 const invoke = TAURI.core.invoke;
 const listen = TAURI.event.listen;
+/** Интерфейс в браузере (vkmusic --host): __TAURI__ подменяет src/host.js. */
+const HOST = !!TAURI.__host;
+/** Начало адресов протокола vkm:// (обложки файлов): vkm://localhost/ в окне, /p/vkm/ в браузере. */
+const VKM = TAURI.core.convertFileSrc("", "vkm");
 
 const $ = (sel, root = document) => root.querySelector(sel);
 /** Прокручивается средняя панель целиком (как у Whisper): .main. */
@@ -286,7 +290,7 @@ function localTrack(t) {
     added: t.added,
     format: t.format,
     bitrate: t.bitrate,
-    cover: t.has_cover ? "vkm://localhost/cover?path=" + encodeURIComponent(t.path) : null,
+    cover: t.has_cover ? VKM + "cover?path=" + encodeURIComponent(t.path) : null,
   };
 }
 
@@ -1163,9 +1167,14 @@ function loginBar(service) {
   $("#loginBar").hidden = !on;
   document.body.classList.toggle("login-mode", on);
   if (on) {
-    $("#loginBarText").textContent = service === "vk"
-      ? L("Войдите во ВКонтакте: отсканируйте QR-код в приложении VK на телефоне или войдите как обычно. Пароль приложение не видит.")
-      : L("Войдите в SoundCloud как обычно. Пароль приложение не видит.");
+    // в браузере (--host) страница входа — отдельным окном приложения
+    $("#loginBarText").textContent = HOST
+      ? service === "vk"
+        ? L("Войдите во ВКонтакте в открывшемся окне VK Music. Пароль приложение не видит.")
+        : L("Войдите в SoundCloud в открывшемся окне VK Music. Пароль приложение не видит.")
+      : service === "vk"
+        ? L("Войдите во ВКонтакте: отсканируйте QR-код в приложении VK на телефоне или войдите как обычно. Пароль приложение не видит.")
+        : L("Войдите в SoundCloud как обычно. Пароль приложение не видит.");
   }
 }
 
@@ -3031,6 +3040,32 @@ listen("tauri://drag-drop", (ev) => {
   if (theme) installThemePath(theme);
   else if (paths.length) toast(L("Перетащите файл темы .wmt"), "error");
 });
+// в браузере (--host) событий Tauri о перетаскивании нет — файл темы читается сам и уходит сырым телом
+if (HOST) {
+  const files = (e) => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+  let depth = 0;
+  document.addEventListener("dragenter", (e) => {
+    if (!files(e)) return;
+    depth++;
+    $("#dropHint").hidden = false;
+  });
+  document.addEventListener("dragleave", (e) => {
+    if (files(e) && --depth <= 0) {
+      depth = 0;
+      $("#dropHint").hidden = true;
+    }
+  });
+  document.addEventListener("dragover", (e) => files(e) && e.preventDefault());
+  document.addEventListener("drop", async (e) => {
+    if (!files(e)) return;
+    e.preventDefault();
+    depth = 0;
+    $("#dropHint").hidden = true;
+    const f = [...e.dataTransfer.files].find((x) => /\.(wmt|zip)$/i.test(x.name));
+    if (f) installThemeBytes(new Uint8Array(await f.arrayBuffer()));
+    else if (e.dataTransfer.files.length) toast(L("Перетащите файл темы .wmt"), "error");
+  });
+}
 
 // ───────────────────────── плеер ─────────────────────────
 

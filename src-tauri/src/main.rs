@@ -9,6 +9,7 @@ mod deeplink;
 #[path = "../../src/core/rust/discord.rs"]
 mod discord;
 mod fonts;
+mod host;
 mod library;
 mod lyrics;
 #[path = "../../src/core/rust/obs.rs"]
@@ -353,6 +354,10 @@ const LOGIN_LABEL: &str = "svc-login";
 /// высотой `LOGIN_BAR` (подсказка и «Отмена»), снизу страница сервиса. После входа интерфейс возвращается в бокс.
 /// (Упаковкой бокса не обойтись: GTK отдаёт WebKitWebView его естественную высоту — всё окно.)
 fn login_layout(app: &AppHandle, login: bool) {
+    // интерфейс в браузере (--host): страница входа — отдельным окном, раскладывать нечего
+    if host::active() {
+        return;
+    }
     let Some(w) = app.get_window("main") else { return };
     let _ = app.run_on_main_thread(move || {
         use gtk::prelude::*;
@@ -387,6 +392,12 @@ fn login_layout(app: &AppHandle, login: bool) {
 }
 
 fn login_close(app: &AppHandle) {
+    if host::active() {
+        if let Some(w) = app.get_webview_window(LOGIN_LABEL) {
+            let _ = w.close();
+        }
+        return;
+    }
     if let Some(v) = app.get_webview(LOGIN_LABEL) {
         let _ = v.close();
     }
@@ -540,36 +551,48 @@ async fn svc_login(app: AppHandle, service: String) -> Res<()> {
     if app.get_webview(LOGIN_LABEL).is_some() {
         return Ok(());
     }
-    let main = app.get_window("main").ok_or("Нет главного окна")?;
     let url = tauri::Url::parse(url).map_err(|e| e.to_string())?;
     let popups = app.clone();
     let seq = AtomicU64::new(0);
-    let builder = tauri::webview::WebviewBuilder::new(LOGIN_LABEL, tauri::WebviewUrl::External(url))
-        // как в NK-Player (Electron): со своим UA WebKitGTK страница vk.ru/login не догружается
-        .user_agent(vk::USER_AGENT)
-        // всплывающие окна (VK ID, вход через Google/Apple) открываются отдельными окнами
-        .on_new_window(move |url, features| {
-            let label = format!("svc-popup-{}", seq.fetch_add(1, Ordering::Relaxed));
-            match tauri::WebviewWindowBuilder::new(&popups, label, tauri::WebviewUrl::External(url))
-                .window_features(features)
-                .title(title)
-                .user_agent(vk::USER_AGENT)
-                .build()
-            {
-                Ok(window) => tauri::webview::NewWindowResponse::Create { window },
-                Err(_) => tauri::webview::NewWindowResponse::Deny,
-            }
-        });
-    let size = main.inner_size().map_err(|e| e.to_string())?;
-    let scale = main.scale_factor().unwrap_or(1.0);
-    let size = size.to_logical::<f64>(scale);
-    main.add_child(
-        builder,
-        tauri::LogicalPosition::new(0.0, LOGIN_BAR as f64),
-        tauri::LogicalSize::new(size.width, (size.height - LOGIN_BAR as f64).max(100.0)),
-    )
-    .map_err(|e| format!("Не удалось открыть страницу входа: {e}"))?;
-    login_layout(&app, true);
+    // всплывающие окна (VK ID, вход через Google/Apple) открываются отдельными окнами
+    let popup = move |url: tauri::Url, features: tauri::webview::NewWindowFeatures| {
+        let label = format!("svc-popup-{}", seq.fetch_add(1, Ordering::Relaxed));
+        match tauri::WebviewWindowBuilder::new(&popups, label, tauri::WebviewUrl::External(url))
+            .window_features(features)
+            .title(title)
+            .user_agent(vk::USER_AGENT)
+            .build()
+        {
+            Ok(window) => tauri::webview::NewWindowResponse::Create { window },
+            Err(_) => tauri::webview::NewWindowResponse::Deny,
+        }
+    };
+    if host::active() {
+        // интерфейс в браузере (--host): страница входа — своим окном; закрыли окно — вход отменён
+        tauri::WebviewWindowBuilder::new(&app, LOGIN_LABEL, tauri::WebviewUrl::External(url))
+            .title(title)
+            .inner_size(900.0, 760.0)
+            .user_agent(vk::USER_AGENT)
+            .on_new_window(popup)
+            .build()
+            .map_err(|e| format!("Не удалось открыть страницу входа: {e}"))?;
+    } else {
+        let main = app.get_window("main").ok_or("Нет главного окна")?;
+        let builder = tauri::webview::WebviewBuilder::new(LOGIN_LABEL, tauri::WebviewUrl::External(url))
+            // как в NK-Player (Electron): со своим UA WebKitGTK страница vk.ru/login не догружается
+            .user_agent(vk::USER_AGENT)
+            .on_new_window(popup);
+        let size = main.inner_size().map_err(|e| e.to_string())?;
+        let scale = main.scale_factor().unwrap_or(1.0);
+        let size = size.to_logical::<f64>(scale);
+        main.add_child(
+            builder,
+            tauri::LogicalPosition::new(0.0, LOGIN_BAR as f64),
+            tauri::LogicalSize::new(size.width, (size.height - LOGIN_BAR as f64).max(100.0)),
+        )
+        .map_err(|e| format!("Не удалось открыть страницу входа: {e}"))?;
+        login_layout(&app, true);
+    }
     let st = app.state::<AppState>();
     st.vk.forget();
     st.sc.forget();
@@ -1603,7 +1626,7 @@ fn respond(status: StatusCode, mime: &str, body: Vec<u8>) -> Response<Vec<u8>> {
         .unwrap_or_default()
 }
 
-fn serve(app: &AppHandle, uri: &str) -> Response<Vec<u8>> {
+pub(crate) fn serve(app: &AppHandle, uri: &str) -> Response<Vec<u8>> {
     let not_found = || respond(StatusCode::NOT_FOUND, "text/plain", b"not found".to_vec());
     let Ok(url) = tauri::Url::parse(uri) else { return not_found() };
     let st = app.state::<AppState>();
@@ -1671,7 +1694,11 @@ fn win_drag(window: tauri::Window) {
 }
 
 /// Окно — наверх (ссылка whisper:// пришла в уже открытое приложение, второй запуск).
+/// С --host окна нет: интерфейс — во вкладке браузера, событие room-link уходит туда.
 fn show_main(app: &AppHandle) {
+    if host::active() {
+        return;
+    }
     if let Some(w) = app.get_window("main") {
         let _ = w.show();
         let _ = w.unminimize();
@@ -1698,7 +1725,26 @@ fn migrate_ident() {
     }
 }
 
+/// Контекст Tauri. С --host главное окно скрытое и пустое: оно держит куки WebKit (вход в сервисы) и принимает
+/// команды от браузера, а интерфейс в нём не запускается (иначе он играл бы и считал статистику вторым экземпляром).
+fn context(host: bool) -> tauri::Context<tauri::Wry> {
+    let mut ctx = tauri::generate_context!();
+    if host {
+        if let Some(w) = ctx.config_mut().app.windows.iter_mut().find(|w| w.label == "main") {
+            w.visible = false;
+            w.url = tauri::WebviewUrl::External("about:blank".parse().expect("about:blank"));
+        }
+    }
+    ctx
+}
+
 fn main() {
+    // --host [ПОРТ]: интерфейс в браузере на http://127.0.0.1:ПОРТ вместо окна (host.rs)
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let host_port = host::port_from_args(&args).unwrap_or_else(|e| {
+        eprintln!("vkmusic: {e}");
+        std::process::exit(2);
+    });
     migrate_ident();
     // Обход WEBKIT_DISABLE_DMABUF_RENDERER дорог: кадр копируется через процессор, и чем больше окно, тем
     // медленнее (2560×1440: ~10 кадров/с против 60 с DMA-BUF на NVIDIA 615, проверено 2026-10-30). Поэтому
@@ -1738,7 +1784,16 @@ fn main() {
 
     let app = tauri::Builder::default()
         // второй запуск — окно уже открытого; ссылку whisper:// из его аргументов плагин отдаёт deep-link
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        // (с --host — вкладка браузера, если запустили не по ссылке whisper://: ссылку получит открытая вкладка)
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if host::active() {
+                if !args.iter().any(|a| a.starts_with("whisper:")) {
+                    host::open_browser();
+                }
+            } else {
+                show_main(app);
+            }
+        }))
         .plugin(tauri_plugin_deep_link::init())
         .manage(state)
         // wa:// — потоки Whisper Archive (ядро: whisper::stream), только главному окну
@@ -1762,7 +1817,21 @@ fn main() {
                 responder.respond(serve(&app, &uri));
             });
         })
-        .setup(|app| {
+        .setup(move |app| {
+            // --host: сервер поднимается до mpv — занятый порт останавливает запуск сразу
+            if let Some(port) = host_port {
+                match host::start(app.handle(), port) {
+                    Ok(url) => {
+                        eprintln!("VK Music: интерфейс — {url}\nVK Music: выход — Ctrl+C");
+                        host::exit_on_signal(app.handle());
+                        host::open_browser();
+                    }
+                    Err(e) => {
+                        eprintln!("vkmusic: {e}");
+                        std::process::exit(2);
+                    }
+                }
+            }
             deeplink::init(app.handle()); // ссылки whisper://room/КОД — приглашения в комнату
             let handle = app.handle().clone();
             let st = app.state::<AppState>();
@@ -1901,7 +1970,7 @@ fn main() {
             obs::obs_state,
             obs::obs_theme,
         ])
-        .build(tauri::generate_context!())
+        .build(context(host_port.is_some()))
         .expect("не удалось запустить приложение");
 
     app.run(|handle, event| {

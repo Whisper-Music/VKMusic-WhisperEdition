@@ -2,7 +2,7 @@
 //!
 //! * встроенная тема `osaka-jade` вшита в бинарник;
 //! * свои темы лежат в ~/.config/vkmusic/themes/<id>.wmt;
-//! * файлы темы раздаются интерфейсу по адресу vkm://localhost/theme/<id>/<имя>;
+//! * файлы темы раздаются интерфейсу по адресу vkm://localhost/theme/<id>/<имя> (с --host — /p/vkm/theme/…, host.rs);
 //! * основы Whisper (neon, royal, steam, lolitta) — стили без файла: их CSS — в src/whisper.css;
 //! * CSS темы собирает и очищает движок тем ядра в интерфейсе, как у Whisper Yandex (`WMT.open` + `themeCss`
 //!   из src/core): сюда за ним интерфейс приходит только за самим файлом (`raw`).
@@ -71,7 +71,7 @@ pub struct ThemeStore {
 }
 
 pub fn asset_url(id: &str, name: &str) -> String {
-    format!("vkm://localhost/theme/{id}/{name}")
+    format!("{}theme/{id}/{name}", crate::host::vkm_base())
 }
 
 impl ThemeStore {

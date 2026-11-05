@@ -440,4 +440,11 @@ window.I18N_DICTS.en = {
   "ВКонтакте не добавил трек в плейлист": "VK didn't add the track to the playlist",
   "ВКонтакте не убрал трек из плейлиста": "VK didn't remove the track from the playlist",
   "ВКонтакте не добавил плейлист": "VK didn't add the playlist",
+  "Войдите во ВКонтакте в открывшемся окне VK Music. Пароль приложение не видит.":
+    "Sign in to VK in the VK Music window that just opened. The app never sees your password.",
+  "Войдите в SoundCloud в открывшемся окне VK Music. Пароль приложение не видит.":
+    "Sign in to SoundCloud in the VK Music window that just opened. The app never sees your password.",
+  "VK Music открыт в другой вкладке": "VK Music is open in another tab",
+  "Открыть здесь": "Use here",
+  "Нет связи с VK Music: приложение закрыто?": "No connection to VK Music: is the app closed?",
 };

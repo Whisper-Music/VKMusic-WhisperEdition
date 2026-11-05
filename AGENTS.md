@@ -43,7 +43,7 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
 * Интерфейс без Rust можно проверить в браузере (Playwright), подменив `window.__TAURI__` заглушкой с теми же
   командами и событиями — так проверялись все экраны.
 * Перед тем как считать работу готовой: `cargo build --release` без предупреждений, `cargo test`, и
-  `node --check src/app.js src/whisper-vk.js`.
+  `node --check src/app.js src/whisper-vk.js src/host.js`.
 * Выпуски — `.github/workflows/release.yml` (как у Whisper Yandex): тег `vX.Y.Z` или запуск вручную → черновик в
   GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc).
   Windows пока нет: код только под Linux (mpv через unix-сокет, куки WebKitGTK, GTK, Secret Service, fc-list) —
@@ -89,9 +89,11 @@ src-tauri/src/whisper_host.rs  что приложение даёт Rust ядр�
 src-tauri/src/whisper_vk.rs    архив для VK Music: wa_save_track (файл трека библиотеки по ключу), wa_play (трек архива → mpv)
 src-tauri/src/secret.rs    ключ Whisper Archive: Secret Service (keyring), без связки ключей — файл 0600 (secret_backend)
 src-tauri/src/deeplink.rs  ссылки whisper://room/КОД: deep-link + single-instance, room_link_take, событие room-link
+src-tauri/src/host.rs      `--host [ПОРТ]`: интерфейс в браузере — HTTP-сервер на 127.0.0.1 (invoke, SSE-события, vkm/wa)
 src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
 src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, PolyForm Noncommercial) — не править
+src/host.js                заглушка window.__TAURI__ для браузера (--host): сервер вставляет её первым скриптом index.html
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
 src/core/                  ядро Whisper — git-подмодуль whisper-core (здесь не правится, см. «Ядро Whisper»)
@@ -115,6 +117,25 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Файлы тем и обложки интерфейс получает по `vkm://localhost/…`: `/theme/<id>/<файл>`,
   `/themepreview/<id>`, `/cover?path=…`. Протокол отвечает только главному окну (`label == "main"`).
 * CSP выключен (`"csp": null`) — поэтому защита держится на правилах ниже, не нарушайте их.
+
+### Интерфейс в браузере (`--host`, просьба владельца 2026-11-05)
+
+* `vkmusic --host [ПОРТ]` (по умолчанию 7380 — постоянный: от адреса зависит localStorage браузера): то же приложение
+  без окна. Главное окно `main` создаётся скрытым с `about:blank` (`context` в `main.rs`) — оно держит куки WebKit и через
+  него идут команды; интерфейс в нём не запускается. Сервер (`host.rs`, свой HTTP/1.1 на std, поток на соединение):
+  файлы интерфейса — `asset_resolver`, `index.html` — с `host.js` первым скриптом; `POST /invoke/<команда>` →
+  `Webview::on_message` главного окна (тело JSON или сырое — `theme_install`; ответ JSON или байты); события — SSE
+  `/events` (список `host::EVENTS`: **новое событие Rust → JS — добавить и туда**); `vkm://` → `/p/vkm/…`
+  (`crate::serve`), `wa://` → `/p/wa/…` (`serve_stream`). Адреса `vkm://` в интерфейсе — только через
+  `convertFileSrc("", "vkm")` (`VKM` в `app.js`) или `host::vkm_base()` в Rust, не строкой.
+* Защита: только 127.0.0.1; `Host` — `127.0.0.1:ПОРТ` / `localhost:ПОРТ`; каждый запрос — с кукой `vkm_key_<порт>`
+  (HttpOnly, SameSite=Strict), её ставит `/?key=…` (ключ — `~/.config/vkmusic/host-key`, 0600); POST с чужим `Origin`
+  отклоняется; `frame-ancestors 'none'`. Не ослаблять: через сервер доступны все команды приложения.
+* Отличия от окна: `win_*` ничего не делают (кнопки окна скрыты — `.host-mode .tbctl`); вход в сервис — отдельным окном
+  `svc-login` (`login_layout` не нужен); перетаскивание `.wmt` — событиями браузера (`installThemeBytes`); работает
+  одна вкладка — новый поток событий шлёт прежним `host://taken`; повторный запуск открывает вкладку (`open_browser`),
+  ссылка whisper:// — событием `room-link` во вкладку; выход — SIGINT/SIGTERM → `app.exit(0)` (mpv и настройки — как
+  при закрытии окна). Графический сеанс нужен и с `--host`: скрытое окно GTK, окно входа в сервисы.
 
 ### Ядро Whisper (`src/core`)
 

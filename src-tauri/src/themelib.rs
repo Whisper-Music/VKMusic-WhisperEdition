@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
 pub const BASE: &str = "https://raw.githubusercontent.com/Whisper-Music/whisper-themes/main/";
-pub const REPO: &str = "https://github.com/Whisper-Music/whisper-themes";
 const MB: usize = 1024 * 1024;
 pub const INDEX_FORMAT: u32 = 2;
 

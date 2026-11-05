@@ -296,3 +296,7 @@ body.drag-sorting, body.drag-sorting * { cursor: grabbing !important; -webkit-us
 body.login-mode .toast { display: none; }
 .queue-mini { margin: 0 4px; font-size: 12px; }
 .queue-mini:empty { display: none; }
+
+/* интерфейс в браузере (vkmusic --host, src/host.js): кнопок окна нет — окно браузера своё */
+.host-mode .tbctl { display: none; }
+.host-taken { position: fixed; inset: 0; z-index: 200; display: grid; place-content: center; justify-items: center; gap: 16px; background: var(--bg); color: var(--text); font-size: 15px; }
