@@ -79,11 +79,14 @@ jobs:
           workspaces: '. -> target' # рабочее пространство Cargo в корне, сборка — в target/
           key: ${{ matrix.os }}
 
+      # зеркало пакетов Ubuntu иногда «висит» по 20+ минут (2026-11-05): обрывы — повтор, зависание — ошибка через 10 мин,
+      # тогда достаточно перезапустить задание (Re-run failed jobs)
       - name: Системные библиотеки (Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 10
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev build-essential curl wget file \
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libgtk-3-dev build-essential curl wget file \
             libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
 
       # Windows: mpv (сборка shinchiro), ffmpeg/ffprobe (BtbN, LGPL, shared — DLL рядом) и yt-dlp — в src-tauri/bin,
