@@ -360,6 +360,8 @@ fn login_layout(app: &AppHandle, login: bool) {
         return;
     }
     // Windows: страница входа — дочерний webview поверх интерфейса (ниже полосы), раскладывать нечего
+    #[cfg(not(target_os = "linux"))]
+    let _ = (app, login);
     #[cfg(target_os = "linux")]
     let Some(w) = app.get_window("main") else { return };
     #[cfg(target_os = "linux")]

@@ -33,6 +33,8 @@ pub enum PlayerEvent {
 pub struct Player {
     writer: Mutex<ipc::Writer>,
     child: Mutex<Child>,
+    /// путь сокета — удалить при выходе (на Windows канал исчезает сам)
+    #[cfg_attr(windows, allow(dead_code))]
     sock: PathBuf,
     /// с какой секунды и на паузе ли начать следующий загружаемый трек («Слушать вместе»: гость встаёт на позицию
     /// ведущего и, пока тот грузит трек, готовит его без звука); действует CUE_TTL — иначе случайно достался бы

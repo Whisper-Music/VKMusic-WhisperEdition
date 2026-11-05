@@ -16,6 +16,7 @@ use std::path::PathBuf;
 const SERVICE: &str = crate::IDENT;
 const ACCOUNT: &str = "wa_token";
 const FILE: &str = "wa_token.secret";
+#[cfg(unix)]
 const MAX_SECRET: u64 = 16 * 1024;
 
 fn entry() -> Result<Entry, String> {
