@@ -22,7 +22,13 @@
 </head>
 <body>
   <!-- фон темы: картинка — переменной --bg-image на #bg, видео — #bgVideo внутри (темы задают #bg место и форму) -->
-  <div id="bg"><video id="bgVideo" muted loop playsinline disablepictureinpicture disableremoteplayback preload="auto" hidden></video></div>
+  <!-- #dynBg — динамический фон по обложке трека (как у Whisper Yandex; правила — в whisper.css, .dynbg) -->
+  <div id="bg"><video id="bgVideo" muted loop playsinline disablepictureinpicture disableremoteplayback preload="auto" hidden></video><div id="dynBg" class="dynbg" aria-hidden="true">
+    <div class="dyn-l"></div><div class="dyn-l"></div>
+    <div class="dyn-art"><i></i><i></i></div>
+    <div class="dyn-aura"></div>
+    <div class="dyn-grain"></div>
+  </div></div>
   <div id="dim"></div>
 
   <!-- своя полоса заголовка окна (окно без рамки системы): темы рисуют её по-своему -->
@@ -192,6 +198,7 @@
   <script src="i18n/en.js"></script>
   <script src="icons.js"></script>
   <script src="app.js"></script>
+  <script src="hotkeys.js"></script>
   <!-- привязка к ядру (роли, провайдер, плеер, очередь) — до движка тем и модулей; app.js запускается
        по DOMContentLoaded, когда всё ниже уже подключено -->
   <script src="whisper-vk.js"></script>

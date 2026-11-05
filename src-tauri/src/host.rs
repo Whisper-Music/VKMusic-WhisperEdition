@@ -29,7 +29,7 @@ use tauri::{AppHandle, Listener, Manager};
 pub const DEFAULT_PORT: u16 = 7380;
 
 /// События Rust, которые уходят в браузер.
-const EVENTS: [&str; 6] = ["player://event", "dl://event", "svc://event", "cache://event", "discord-status", "room-link"];
+const EVENTS: [&str; 7] = ["player://event", "dl://event", "svc://event", "cache://event", "discord-status", "room-link", "hotkey"];
 
 /// Заголовки запроса — не больше; тело — тема до 64 МБ сырым куском (`theme_install`) с запасом.
 const MAX_HEAD: usize = 16 * 1024;

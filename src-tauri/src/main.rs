@@ -13,6 +13,7 @@ mod deeplink;
 mod discord;
 mod fonts;
 mod host;
+mod hotkeys;
 mod library;
 mod lyrics;
 #[path = "../../src/core/rust/obs.rs"]
@@ -1355,6 +1356,16 @@ fn local_delete(st: State<'_, AppState>, path: String) -> Res<()> {
     st.order.retain(|k| k != path)
 }
 
+/// Обложка трека байтами — для динамического фона: картинку с CDN холст не прочитал бы (чужой адрес).
+/// Только адреса CDN ВКонтакте / SoundCloud (`whisper_host::cover_ok`), до 10 МБ.
+#[tauri::command(rename_all = "snake_case")]
+async fn cover_bytes(st: State<'_, AppState>, url: String) -> Res<tauri::ipc::Response> {
+    if !whisper_host::cover_ok(&url) {
+        return Err("Недопустимый адрес обложки".into());
+    }
+    whisper_vk::fetch_cover(&st.http, &url).await.map(tauri::ipc::Response::new)
+}
+
 #[tauri::command(rename_all = "snake_case")]
 fn open_music_dir(st: State<'_, AppState>) -> Res<()> {
     let dir = st.music_dir();
@@ -1895,6 +1906,8 @@ fn main() {
         .plugin(tauri_plugin_deep_link::init())
         // автообновление — только Windows (update.rs)
         .with_updater()
+        // глобальные горячие клавиши (hotkeys.rs)
+        .plugin(hotkeys::plugin())
         .manage(state)
         // wa:// — потоки Whisper Archive (ядро: whisper::stream), только главному окну
         .register_asynchronous_uri_scheme_protocol("wa", |ctx, request, responder| {
@@ -1963,6 +1976,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             update::update_check,
+            hotkeys::hotkeys_set,
+            cover_bytes,
             update::update_install,
             app_info,
             save_prefs,

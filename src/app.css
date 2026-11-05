@@ -346,3 +346,27 @@ body.login-mode .toast { display: none; }
 .stylepick.compact .stylecard small, .stylepick.compact .stylecard .scauth { display: none; }
 .stylepick.compact .stylecard.on::after { top: 4px; left: auto; right: calc(50% - 32px); width: 16px; height: 16px; font-size: 10px; }
 .stylepick.compact .stylecard .scdel { top: 4px; right: 4px; width: 20px; height: 20px; font-size: 10px; }
+
+/* ── горячие клавиши (hotkeys.js; как hotkeys.css у Whisper Yandex) ── */
+.hkcount.bad { color: #ffb36b; }
+.hkmodal { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.hkmodal [hidden] { display: none !important; }
+.hksub { font-size: 13px; color: var(--muted); margin: 0; }
+.hklist { display: flex; flex-direction: column; gap: 6px; }
+.hkrow { display: grid; grid-template-columns: minmax(0, 1fr) 190px 28px; align-items: center; column-gap: 8px; }
+.hkname { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hkkey {
+  height: 34px; padding: 0 10px; border-radius: 9px; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); color: var(--text); cursor: pointer;
+}
+.hkkey:hover { background: rgba(255,255,255,.14); }
+.hkkey.empty { color: var(--muted); font-style: italic; }
+.hkkey.rec { border-color: var(--accent); color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 45%, transparent); animation: hkpulse 1.2s ease-in-out infinite; }
+@keyframes hkpulse { 50% { box-shadow: 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent); } }
+.hkclear { width: 28px; height: 28px; border-radius: 50%; font-size: 12px; color: var(--muted); }
+.hkclear:hover { color: var(--text); background: rgba(255,255,255,.1); }
+.hknote { grid-column: 1 / -1; font-size: 12px; line-height: 1.3; }
+.hknote:empty { display: none; }
+.hknote.bad { color: #ff9b9b; }
+.hkhint { min-height: 18px; }
+@media (prefers-reduced-motion: reduce) { .hkkey.rec { animation: none; } }

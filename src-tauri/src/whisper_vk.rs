@@ -85,7 +85,7 @@ fn accepted_audio(src: &Path) -> Res<Vec<u8>> {
     Err("Архив не принимает формат этого трека, а переложить его без перекодирования не вышло (нужен ffmpeg)".into())
 }
 
-async fn fetch_cover(http: &reqwest::Client, url: &str) -> Res<Vec<u8>> {
+pub(crate) async fn fetch_cover(http: &reqwest::Client, url: &str) -> Res<Vec<u8>> {
     let resp = http.get(url).send().await.map_err(|e| format!("Не удалось скачать обложку: {e}"))?;
     if !resp.status().is_success() {
         return Err(format!("Не удалось скачать обложку: HTTP {}", resp.status().as_u16()));

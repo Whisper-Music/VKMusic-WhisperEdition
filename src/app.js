@@ -2331,6 +2331,7 @@ function renderGeneral() {
     row.append(b);
   }
   c.append(row);
+  if (window.Hotkeys) window.Hotkeys.card(setCard("ui", L("Горячие клавиши")));
 }
 
 /** Сменить язык на лету: статичная разметка, текущая страница, плеер, панели. */
@@ -2603,7 +2604,7 @@ async function applyTheme(r) {
   if (r.background && r.background.video) {
     if (v.getAttribute("src") !== r.background.url) v.src = r.background.url;
     v.hidden = false;
-    v.play().catch(() => {});
+    if (!dynOn) v.play().catch(() => {}); // при фоне по обложке видео не видно
   } else {
     v.pause();
     v.removeAttribute("src");
@@ -2947,6 +2948,11 @@ function renderThemes() {
   fc.append(renderFontPicker());
 
   const bc = setCard("look", L("Фон и панели"), "colbreak");
+  bc.append(switchRow(L("Фон по обложке трека"), dynOn, (on) => {
+    dynOn = on;
+    try { localStorage.setItem(DYN_KEY, on ? "1" : "0"); } catch {}
+    dynUpdate(S.current);
+  }));
   for (const o of OVERRIDES) {
     const lab = el("label", "slide");
     const r = el("input");
@@ -3879,6 +3885,160 @@ function trackListen(e) {
   else renderNpStats();
 }
 
+// ───────────────────────── динамический фон по обложке (как у Whisper Yandex) ─────────────────────────
+// Обложка превращается в blob: — так её можно и показать, и разобрать на цвета (картинку с CDN холст прочитать
+// не даёт: её отдаёт Rust — cover_bytes, только адреса CDN ВКонтакте / SoundCloud; обложку файла — vkm://, там
+// Access-Control-Allow-Origin). Слоёв обложки два: новая проявляется поверх старой; над ними — аура из цветов
+// обложки, зерно и виньетка (whisper.css, .dynbg). Включается в «Оформление → Фон и панели» (vkm_dyn).
+const DYN_KEY = "vkm_dyn";
+let dynOn = (() => { try { return localStorage.getItem(DYN_KEY) === "1"; } catch { return false; } })();
+let dynKey = "", dynSeq = 0, dynFront = 0;
+const dynCache = new Map(); // адрес обложки → { url, soft, echo, pal }
+
+// Размытая и подкрашенная копия — один раз на маленьком холсте (коробочное размытие: у холста WebKitGTK нет ctx.filter)
+function boxBlur(d, w, h, r) {
+  const t = new Float32Array(d.length), n = 2 * r + 1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let c = 0; c < 4; c++) {
+    let sum = 0;
+    for (let k = -r; k <= r; k++) sum += d[(y * w + Math.min(w - 1, Math.max(0, x + k))) * 4 + c];
+    t[(y * w + x) * 4 + c] = sum / n;
+  }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let c = 0; c < 4; c++) {
+    let sum = 0;
+    for (let k = -r; k <= r; k++) sum += t[(Math.min(h - 1, Math.max(0, y + k)) * w + x) * 4 + c];
+    d[(y * w + x) * 4 + c] = sum / n;
+  }
+}
+async function dynSoft(img, side, out, r, sat, bri) {
+  const a = document.createElement("canvas");
+  a.width = a.height = side;
+  const g = a.getContext("2d", { willReadFrequently: true });
+  g.drawImage(img, 0, 0, side, side);
+  const id = g.getImageData(0, 0, side, side), d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    for (let c = 0; c < 3; c++) d[i + c] = Math.min(255, Math.max(0, (lum + (d[i + c] - lum) * sat) * bri));
+  }
+  boxBlur(d, side, side, r);
+  boxBlur(d, side, side, r);
+  g.putImageData(id, 0, 0);
+  const b = document.createElement("canvas");
+  b.width = b.height = out;
+  const h = b.getContext("2d", { willReadFrequently: true });
+  h.drawImage(a, 0, 0, out, out);
+  const id2 = h.getImageData(0, 0, out, out);
+  boxBlur(id2.data, out, out, Math.max(1, Math.round(out / side)));
+  h.putImageData(id2, 0, 0);
+  const blob = await new Promise((res) => b.toBlob(res, "image/png"));
+  return blob ? URL.createObjectURL(blob) : "";
+}
+function rgb2hsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+  let h = 0, sat = 0;
+  if (mx !== mn) {
+    const d = mx - mn;
+    sat = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    h = (mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4) * 60;
+  }
+  return [h, sat, l];
+}
+function hsl2hex(h, sat, l) {
+  sat = Math.min(1, Math.max(0, sat)); l = Math.min(1, Math.max(0, l));
+  const a = sat * Math.min(l, 1 - l);
+  const f = (n) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, "0"); };
+  return "#" + f(0) + f(8) + f(4);
+}
+/** Два главных цвета обложки (по оттенкам, с весом насыщенности). */
+function paletteOf(img) {
+  const N = 64, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d", { willReadFrequently: true });
+  g.drawImage(img, 0, 0, N, N);
+  const d = g.getImageData(0, 0, N, N).data;
+  const bins = Array.from({ length: 24 }, (_, i) => ({ h: i * 15 + 7.5, w: 0, s: 0 }));
+  let sumS = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue;
+    const [h, sat, l] = rgb2hsl(d[i], d[i + 1], d[i + 2]);
+    sumS += sat; n++;
+    const w = sat * (1 - Math.abs(2 * l - 1)), b = bins[Math.floor(h / 15) % 24];
+    b.w += w; b.s += sat * w;
+  }
+  if (!n || sumS / n < 0.1) return { a: "#e8e8f4", b: "#9a9ab4" };
+  const sorted = bins.filter((b) => b.w > 0).sort((x, y) => y.w - x.w), first = sorted[0];
+  const dist = (x, y) => { const v = Math.abs(x - y) % 360; return Math.min(v, 360 - v); };
+  const second = sorted.find((b) => b !== first && dist(b.h, first.h) >= 45 && b.w >= first.w * 0.25);
+  const satOf = (b) => Math.min(0.95, Math.max(0.6, b.s / b.w));
+  return { a: hsl2hex(first.h, satOf(first), 0.64), b: second ? hsl2hex(second.h, satOf(second), 0.62) : hsl2hex((first.h + 45) % 360, 0.8, 0.66) };
+}
+async function dynArt(src) {
+  let it = dynCache.get(src);
+  if (it) return it;
+  const bytes = /^https:\/\//.test(src) ? await invoke("cover_bytes", { url: src }) : await (await fetch(src)).arrayBuffer();
+  const url = URL.createObjectURL(new Blob([bytes]));
+  const img = new Image();
+  img.src = url;
+  await img.decode();
+  let pal = null, soft = "", echo = "";
+  try { pal = paletteOf(img); } catch {}
+  try {
+    soft = await dynSoft(img, 40, 160, 2, 1.5, 0.72); // большие «дышащие» слои — сильное размытие
+    echo = await dynSoft(img, 72, 216, 1, 1.4, 1);    // «эхо» обложки — помягче
+  } catch {}
+  it = { url, soft: soft || url, echo: echo || url, pal };
+  dynCache.set(src, it);
+  while (dynCache.size > 16) {
+    const [k, v] = dynCache.entries().next().value;
+    if (k === dynKey) break;
+    for (const u of [v.url, v.soft, v.echo]) if (u) URL.revokeObjectURL(u);
+    dynCache.delete(k);
+  }
+  return it;
+}
+function dynShow(it) {
+  const box = $("#dynBg"), ls = box.querySelectorAll(".dyn-l");
+  if (ls[dynFront].dataset.url !== it.url) {
+    const next = ls[1 - dynFront];
+    next.style.backgroundImage = `url("${it.soft}")`;
+    next.dataset.url = it.url;
+    next.classList.remove("on");
+    void next.offsetWidth;
+    next.classList.add("on");
+    ls[dynFront].classList.remove("on");
+    dynFront = 1 - dynFront;
+    const [art, echo] = box.querySelectorAll(".dyn-art i");
+    art.style.backgroundImage = `url("${it.url}")`;
+    echo.style.backgroundImage = `url("${it.echo}")`;
+  }
+  if (it.pal) {
+    box.style.setProperty("--dyn-a", it.pal.a);
+    box.style.setProperty("--dyn-b", it.pal.b);
+  }
+  box.classList.add("ready");
+}
+/** Фон под играющий трек. Нет обложки — остаётся прежний фон. */
+async function dynUpdate(t) {
+  const my = ++dynSeq;
+  document.body.classList.toggle("dyn-on", dynOn);
+  const v = $("#bgVideo");
+  if (!dynOn) {
+    $("#dynBg").classList.remove("ready");
+    dynKey = "";
+    if (!v.hidden && v.paused) v.play().catch(() => {});
+    return;
+  }
+  if (!v.paused) v.pause(); // видеообои темы под фоном по обложке не видны — не тратим на них кадры
+  const src = t && t.cover;
+  if (!src || src === dynKey) return;
+  try {
+    const it = await dynArt(src);
+    if (my !== dynSeq) return;
+    dynKey = src;
+    dynShow(it);
+  } catch {}
+}
+
 function updateNowPlaying() {
   const t = S.current;
   $("#pTitle").textContent = t ? t.title : L("Ничего не играет");
@@ -3887,6 +4047,7 @@ function updateNowPlaying() {
   if (t) setCover(img, t.cover);
   else img.removeAttribute("src");
   document.title = t ? `${t.artist} — ${t.title}` : "VK Music";
+  dynUpdate(t);
   syncNpAdd();
   updateNpSide();
   updateQueueInfo();
@@ -4138,6 +4299,32 @@ function syncVolume() {
   if (volKnob()) $("#volBtn").setAttribute("aria-valuenow", String(S.muted ? 0 : S.volume));
   thSync();
 }
+
+// глобальные горячие клавиши (hotkeys.rs → событие hotkey; сочетания — hotkeys.js)
+function volumeStep(d) {
+  S.volume = Math.max(0, Math.min(100, Math.round(S.volume + d)));
+  S.muted = false;
+  $("#vol").value = S.volume;
+  syncVolume();
+  invoke("player_volume", { volume: S.volume }).catch(() => {});
+  invoke("save_prefs", { volume: S.volume }).catch(() => {});
+}
+listen("hotkey", (ev) => {
+  const click = (sel) => { const b = $(sel); if (b && !b.hidden && !b.disabled) b.click(); };
+  switch (ev.payload) {
+    case "toggle": return togglePlay();
+    case "next": return S.current && next(false);
+    case "prev": return S.current && prev();
+    case "vol_up": return volumeStep(5);
+    case "vol_down": return volumeStep(-5);
+    case "mute": return click("#volBtn");
+    case "seek_fwd": return S.current && seekTo(Math.min((S.pl.duration || 0) || Infinity, S.pl.pos + 10));
+    case "seek_back": return S.current && seekTo(Math.max(0, S.pl.pos - 10));
+    case "like": return click("#likeBtn");
+    case "repeat": return click("#repeatBtn");
+    case "shuffle": return click("#shuffleBtn");
+  }
+});
 
 // клавиатура
 document.addEventListener("keydown", (ev) => {

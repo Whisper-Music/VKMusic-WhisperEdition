@@ -104,12 +104,15 @@ src-tauri/src/whisper_host.rs  что приложение даёт Rust ядр�
 src-tauri/src/whisper_vk.rs    архив для VK Music: wa_save_track (файл трека библиотеки по ключу), wa_play (трек архива → mpv)
 src-tauri/src/secret.rs    ключ Whisper Archive: Secret Service (keyring), без связки ключей — файл 0600 (secret_backend)
 src-tauri/src/deeplink.rs  ссылки whisper://room/КОД: deep-link + single-instance, room_link_take, событие room-link
+src-tauri/src/hotkeys.rs   глобальные горячие клавиши (tauri-plugin-global-shortcut; Windows, Linux X11): hotkeys_set, событие hotkey
 src-tauri/src/update.rs    автообновление (только Windows): update_check, update_install, `with_updater`
 src-tauri/src/os.rs        Linux/Windows: права на файлы (`Private`), внешние программы (`tool`, `bin_dir`), `open`
 src-tauri/src/host.rs      `--host [ПОРТ]`: интерфейс в браузере — HTTP-сервер на 127.0.0.1 (invoke, SSE-события, vkm/wa)
 src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
 src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, PolyForm Noncommercial) — не править
+src/boot.js                до первой отрисовки: стиль прошлого запуска (vkm_boot), интерфейс скрыт до применения темы
+src/hotkeys.js             горячие клавиши: карточка в «Общем», окно назначения, сочетания — localStorage vkm_hotkeys
 src/host.js                заглушка window.__TAURI__ для браузера (--host): сервер вставляет её первым скриптом index.html
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
@@ -210,6 +213,11 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Discord: `DISCORD_APP_ID` — общее приложение «Whisper» семейства (как у Whisper Yandex, ID публичный); своё —
   поменять константу в `whisper_host.rs`. Виджет OBS: обложки — только `https://*.userapi.com`, `*.vkuserphoto.ru`,
   `*.vk.me`, `*.sndcdn.com` (`OBS_IMG_SRC`, `cover_ok`); у файлов из папки музыки обложки в виджете нет (она `vkm://`).
+* Своё в `localStorage` (не модули): `vkm_boot` (снимок стиля для boot.js), `vkm_dyn` (фон по обложке),
+  `vkm_style_view` (компактный вид стилей), `vkm_search_hist` (история поиска, 30), `vkm_hotkeys`.
+* Фон по обложке (как у Whisper Yandex; CSS — `.dynbg` в whisper.css, разметка `#dynBg` внутри `#bg`): обложку
+  с CDN холст не прочитал бы — её отдаёт `cover_bytes` (только `whisper_host::cover_ok`, до 10 МБ), обложка файла —
+  `fetch` по `vkm://` (там `Access-Control-Allow-Origin`).
 * Хранилище модулей в `localStorage`: `vkm_history`, `vkm_discord`, `vkm_obs` (приставка `vkm_`), архив — `wa_cfg`,
   `wa_index_mine`, «Ставить в очередь» комнаты — `ym_room_autoq` (имя ключа задаёт ядро).
 * Код ядра здесь не правится: репозиторий whisper-core общий с Whisper Yandex и не наш (права — только чтение).
