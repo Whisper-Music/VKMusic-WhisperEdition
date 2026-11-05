@@ -195,7 +195,7 @@ mod tests {
     use super::*;
 
     fn pl(owner: i64, id: i64, title: &str) -> ApiPlaylist {
-        ApiPlaylist { owner_id: owner, id, title: title.into(), subtitle: String::new(), count: 2, cover: None, mine: true, editable: true }
+        ApiPlaylist { owner_id: owner, id, title: title.into(), subtitle: String::new(), count: 2, cover: None, mine: true, editable: true, owner_name: None, match_pct: None }
     }
 
     fn tr(id: &str) -> Track {

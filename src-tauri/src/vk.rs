@@ -755,6 +755,12 @@ pub struct ApiPlaylist {
     /// ваш собственный, не добавленный чужой: можно переименовать, добавлять и убирать треки
     #[serde(default)]
     pub editable: bool,
+    /// «Слушайте друг друга»: чей плейлист (имя друга из `profiles` / сообщества из `groups`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_name: Option<String>,
+    /// «Слушайте друг друга»: совпадение с вашим вкусом, % (`percentage` 0…1)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub match_pct: Option<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -820,6 +826,8 @@ fn api_playlist(p: &Value) -> Option<(ApiPlaylist, Option<String>)> {
         mine: false,
         // добавленный к себе чужой плейлист — копия с полем original
         editable: p.get("original").is_none_or(Value::is_null),
+        owner_name: None,
+        match_pct: None,
     };
     Some((pl, Some(s("access_key")).filter(|k| valid_hash(k))))
 }
@@ -837,14 +845,32 @@ pub fn parse_home(r: &Value) -> (Home, Vec<(String, String)>) {
             by_id.insert(format!("{}_{}", pl.owner_id, pl.id), pl);
         }
     }
-    // плейлисты друзей («Слушайте друг друга») — обложка отдельно, название — из общего списка
+    // имена владельцев: друзья — profiles (id > 0), сообщества — groups (owner_id = −id)
+    let mut names = std::collections::HashMap::new();
+    for u in r.get("profiles").and_then(Value::as_array).into_iter().flatten() {
+        let first = u.get("first_name").and_then(Value::as_str).unwrap_or("").trim();
+        let last = u.get("last_name").and_then(Value::as_str).unwrap_or("").trim();
+        if let Some(id) = u.get("id").and_then(Value::as_i64) {
+            names.insert(id, format!("{first} {last}").trim().to_string());
+        }
+    }
+    for g in r.get("groups").and_then(Value::as_array).into_iter().flatten() {
+        if let (Some(id), Some(n)) = (g.get("id").and_then(Value::as_i64), g.get("name").and_then(Value::as_str)) {
+            names.insert(-id, n.trim().to_string());
+        }
+    }
+    // плейлисты друзей («Слушайте друг друга») — обложка, автор и совпадение отдельно, название — из общего списка
     for p in r.get("recommended_playlists").and_then(Value::as_array).into_iter().flatten() {
-        let id = format!("{}_{}", p.get("owner_id").and_then(Value::as_i64).unwrap_or(0), p.get("id").and_then(Value::as_i64).unwrap_or(0));
-        if let (Some(pl), Some(c)) = (by_id.get_mut(&id), p.get("cover").and_then(Value::as_str)) {
-            if pl.cover.is_none() && c.starts_with("https://") {
+        let owner = p.get("owner_id").and_then(Value::as_i64).unwrap_or(0);
+        let id = format!("{owner}_{}", p.get("id").and_then(Value::as_i64).unwrap_or(0));
+        let Some(pl) = by_id.get_mut(&id) else { continue };
+        if let Some(c) = p.get("cover").and_then(Value::as_str) {
+            if pl.cover.is_none() && c.starts_with("https://") && c.len() < 2048 {
                 pl.cover = Some(c.to_string());
             }
         }
+        pl.owner_name = names.get(&owner).filter(|n| !n.is_empty()).map(|n| n.chars().take(100).collect());
+        pl.match_pct = p.get("percentage").and_then(Value::as_f64).filter(|x| (0.0..=1.0).contains(x)).map(|x| (x * 100.0).round() as u8);
     }
     let mixes = r
         .get("audio_stream_mixes")
@@ -1332,7 +1358,8 @@ mod tests {
                 {"owner_id": -5, "id": 7, "title": "Редакция", "count": 30, "photo": {"photo_600": "https://x/2.jpg"}},
                 {"owner_id": 9, "id": 3, "title": "Друга", "count": 12}
             ],
-            "recommended_playlists": [{"owner_id": 9, "id": 3, "cover": "https://x/3.png"}],
+            "recommended_playlists": [{"owner_id": 9, "id": 3, "cover": "https://x/3.png", "percentage": 0.98}],
+            "profiles": [{"id": 9, "first_name": "Иван", "last_name": "Петров"}],
             "catalog": {"sections": [{"blocks": [
                 {"data_type": "audio_stream_mixes", "layout": {"name": "audio_stream_mix_interactive"}},
                 {"data_type": "none", "layout": {"name": "header", "title": "Мои треки"}},
@@ -1351,6 +1378,9 @@ mod tests {
         let titles: Vec<(&str, usize)> = home.groups.iter().map(|g| (g.title.as_str(), g.playlists.len())).collect();
         assert_eq!(titles, [("Собрано алгоритмами", 1), ("Слушайте друг друга", 1), ("Собрано редакцией", 1)]);
         assert_eq!(home.groups[1].playlists[0].cover.as_deref(), Some("https://x/3.png"));
+        assert_eq!(home.groups[1].playlists[0].owner_name.as_deref(), Some("Иван Петров"));
+        assert_eq!(home.groups[1].playlists[0].match_pct, Some(98));
+        assert_eq!(home.groups[0].playlists[0].owner_name, None);
         assert_eq!(keys, [("pl:1_-21".to_string(), "abc123".to_string())]);
 
         let a = serde_json::json!({"owner_id": -2001, "id": 55, "artist": " Daft Punk ", "title": "Harder", "duration": 226,

@@ -44,6 +44,18 @@ pub struct Player {
 
 const CUE_TTL: Duration = Duration::from_secs(30);
 
+/// Громкость интерфейса (0…100, линейная амплитуда — как `audio.volume` в Whisper Yandex) → громкость mpv.
+/// У mpv шкала кубическая (усиление = (v/100)³): ползунок на 14% давал −51 дБ — почти тишину. Поэтому
+/// mpv получает кубический корень: 14% → усиление 0,14 (−17 дБ), 50% → 0,5 (−6 дБ), как в браузере.
+pub fn to_mpv(v: f64) -> f64 {
+    100.0 * (v.max(0.0) / 100.0).cbrt()
+}
+
+/// Обратно: громкость mpv → громкость интерфейса.
+pub fn from_mpv(m: f64) -> f64 {
+    100.0 * (m.max(0.0) / 100.0).powi(3)
+}
+
 #[cfg(windows)]
 fn sock_path() -> PathBuf {
     PathBuf::from(format!(r"\\.\pipe\vkmusic-mpv-{}", std::process::id()))
@@ -83,7 +95,7 @@ impl Player {
             "--prefetch-playlist=no",
         ])
         .arg(format!("--input-ipc-server={}", sock.display()))
-        .arg(format!("--volume={}", volume.clamp(0.0, 100.0)))
+        .arg(format!("--volume={:.3}", to_mpv(volume.clamp(0.0, 100.0))))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -127,6 +139,8 @@ impl Player {
         for (id, prop) in [(1, "time-pos"), (2, "duration"), (3, "pause"), (4, "idle-active"), (5, "volume")] {
             player.send(json!(["observe_property", id, prop]))?;
         }
+        // сообщения mpv об ошибках — чтобы к «loading failed» дописать причину (HTTP 403, TLS, формат)
+        player.send(json!(["request_log_messages", "warn"]))?;
 
         std::thread::Builder::new()
             .name("mpv-events".into())
@@ -196,7 +210,7 @@ impl Player {
     }
 
     pub fn set_volume(&self, v: f64) -> Result<(), String> {
-        self.send(json!(["set_property", "volume", v.clamp(0.0, 130.0)]))
+        self.send(json!(["set_property", "volume", to_mpv(v.clamp(0.0, 130.0))]))
     }
 
     pub fn stop(&self) -> Result<(), String> {
@@ -308,9 +322,22 @@ mod ipc {
     }
 }
 
+/// Строка журнала mpv как причина ошибки: без ссылок (в них подписи и адрес), не длиннее 160 символов.
+/// Шум, не связанный с загрузкой (теги, обложки, хуки скриптов), пропускается.
+fn log_reason(text: &str) -> Option<String> {
+    let t = text.trim();
+    if t.is_empty() || ["hook", "auto_profiles", "Cover art", "metadata", "tag"].iter().any(|n| t.contains(n)) {
+        return None;
+    }
+    let clean: Vec<&str> = t.split_whitespace().map(|w| if w.contains("://") { "…" } else { w }).collect();
+    Some(clean.join(" ").chars().take(160).collect())
+}
+
 fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event: F) {
     let mut st = PlayerState { idle: true, ..Default::default() };
     let mut last_emit = Instant::now() - Duration::from_secs(1);
+    // последняя ошибка из журнала mpv для текущего файла
+    let mut why: Option<String> = None;
     for line in lines {
         let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
         match v.get("event").and_then(Value::as_str) {
@@ -327,7 +354,7 @@ fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event
                     Some("duration") => st.duration = f.unwrap_or(0.0),
                     Some("pause") => st.paused = b.unwrap_or(false),
                     Some("idle-active") => st.idle = b.unwrap_or(false),
-                    Some("volume") => st.volume = f.unwrap_or(st.volume),
+                    Some("volume") => st.volume = f.map(from_mpv).unwrap_or(st.volume),
                     _ => continue,
                 }
                 if urgent || last_emit.elapsed() >= Duration::from_millis(250) {
@@ -335,14 +362,27 @@ fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event
                     on_event(PlayerEvent::State(st.clone()));
                 }
             }
+            Some("start-file") => why = None,
+            Some("log-message") => {
+                let level = v.get("level").and_then(Value::as_str).unwrap_or("");
+                let text = v.get("text").and_then(Value::as_str).unwrap_or("");
+                if matches!(level, "error" | "fatal" | "warn") {
+                    if let Some(t) = log_reason(text) {
+                        why = Some(t);
+                    }
+                }
+            }
             Some("end-file") => match v.get("reason").and_then(Value::as_str) {
                 Some("eof") => on_event(PlayerEvent::Ended),
                 Some("error") => {
-                    let msg = v
+                    let mut msg = v
                         .get("file_error")
                         .and_then(Value::as_str)
                         .unwrap_or("не удалось воспроизвести")
                         .to_string();
+                    if let Some(w) = why.take() {
+                        msg = format!("{msg} ({w})");
+                    }
                     on_event(PlayerEvent::Error { message: msg });
                 }
                 _ => {}
@@ -351,4 +391,32 @@ fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event
         }
     }
     on_event(PlayerEvent::Error { message: "mpv остановился — перезапустите приложение".into() });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{from_mpv, to_mpv};
+
+    #[test]
+    fn log_reason_hides_links() {
+        assert_eq!(
+            super::log_reason("HTTP error 403 Forbidden\n").as_deref(),
+            Some("HTTP error 403 Forbidden")
+        );
+        assert_eq!(
+            super::log_reason("Failed to open https://vd1.okcdn.ru/?sig=abc.").as_deref(),
+            Some("Failed to open …")
+        );
+        assert_eq!(super::log_reason("Failed sending hook command auto_profiles/on_load."), None);
+    }
+
+    #[test]
+    fn volume_is_linear_amplitude() {
+        // усиление mpv = (v/100)³ — должно совпасть с долей ползунка
+        for v in [0.0, 14.0, 50.0, 100.0] {
+            let gain = (to_mpv(v) / 100.0).powi(3);
+            assert!((gain - v / 100.0).abs() < 1e-9, "{v}");
+            assert!((from_mpv(to_mpv(v)) - v).abs() < 1e-9);
+        }
+    }
 }

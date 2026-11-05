@@ -59,7 +59,7 @@
     "player.seek": "#seek",
     "player.time": ".player .time",
     "player.actions": ".player .pright",
-    "player.extra": "#togetherBtn, #normBtn",
+    "player.extra": "#togetherBtn, #lyrBtn, #normBtn",
     "player.volume": "#volWrap",
     "player.volume.button": "#volBtn",
     "player.volume.slider": "#vol",

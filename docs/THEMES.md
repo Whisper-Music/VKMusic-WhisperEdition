@@ -69,6 +69,7 @@ Whisper применяется целиком: цвета, шрифты, фон,
 `player.info`, `player.title`, `player.artist`, `player.like`, `player.controls`, `player.play`, `player.prev`,
 `player.next`, `player.mode` / `player.mode:on`, `player.seek`, `player.time`, `player.actions`, `player.extra`,
 `player.volume`, `player.more`, `radio`, `menu`, `menu.item`, `toast`, `dialog`, `queue`, `fullplayer`, `lyrics`.
+`player.extra` у VK Music — `#togetherBtn`, `#lyrBtn` (текст песни), `#normBtn`.
 Роли, которой нет (`radio.stations`, `player.dislike`), — селектор с ней выбрасывается, остальные из списка остаются.
 
 ## Ограничения CSS темы

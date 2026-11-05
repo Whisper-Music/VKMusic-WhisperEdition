@@ -156,7 +156,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 
 ### Ядро Whisper (`src/core`)
 
-* Порядок в `index.html` важен: `core/whisper-core.js` → i18n, `icons.js`, `app.js` → `whisper-vk.js` →
+* Порядок в `index.html` важен: в `<head>` без defer — `boot.js` (как у Whisper Yandex: стиль прошлого запуска из
+  `vkm_boot` и класс `booting` — интерфейс скрыт под цветом фона, пока `boot()` не применит тему и не позовёт
+  `bootDone`; снимок пишет `saveBoot` после `applyTheme`), затем `core/whisper-core.js` → i18n, `icons.js`, `app.js` → `whisper-vk.js` →
   `core/wmt.js`, `core/theme-css.js` → модули `archive`, `queue`, `discord`, `obs`, `together` (порядок модулей =
   порядок карточек в «Интеграциях»). CSS: `core/base.css` → `whisper.css` → `core/together.css` → `app.css` →
   `core/archive.css`, `queue.css`, `discord.css`, `obs.css` → `<style id="theme-css">`. `app.js` запускается по
@@ -376,7 +378,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Разметка — контракт с темами Whisper: классы и id те же, что у Whisper Yandex (по ним написана библиотека тем).
   Не переименовывать и не перестраивать `.app`, `.side`, `.main`, `.head` (`#title`, `#sub`, `#headImg`, `#back`),
   `ul.list > li` (`img`, `div > .t/.a`, `.likebtn`, `.morebtn`), `.player` (`.pinfo` `#cover` `.meta` `#pTitle` `#pArtist`
-  `#likeBtn`, `.pcenter` `.seekrow` `#seek` `.ctrls` `#play` `#prev` `#next` `.modebtn`, `.pright` `#volWrap` `#volBtn`
+  `#likeBtn`, `.pcenter` `.seekrow` `#seek` `.ctrls` `#play` `#prev` `#next` `.modebtn`, `.pright` `#lyrBtn` (своя кнопка «Текст песни») `#volWrap` `#volBtn`
   `.volpop` `#vol` `#pMore`), `#settingsPage.settings` (`.settabs .chip`, `.card[data-tab]`), `.simcard`, `.lastAlbum`,
   `#wavePage` (`.waveorbits`, `#waveBtn.wavebtn`), `#full`, `.titlebar`, `.tmenu`, `.toast`, `body.is-playing`.
   Свои элементы — дополнительными классами и внутри этих (`.lq`, `.lacts`, `.ldur` в строке). `whisper.css` не правится:
@@ -432,3 +434,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * mpv читает `mpv.conf` пользователя: если там включено сохранение позиции, трек продолжал бы играть с места,
   где его переключили. Поэтому mpv запускается с `--resume-playback=no --save-position-on-quit=no`.
   `af` плеер задаёт сам («постоянный уровень громкости»), перекрывая `af` из конфига пользователя.
+* Громкость у mpv кубическая (усиление = (v/100)³): ползунок на 14% давал −51 дБ. Интерфейс и конфиг хранят
+  линейную амплитуду, как `audio.volume` у Whisper Yandex; в mpv она уходит через `player::to_mpv` (кубический корень),
+  обратно — `from_mpv`. Не передавайте в mpv громкость ползунка напрямую.
+* «loading failed» от mpv ничего не говорит: плеер подписан на журнал mpv (`request_log_messages warn`) и дописывает
+  к ошибке последнюю строку (`log_reason`, ссылки вырезаются — в них подписи). Новые ссылки ВК на официальные треки
+  (с альбомом и обложкой) — CDN `*.okcdn.ru`, без расширения, подписаны под IP (`srcIp`) того, кто запросил API.

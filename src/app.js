@@ -1211,8 +1211,14 @@ listen("svc://event", (ev) => {
   if (SERVICES[e.service]) {
     refreshStatus(e.service);
     if (e.type === "login") syncService(e.service);
-    // вошли во ВКонтакте — список плейлистов заново (до входа был пустым или с ошибкой)
-    if (e.type === "login" && e.service === "vk") S.myPl = null;
+    // вошли во ВКонтакте — миксы и плейлисты заново (до входа были пустыми или с ошибкой) и сразу на экран:
+    // раньше они появлялись только после перехода на другую страницу и обратно
+    if (e.type === "login" && e.service === "vk") {
+      S.myPl = null;
+      S.vkHome = null;
+      if (S.page === "vk") loadVkHome(true);
+      renderMyPlaylists();
+    }
   }
 });
 
@@ -1379,7 +1385,11 @@ function renderMyPlaylists() {
   add.append(cover, el("b", null, L("Новый плейлист")));
   add.addEventListener("click", (ev) => {
     ev.stopPropagation(); // иначе тот же клик закроет окошко (closePopups на document)
-    promptClick(cover, (title) => createPlaylist(title), L("Название плейлиста"), L("Создать"));
+    // новый плейлист сразу открывается — там и добавляются треки
+    promptClick(cover, (title) => createPlaylist(title, (pl) => {
+      S.vkPl = null;
+      openVkPlaylist(pl);
+    }), L("Название плейлиста"), L("Создать"));
   });
   row.append(add);
   for (const pl of S.myPl.list) row.append(vkPlaylistCard(pl));
@@ -1600,8 +1610,15 @@ function grabScroll(row) {
 function vkPlaylistCard(pl) {
   const card = el("div", "simcard");
   card.append(trackImg(pl.cover), el("b", null, pl.title || L("Без названия")));
-  const sub = pl.count ? `${pl.count} ${plural(pl.count, "трек", "трека", "треков")}` : pl.subtitle || "";
-  card.append(el("span", null, sub));
+  // «Слушайте друг друга»: чей плейлист и насколько совпадает со вкусом (как на сайте ВК)
+  if (pl.owner_name || pl.match_pct != null) {
+    card.classList.add("friendpl");
+    if (pl.owner_name) card.append(el("span", "plowner", pl.owner_name));
+    if (pl.match_pct != null) card.append(el("span", "plmatch", L("Совпадение {0}%", pl.match_pct)));
+  } else {
+    const sub = pl.count ? `${pl.count} ${plural(pl.count, "трек", "трека", "треков")}` : pl.subtitle || "";
+    card.append(el("span", null, sub));
+  }
   card.title = pl.title || "";
   card.addEventListener("click", () => openVkPlaylist(pl));
   return card;
@@ -1725,12 +1742,62 @@ function renderVkPlaylist() {
   const play = button(null, "▶ " + L("Слушать"), "primary", () => playable().length && playList(playable(), 0));
   play.disabled = !playable().length;
   bar.append(play, ...playlistActions(v));
+  // свой плейлист: «Добавить треки» — список из библиотеки с поиском (у пустого открыт сразу)
+  const empty = !v.tracks.length && !v.busy && !v.error && v.next == null;
+  if (v.pl.editable) {
+    if (v.adding == null && empty) v.adding = true;
+    const add = button("plus", L("Добавить треки"), v.adding ? "on" : "", () => ((v.adding = !v.adding), rerender()));
+    bar.append(add);
+  }
   c.append(bar);
   if (v.tracks.length) c.append(renderTracks(v.tracks, false, { playlist: v.pl.editable ? v.pl : null }));
   if (v.busy) c.append(el("div", "spinner"));
   else if (v.error) c.append(emptyState("x", L(v.error), button(null, L("Повторить"), "", () => ((v.error = null), loadVkPlaylistMore()))));
   else if (v.next != null) c.append(button(null, L("Показать ещё"), "more", () => loadVkPlaylistMore()));
-  else if (!v.tracks.length) c.append(emptyState("note", L("В плейлисте нет треков, которые можно слушать.")));
+  else if (!v.tracks.length)
+    c.append(el("div", "status", v.pl.editable
+      ? L("В плейлисте пока нет треков. Добавьте их из библиотеки ниже или у любого трека ВКонтакте: «⋯» → «В плейлист».")
+      : L("В плейлисте нет треков, которые можно слушать.")));
+  if (v.pl.editable && v.adding) c.append(playlistAdder(v));
+}
+
+/**
+ * «Добавить треки» в свой плейлист: треки ВКонтакте из библиотеки, которых в нём ещё нет, с поиском
+ * по названию и исполнителю (как рекомендации с «+» на пустом плейлисте у Whisper Yandex). Добавляет addToPlaylist.
+ */
+function playlistAdder(v) {
+  const box = el("section", "similar pladd");
+  box.append(el("h3", null, L("Добавить из библиотеки")));
+  const q = el("input", "field pladd-q");
+  q.type = "search";
+  q.placeholder = L("Поиск в библиотеке");
+  q.value = v.addQuery || "";
+  const list = el("ul", "list pladd-list");
+  const fill = () => {
+    const have = new Set(v.tracks.map((x) => x.id));
+    const words = normText(q.value).split(" ").filter(Boolean);
+    const pool = allTracks().filter((t) => canAddToPlaylist(t) && !have.has(t.id)
+      && words.every((w) => normText(t.artist + " " + t.title).includes(w)));
+    list.replaceChildren();
+    for (const t of pool.slice(0, 60)) {
+      const li = el("li");
+      const meta = el("div");
+      meta.append(el("div", "t", t.title), el("div", "a", t.artist));
+      const b = iconButton("plus", L("Добавить в этот плейлист"), async (btn) => {
+        btn.disabled = true;
+        li.classList.add("added");
+        await addToPlaylist(v.pl, t);
+      });
+      b.classList.add("recadd");
+      li.append(trackImg(t.cover), meta, b);
+      list.append(li);
+    }
+    if (!pool.length) list.append(el("li", "status", words.length ? L("Ничего не нашлось") : L("В библиотеке нет треков ВКонтакте, которых нет в этом плейлисте.")));
+  };
+  q.addEventListener("input", () => ((v.addQuery = q.value), fill()));
+  fill();
+  box.append(q, list);
+  return box;
 }
 
 // ───────────────────────── страница «VK Микс»: большая кнопка, как «Моя волна» у Whisper ─────────────────────────
@@ -2454,7 +2521,25 @@ async function applyTheme(r) {
     v.hidden = true;
   }
   applyStyleVars();
+  saveBoot();
 }
+
+/** Снимок для boot.js: стиль, основа, цвет фона и акцент — следующий запуск сразу рисуется в них. */
+let bootSaveT = 0;
+function saveBoot() {
+  clearTimeout(bootSaveT);
+  bootSaveT = setTimeout(() => {
+    const root = document.documentElement;
+    if (root.classList.contains("booting")) return;
+    let bg = getComputedStyle(document.body).backgroundColor;
+    if (!bg || /^rgba\([^)]*,\s*0\)$/.test(bg) || bg === "transparent") bg = "";
+    const accent = getComputedStyle(root).getPropertyValue("--accent").trim();
+    try {
+      localStorage.setItem("vkm_boot", JSON.stringify({ style: root.dataset.style || "", base: root.dataset.base || "", bg, accent }));
+    } catch {}
+  }, 300);
+}
+window.saveBoot = saveBoot;
 
 /** Переменные основы из tokens темы (или значения основы), поверх — «тонкая настройка» пользователя. */
 function applyStyleVars() {
@@ -2644,8 +2729,11 @@ function renderFontPicker() {
 }
 
 async function selectTheme(id) {
+  // выбранная карточка подсвечивается сразу (тему из файла ещё разбирать), настройки — после применения:
+  // раньше они перерисовывались до того, как applyTheme сменит S.theme, и подсветка оставалась на прошлом стиле
+  for (const c of document.querySelectorAll(".stylecard")) c.classList.toggle("on", c.dataset.style === id);
   try {
-    applyTheme(await invoke("theme_select", { id }));
+    await applyTheme(await invoke("theme_select", { id }));
     if (S.lib) for (const t of S.lib) t.active = t.id === id;
     if (S.page === "settings") renderSettings();
   } catch (e) {
@@ -3791,6 +3879,13 @@ function initPlayer() {
     volTimer = setTimeout(() => invoke("player_volume", { volume: S.volume }).catch(() => {}), 40);
   });
   vol.addEventListener("change", () => invoke("save_prefs", { volume: S.volume }).catch(() => {}));
+  // текст песни — своей кнопкой в плеере (раньше — только нажатием на обложку, его не находили); повторное — закрыть
+  $("#lyrBtn").append(Icons.icon("lyrics"));
+  $("#lyrBtn").addEventListener("click", () => {
+    if (!$("#full").hidden && $("#full").dataset.mode === "lyrics") return closeFull();
+    if (!S.current) return toast(L("Сначала включите трек"));
+    openFull("lyrics");
+  });
   $("#normBtn").addEventListener("click", () => {
     S.normalize = !S.normalize;
     syncNormalize();
@@ -4032,6 +4127,8 @@ async function boot() {
   } catch (e) {
     toast(L("Тема не загрузилась: ") + errMsg(e), "error");
   }
+  // тема применена — интерфейс можно показывать (boot.js прятал его под цветом фона прошлого стиля)
+  window.bootDone?.();
   initPlayer();
   if (info.player_error) toast(L(info.player_error), "error");
   go("library");

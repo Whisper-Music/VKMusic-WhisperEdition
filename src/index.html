@@ -6,6 +6,8 @@
   <title>VK Music</title>
   <!-- Разметка — как у Whisper Yandex (те же классы и id): темы Whisper (@@ css whisper-music) ложатся на неё целиком.
        whisper.css — основа оформления Whisper (Неон, Королевский, Стимпанк, Lolitta); app.css — то, чего у Whisper нет. -->
+  <!-- до первой отрисовки: стиль прошлого запуска, интерфейс скрыт, пока тема не применится (без «мигания» Неона) -->
+  <script src="boot.js"></script>
   <link rel="stylesheet" href="core/base.css" />
   <link rel="stylesheet" href="whisper.css" />
   <link rel="stylesheet" href="core/together.css" />
@@ -122,6 +124,7 @@
       </div>
 
       <div class="pright">
+        <button id="lyrBtn" class="modebtn lyrbtn" title="Текст песни"></button>
         <button id="normBtn" class="modebtn" title="Постоянный уровень громкости"></button>
         <div class="volwrap" id="volWrap">
           <button id="volBtn" title="Громкость (клик — выключить звук)"></button>
