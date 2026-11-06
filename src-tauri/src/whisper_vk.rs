@@ -58,6 +58,22 @@ pub async fn wa_save_track(
     up.new_album(&title, &cover, track).await
 }
 
+/// «Слушать вместе»: у гостя нет трека, который играет ведущий, — файл трека библиотеки уходит во временный кэш
+/// комнаты на сервере архива (живёт, пока открыта комната; в архив не сохраняется). Ответ сервера — `{ id }`, его
+/// ядро отдаёт гостям как archiveId. Файл берётся так же, как для «Сохранить в архив»: по ключу, только трек библиотеки.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn wa_room_cache_track(app: AppHandle, st: State<'_, AppState>, key: String, code: String, file_name: String) -> Res<WaResponse> {
+    // ключ и бюджет загрузок — до выкачивания трека
+    let up = upload::begin(None, None)?;
+    let (path, _) = crate::library_file(&app, &st, &key).await?;
+    let audio = tauri::async_runtime::spawn_blocking(move || accepted_audio(&path)).await.map_err(|e| e.to_string())??;
+    if audio.len() > upload::MAX_TRACK_UPLOAD {
+        return Err("Трек больше 100 МБ — архив такие не принимает".into());
+    }
+    let track = upload::TrackFile::new(&file_name, &audio).ok_or("Архив не принимает формат этого трека")?;
+    up.to_room_cache(&code, track).await
+}
+
 /// Файл в формате, который принимает архив (mp3, flac, ogg, wav, m4a). Остальное (opus в webm, aac в ts и т. п.)
 /// перекладывается ffmpeg без перекодирования (`-c copy`): opus/vorbis — в ogg, остальное — в m4a.
 fn accepted_audio(src: &Path) -> Res<Vec<u8>> {

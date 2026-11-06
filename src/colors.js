@@ -134,9 +134,19 @@
     { label: "Текст выбранных кнопок", keys: ["navActText", "btnActText"] },
   ];
 
+  // «Тонкая настройка» из файла темы (settings whisper-music → colorOverrides, как у Whisper Yandex; так её
+  // сохраняет «Сохранить стиль в файл…»): только для её собственного стиля и только цвета. Свои настройки главнее.
+  function themeCc(st) {
+    const th = typeof S !== "undefined" ? S : null;
+    const co = th && th.theme && th.theme.file && th.theme.id === st && th.themeSettings && th.themeSettings.colorOverrides;
+    const out = {};
+    if (co && typeof co === "object") for (const it of ITEMS) if (HEX.test(co[it.k] || "")) out[it.k] = co[it.k];
+    return out;
+  }
+
   function ccCss(st) {
     // повтор :root поднимает специфичность, сам блок — последним в <head>: главнее правил темы с !important
-    const cc = of(st).cc, pre = `:root:root:root:root[data-style="${st}"]`, b = base(), out = [];
+    const cc = { ...themeCc(st), ...of(st).cc }, pre = `:root:root:root:root[data-style="${st}"]`, b = base(), out = [];
     const scope = (sel) => sel.split(",").map((x) => x.trim()).map((x) => (x === ":root" ? pre : `${pre} ${x}`)).join(", ");
     // у стиля нет обводки (толщина 0) — выбранный цвет рисуется рамкой в 1px
     const noBorder = (sel) => sel.split(",").some((x) => {
@@ -346,5 +356,7 @@
     c.append(row);
   }
 
-  window.Colors = { main, card, apply };
+  /** Тонкая настройка стиля целиком (из файла темы и своя) — для «Сохранить стиль в файл…». */
+  const ccOf = (st = style()) => ({ ...themeCc(st), ...of(st).cc });
+  window.Colors = { main, card, apply, ccOf };
 })();

@@ -373,7 +373,12 @@ fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event
                     }
                     Some("pause") => st.paused = b.unwrap_or(false),
                     Some("idle-active") => st.idle = b.unwrap_or(false),
-                    Some("volume") => st.volume = f.map(from_mpv).unwrap_or(st.volume),
+                    // громкость задаёт сам интерфейс: каждый шаг ползунка не должен гонять полное состояние
+                    // плеера (кнопки, время, отчёты ядру) — уходит вместе с ближайшей позицией
+                    Some("volume") => {
+                        st.volume = f.map(from_mpv).unwrap_or(st.volume);
+                        urgent = false;
+                    }
                     _ => continue,
                 }
                 if urgent || last_emit.elapsed() >= Duration::from_millis(250) {

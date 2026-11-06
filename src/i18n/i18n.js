@@ -22,6 +22,16 @@ function L(src, ...args) {
   return args.length ? s.replace(/\{(\d+)\}/g, (m, i) => (args[i] == null ? "" : String(args[i]))) : s;
 }
 
+/**
+ * Перевод с уточнением — когда один русский текст переводится по-разному: «Свернуть» окно — Minimize,
+ * а боковую панель — Collapse. Ключ словаря — «уточнение|текст»; его нет — как L(src).
+ */
+function Lc(ctx, src) {
+  const d = I18N.lang === "ru" ? null : I18N_DICTS[I18N.lang];
+  const s = d && d[ctx + "|" + src];
+  return typeof s === "string" ? s : L(src);
+}
+
 /** Множественное число: русские три формы; в английском словаре по первой форме — [одна, много]. */
 function plural(n, one, few, many) {
   if (I18N.lang !== "ru") {

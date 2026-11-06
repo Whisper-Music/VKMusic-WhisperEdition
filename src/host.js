@@ -9,14 +9,18 @@
   // Ошибки — русским текстом, как у команд Rust (app.js переводит их через errMsg)
   const OFFLINE = "Нет связи с VK Music: приложение закрыто?";
 
-  async function invoke(cmd, args) {
+  // opts.headers — как у Tauri (invoke(cmd, байты, { headers })): ядро так передаёт данные к сырому телу
+  // («Темы комнаты»: x-room-code, x-theme-name…). Сервер пропускает в команду только заголовки x-*.
+  async function invoke(cmd, args, opts) {
     const raw = args instanceof Uint8Array || args instanceof ArrayBuffer;
+    const extra = {};
+    for (const [k, v] of Object.entries((opts && opts.headers) || {})) if (/^x-[a-z0-9-]{1,40}$/i.test(k)) extra[k] = String(v);
     let r;
     try {
       r = await fetch("/invoke/" + encodeURIComponent(cmd), {
         method: "POST",
         credentials: "same-origin",
-        headers: { "Content-Type": raw ? "application/octet-stream" : "application/json" },
+        headers: { ...extra, "Content-Type": raw ? "application/octet-stream" : "application/json" },
         body: raw ? args : JSON.stringify(args ?? {}),
       });
     } catch {

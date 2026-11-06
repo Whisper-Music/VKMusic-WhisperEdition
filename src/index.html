@@ -58,7 +58,7 @@
       <input id="search" class="search" type="search" placeholder="Найти трек или вставить ссылку" autocomplete="off" spellcheck="false" maxlength="2048" />
       <button class="nav" id="wave" data-page="wave">VK Микс</button>
       <button class="nav active" id="likes" data-page="library">Библиотека<span class="nav-badge" id="dlBadge" hidden></span></button>
-      <button class="nav" id="mixes" data-page="vk">Миксы и плейлисты</button>
+      <button class="nav" id="mixes" data-page="vk">Плейлисты</button>
       <button class="nav" id="statsBtn" data-page="stats">Статистика</button>
       <button class="nav" id="settingsBtn" data-page="settings">Настройки</button>
       <div class="spacer"></div>
@@ -153,7 +153,7 @@
       <button id="fClose" class="round fclose" title="Свернуть (Esc)">✕</button>
       <div id="fSrc" class="fsrc" role="group" aria-label="Текст песни">
         <button type="button" id="fLyrBtn" title="Текст песни">Текст</button>
-        <select id="fLang" class="np-lyrics-lang" title="Язык текста" hidden></select>
+        <button type="button" id="fLang" class="np-lyrics-lang" title="Язык текста" aria-haspopup="menu" hidden></button>
         <label class="fnotes" id="fNotesBox" title="Пояснения Genius к строкам" hidden><input type="checkbox" id="fNotes" /><span>Пояснения</span></label>
         <button type="button" id="fGenius" title="Открыть песню на Genius" hidden>Genius</button>
       </div>
@@ -203,6 +203,7 @@
   <script src="app.js"></script>
   <script src="hotkeys.js"></script>
   <script src="colors.js"></script>
+  <script src="themeguard.js"></script>
   <!-- привязка к ядру (роли, провайдер, плеер, очередь) — до движка тем и модулей; app.js запускается
        по DOMContentLoaded, когда всё ниже уже подключено -->
   <script src="whisper-vk.js"></script>

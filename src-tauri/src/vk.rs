@@ -85,10 +85,15 @@ pub struct Vk {
     token: std::sync::Mutex<Option<(String, String, i64, Instant)>>,
     /// access_key треков и плейлистов из API: «owner_id_id» / «pl:owner_id_id» → ключ
     keys: std::sync::Mutex<std::collections::HashMap<String, String>>,
-    /// время последнего запроса; заодно выстраивает запросы в очередь
+    /// когда начался последний запрос; заодно выстраивает запросы в очередь (по одному, пока не придёт ответ)
     last: tokio::sync::Mutex<Option<Instant>>,
     profile: std::sync::Mutex<Option<Profile>>,
+    /// номер последнего поиска из строки поиска: устаревший (вы печатаете дальше) в очереди не ждёт и не уходит в ВК
+    live_search: std::sync::atomic::AtomicU64,
 }
+
+/// Поиск не выполнен: пока он ждал очереди, из строки поиска пришёл более новый запрос.
+pub const ERR_SUPERSEDED: &str = "Поиск заменён более новым запросом";
 
 // ───────────────────────── сессия ─────────────────────────
 
@@ -529,6 +534,7 @@ impl Vk {
             keys: std::sync::Mutex::new(std::collections::HashMap::new()),
             last: tokio::sync::Mutex::new(None),
             profile: std::sync::Mutex::new(None),
+            live_search: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -565,16 +571,31 @@ impl Vk {
         s: &Session,
         build: impl FnOnce(&reqwest::Client) -> reqwest::RequestBuilder,
     ) -> Res<String> {
+        self.send_if(s, build, || true).await
+    }
+
+    /// `send`, но запрос уходит, только если `wanted()` всё ещё правда, когда до него дошла очередь.
+    async fn send_if(
+        &self,
+        s: &Session,
+        build: impl FnOnce(&reqwest::Client) -> reqwest::RequestBuilder,
+        wanted: impl Fn() -> bool,
+    ) -> Res<String> {
         let req = build(&self.client(s)?);
-        // очередь: следующий запрос — не раньше чем через GAP после предыдущего
+        // очередь: запросы по одному, следующий начинается не раньше чем через GAP после начала предыдущего
+        // (раньше — после его ответа: поиск ВК отвечает ~2 с, и к каждому следующему запросу прибавлялась секунда)
         let mut last = self.last.lock().await;
         if let Some(t) = *last {
             if t.elapsed() < GAP {
                 tokio::time::sleep(GAP - t.elapsed()).await;
             }
         }
+        if !wanted() {
+            return Err(ERR_SUPERSEDED.into());
+        }
+        let started = Instant::now();
         let res = req.send().await;
-        *last = Some(Instant::now());
+        *last = Some(started);
         drop(last);
         let res = res.map_err(|e| format!("Нет связи с ВКонтакте: {e}"))?;
         if !res.status().is_success() {
@@ -596,14 +617,22 @@ impl Vk {
     }
 
     async fn al_audio(&self, s: &Session, form: &[(&str, String)]) -> Res<Value> {
+        self.al_audio_if(s, form, || true).await
+    }
+
+    async fn al_audio_if(&self, s: &Session, form: &[(&str, String)], wanted: impl Fn() -> bool) -> Res<Value> {
         let act = form.iter().find(|(k, _)| *k == "act").map(|(_, v)| v.as_str()).unwrap_or("");
         let text = self
-            .send(s, |c| {
-                c.post(format!("{}/al_audio.php?act={act}", s.base))
-                    .header("X-Requested-With", "XMLHttpRequest")
-                    .header("Referer", format!("{}/audio", s.base))
-                    .form(form)
-            })
+            .send_if(
+                s,
+                |c| {
+                    c.post(format!("{}/al_audio.php?act={act}", s.base))
+                        .header("X-Requested-With", "XMLHttpRequest")
+                        .header("Referer", format!("{}/audio", s.base))
+                        .form(form)
+                },
+                wanted,
+            )
             .await?;
         parse_al(&text)
     }
@@ -650,10 +679,15 @@ impl Vk {
         Ok(Page { tracks, next_offset: next.filter(|_| has_more), more: None })
     }
 
-    pub async fn search(&self, s: &Session, query: &str, more: Option<More>) -> Res<Page> {
+    /// `live` — запрос из строки поиска: более новый такой же запрос отменяет этот, пока он ждёт очереди
+    /// (вы печатаете дальше — промежуточные «lin», «linkin» не задерживают итоговый запрос).
+    pub async fn search(&self, s: &Session, query: &str, more: Option<More>, live: bool) -> Res<Page> {
+        use std::sync::atomic::Ordering::SeqCst;
+        let my = if live { self.live_search.fetch_add(1, SeqCst) + 1 } else { 0 };
+        let wanted = || my == 0 || self.live_search.load(SeqCst) == my;
         let v = match more {
             Some(m) => {
-                self.al_audio(
+                self.al_audio_if(
                     s,
                     &[
                         ("act", "load_catalog_section".into()),
@@ -661,12 +695,13 @@ impl Vk {
                         ("section_id", m.section_id),
                         ("start_from", m.start_from),
                     ],
+                    &wanted,
                 )
                 .await?
             }
             None => {
                 let uid = self.profile(s).await?.id.to_string();
-                self.al_audio(
+                self.al_audio_if(
                     s,
                     &[
                         ("act", "section".into()),
@@ -677,6 +712,7 @@ impl Vk {
                         ("section", "search".into()),
                         ("q", query.into()),
                     ],
+                    &wanted,
                 )
                 .await?
             }
@@ -927,8 +963,9 @@ impl Vk {
                 tokio::time::sleep(GAP - t.elapsed()).await;
             }
         }
+        let started = Instant::now();
         let res = req.send().await;
-        *last = Some(Instant::now());
+        *last = Some(started);
         drop(last);
         let res = res.map_err(|e| format!("Нет связи с ВКонтакте: {e}"))?;
         if !res.status().is_success() {
@@ -1433,6 +1470,50 @@ mod tests {
         let id = m.iter().find(|x| x.0.api).map(|x| x.0.id.clone()).unwrap();
         let url = tauri::async_runtime::block_on(vk.api_stream(&s, &id, None)).unwrap();
         println!("свежая ссылка getById: {}", url.starts_with("https://"));
+    }
+
+    /// Сколько идёт поиск: VKM_COOKIES=… VKM_QUERY=… cargo test live_search -- --ignored --nocapture.
+    /// Печатает время профиля и поиска и число треков; набор подряд — средний запрос отменяется (ERR_SUPERSEDED).
+    #[test]
+    #[ignore]
+    fn live_search() {
+        let path = std::env::var("VKM_COOKIES").expect("VKM_COOKIES");
+        let q = std::env::var("VKM_QUERY").unwrap_or_else(|_| "linkin park numb".into());
+        let mut cookies = Vec::new();
+        for l in std::fs::read_to_string(path).unwrap().lines() {
+            let l = l.strip_prefix("#HttpOnly_").unwrap_or(l);
+            if l.starts_with('#') || l.trim().is_empty() {
+                continue;
+            }
+            let p: Vec<&str> = l.split('\t').collect();
+            if p.len() >= 7 {
+                cookies.push(Cookie { domain: p[0].into(), path: p[2].into(), name: p[5].into(), value: p[6].into() });
+            }
+        }
+        let s = Session { base: "https://vk.ru", cookies: vk_cookies(cookies) };
+        let vk = Vk::new();
+        tauri::async_runtime::block_on(async {
+            let t = Instant::now();
+            let p = vk.profile(&s).await;
+            println!("профиль: {:?} за {:?}", p.as_ref().map(|p| p.id > 0), t.elapsed());
+            for i in 0..2 {
+                let t = Instant::now();
+                let r = vk.search(&s, &q, None, false).await;
+                println!("поиск {i}: {:?} треков за {:?}", r.as_ref().map(|p| p.tracks.len()), t.elapsed());
+            }
+            // печатают дальше: первый уже ушёл, второй ждёт очереди и отменяется третьим (в ВК уходят два)
+            let t = Instant::now();
+            let later = |ms: u64, q: String| {
+                let vk = &vk;
+                let s = &s;
+                async move {
+                    tokio::time::sleep(Duration::from_millis(ms)).await;
+                    vk.search(s, &q, None, true).await
+                }
+            };
+            let (a, b, c) = tokio::join!(later(0, q.clone()), later(100, format!("{q} a")), later(200, format!("{q} b")));
+            println!("набор: {:?} / {:?} / {:?} за {:?}", a.map(|p| p.tracks.len()), b.map(|p| p.tracks.len()), c.map(|p| p.tracks.len()), t.elapsed());
+        });
     }
 
     /// Ретранслятор (relay.rs) на настоящем VK Миксе: ссылка CDN через 127.0.0.1 отдаёт звук, перемотка (Range) работает.

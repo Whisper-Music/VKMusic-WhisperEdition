@@ -411,6 +411,18 @@ fn invoke(app: &AppHandle, s: &mut TcpStream, req: &Req) -> std::io::Result<()> 
             Err(_) => return text(s, 400, "bad json"),
         }
     };
+    // заголовки x-* — данные команды к сырому телу, как invoke(cmd, байты, { headers }) из окна
+    // (ядро: wa_room_theme_share — код комнаты и название темы); остальные (куки, Host) в команду не попадают
+    let mut headers = tauri::http::HeaderMap::new();
+    for (k, v) in &req.headers {
+        let k = k.to_ascii_lowercase();
+        if !k.starts_with("x-") || k.len() > 42 || v.len() > 1024 {
+            continue;
+        }
+        if let (Ok(name), Ok(val)) = (tauri::http::HeaderName::from_bytes(k.as_bytes()), tauri::http::HeaderValue::from_str(v)) {
+            headers.insert(name, val);
+        }
+    }
     let Some(wv) = app.get_webview("main") else { return text(s, 503, "Нет главного окна") };
     let (tx, rx) = mpsc::channel();
     let request = tauri::webview::InvokeRequest {
@@ -419,7 +431,7 @@ fn invoke(app: &AppHandle, s: &mut TcpStream, req: &Req) -> std::io::Result<()> 
         error: CallbackFn(1),
         url: "tauri://localhost/".parse().expect("адрес"),
         body,
-        headers: Default::default(),
+        headers,
         invoke_key: app.invoke_key().to_string(),
     };
     wv.on_message(

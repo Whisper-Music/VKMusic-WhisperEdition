@@ -24,7 +24,7 @@
     "nav": ".side .nav:not(.active)",
     "nav:active": ".side .nav.active",
     "search:global": "#search",
-    "search:settings": ".tlfind",
+    "search:settings": ".tlfind, #fontFind",
     "main": ".main",
     "page.title": "#title",
     "page.subtitle": "#sub",
@@ -93,11 +93,29 @@
   // сущность ядра (или её сохранённые в истории данные) → трек app.js: из библиотеки, если он там есть (свежие
   // обложка и ссылки), иначе — как сохранили. Трек комнаты «Слушать вместе» (roomId) и метка архива ведущего
   // (waShared) сохраняются: по ним ядро узнаёт трек комнаты и находит его в архиве.
+  // сохранённое store → трек app.js: свой id из rid
+  function unstore(raw) {
+    if (!("rid" in raw)) return raw;
+    const { rid, ...t } = raw;
+    if (rid == null) delete t.id; else t.id = rid;
+    return t;
+  }
+  // История очереди до 2026-11-06 хранила в id свой id трека (store), а не id ядра — повторы не узнавались,
+  // одно и то же прослушивание копилось строками. Переводим записи на id ядра, пока core/queue.js не прочитал
+  // историю: при загрузке он сам оставляет одно, самое свежее прослушивание каждого трека.
+  (() => {
+    const KEY = "vkm_history";
+    let h;
+    try { h = JSON.parse(localStorage.getItem(KEY)); } catch { return; }
+    if (!Array.isArray(h) || !h.some((x) => x && x.t && x.t.key && !("rid" in x.t))) return;
+    for (const x of h) if (x && x.t && x.t.key && !("rid" in x.t)) x.t = { ...x.t, id: trackId(x.t.roomId || x.t.key), rid: x.t.path ? null : x.t.id ?? null }; // у файла id не было — store подставлял ключ
+    try { localStorage.setItem(KEY, JSON.stringify(h)); } catch {}
+  })();
   function fromCore(x) {
     const raw = x && x.kind === "track" ? x.raw : x;
     if (!raw || typeof raw !== "object" || !raw.key) return null;
-    const lib = allTracks().find((t) => t.key === raw.key) || (S.queue || []).find((t) => t.key === raw.key);
-    if (!lib) return raw;
+    const lib = libraryByKey(raw.key) || (S.queue || []).find((t) => t.key === raw.key);
+    if (!lib) return unstore(raw);
     return raw.roomId || raw.waShared ? { ...lib, roomId: raw.roomId, waShared: raw.waShared } : lib;
   }
 
@@ -106,19 +124,41 @@
   // трек сервиса в библиотеке), по исполнителю + названию + длительности (libraryMatch), трек SoundCloud играет по id.
   // Не нашёлся — заготовка «room:…»: при включении её найдёт архив ведущего (waShared) или один поиск ВКонтакте.
   const https = (u) => (/^https:\/\//.test(u || "") ? String(u).slice(0, 300) : null);
+  // Что fromRoom ответил на трек комнаты (id → трек app.js). Ядро (together.js, resolveRoom) зовёт fromRoom перед
+  // tracks([id]), поэтому tracks отвечает без сети: исполнитель и название трека комнаты уже известны.
+  const roomSeen = new Map();
   function fromRoom(x) {
     const id = String(x?.id || ""), artist = (x?.artists || []).map((a) => a?.name).filter(Boolean).join(", ");
     const want = { key: id, artist, title: String(x?.title || ""), duration: Math.round((x?.durationMs || 0) / 1000) };
-    const lib = allTracks().find((t) => t.key === id) || (artist ? libraryMatch(want) : null);
-    if (lib) return { ...lib, roomId: id };
-    if (/^sc:\d+$/.test(id)) return { ...svcTrack("sc", { id: id.slice(3), artist, title: want.title, duration: want.duration, cover: https(x.coverUri) }), roomId: id };
-    return { key: "room:" + id, roomId: id, room: true, artist: artist || L("Неизвестный исполнитель"), title: want.title || L("Без названия"),
+    const lib = libraryByKey(id) || (artist ? libraryMatch(want) : null);
+    let t;
+    if (lib) t = { ...lib, roomId: id };
+    else if (/^sc:\d+$/.test(id)) t = { ...svcTrack("sc", { id: id.slice(3), artist, title: want.title, duration: want.duration, cover: https(x.coverUri) }), roomId: id };
+    else t = { key: "room:" + id, roomId: id, room: true, artist: artist || L("Неизвестный исполнитель"), title: want.title || L("Без названия"),
       duration: want.duration, cover: https(x?.coverUri) };
+    roomSeen.delete(id);
+    roomSeen.set(id, t);
+    if (roomSeen.size > 300) roomSeen.delete(roomSeen.keys().next().value);
+    return t;
+  }
+  // Поиск трека ВКонтакте для комнаты (ядро: provider.search, наше resolveRoom): один запрос на одну строку — ответ
+  // (и ошибка) помнится минуту, чтобы ядро и плеер не искали одно и то же дважды (правило «без повторов»).
+  const vkFound = new Map();
+  function vkSearchOnce(query) {
+    const q = String(query || "").trim().slice(0, 200);
+    const hit = vkFound.get(q);
+    if (hit && Date.now() - hit.at < 60e3) return hit.p;
+    const hit2 = { at: Date.now(), p: null, failed: false };
+    const p = invoke("vk_search", { query: q, more: null }).then((r) => (r.tracks || []).map((x) => svcTrack("vk", x)));
+    p.catch(() => { hit2.failed = true; });
+    hit2.p = p;
+    vkFound.set(q, hit2);
+    if (vkFound.size > 50) vkFound.delete(vkFound.keys().next().value);
+    return p;
   }
   // заготовку комнаты — в трек ВК: один поиск, совпадение по названию, исполнителю и длительности ±3 с
   async function resolveRoom(t) {
-    const p = await invoke("vk_search", { query: `${t.artist} ${t.title}`.slice(0, 200), more: null });
-    const found = (p.tracks || []).map((x) => svcTrack("vk", x)).filter((x) => !x.unavailable);
+    const found = (await vkSearchOnce(`${t.artist} ${t.title}`)).filter((x) => !x.unavailable);
     const same = found.find((x) => normText(x.title) === normText(t.title) && normText(x.artist) === normText(t.artist)
       && (!t.duration || !x.duration || Math.abs(x.duration - t.duration) <= 3));
     return same ? { ...same, roomId: t.roomId, waShared: t.waShared } : null;
@@ -149,8 +189,9 @@
       available: !t.unavailable,
       raw: t,
     }),
-    // что модули ядра сохраняют о треке (история очереди): поля трека app.js; id нужен истории и у файлов
-    store: (t) => (t && t.key ? { ...t, id: t.id != null ? t.id : t.key } : null),
+    // что модули ядра сохраняют о треке (история очереди): поля трека app.js, id — как у трека ядра (toTrack):
+    // по нему история находит прошлое прослушивание того же трека (иначе каждое — новой строкой); свой id — в rid
+    store: (t) => (t && t.key ? { ...t, id: trackId(t.roomId || t.key), rid: t.id ?? null } : null),
     // Whisper Archive: файл трека Rust берёт сам по ключу библиотеки (whisper_vk.rs); обложка файла (vkm://) —
     // не адрес для скачивания: Rust возьмёт её из тегов файла
     archiveSave: (t, a) => {
@@ -175,6 +216,33 @@
     }),
     fromRoom,
     accountLabel: "аккаунта ВКонтакте или SoundCloud",
+    // «Слушать вместе» (ядро: трек комнаты у себя). tracks — без сети: трек библиотеки (по ключу или исполнителю,
+    // названию и длительности) или SoundCloud по id. Нет — ядро ищет сам (search), затем в своём архиве, иначе
+    // «нет на площадке» (ведущий может поделиться файлом).
+    tracks: async (ids) => (ids || []).map((id) => {
+      id = String(id);
+      const t = roomSeen.get(id) || fromRoom({ id });
+      return t && !t.room ? W.to("track", t) : null;
+    }).filter(Boolean),
+    // поиск ВКонтакте — только для комнаты (у приложения свой поиск): один запрос на трек комнаты, без входа — пусто
+    search: async (text, type) => {
+      const none = { tracks: [], artists: [], albums: [], playlists: [], best: null };
+      if (type && type !== "track") return none;
+      try {
+        return { ...none, tracks: (await vkSearchOnce(text)).map((t) => W.to("track", t)) };
+      } catch (e) {
+        if (errText(e) === "Вы не вошли во ВКонтакте") return none;
+        throw e;
+      }
+    },
+    // ведущий делится треком, которого нет у гостя: файл — во временный кэш комнаты на сервере архива.
+    // Только трек библиотеки (файл Rust берёт сам по ключу, как для «Сохранить в архив»)
+    roomCache: (t, code) => {
+      const r = t.raw || {};
+      const lib = r.room ? null : libraryMatch(r);
+      if (!lib || !(lib.path || S.saved.some((x) => x.key === lib.key))) return Promise.reject(new Error(L("Поделиться с гостями можно только треком из библиотеки")));
+      return invoke("wa_room_cache_track", { key: lib.key, code: String(code || ""), file_name: `${lib.artist} - ${lib.title}`.slice(0, 150) });
+    },
   });
 
   // ---------- плеер ----------
@@ -183,12 +251,34 @@
     position: () => S.pl.pos || 0,
     duration: () => S.pl.duration || (S.current && S.current.duration) || 0,
     context: () => (S.queueMix ? { type: "radio", id: S.queueMix, title: L("VK Микс") } : null),
-    play: () => { if (!playing()) togglePlay(); },
+    // Плеер стоит без файла (после перезапуска, выхода из комнаты, доигравший трек): включаем трек заново — с места,
+    // куда ядро перед этим перемотало (seek сохраняет его в S.idleSeek), а не с начала. Так гость, который вошёл
+    // в комнату, где играет тот же трек, что стоит у него, сразу слышит его в такт с ведущим.
+    // Гостю комнаты «играть» от синхронизации ядра (раз в 3 с) не включает трек, который у него доиграл до конца
+    // (ждём следующего от ведущего; иначе он начинался бы снова) или не открылся (снова — только когда гость
+    // войдёт или вернётся в комнату, без повторов запросов к сервису).
+    play: () => {
+      if (playing()) return;
+      const at = S.idleSeek;
+      S.idleSeek = null;
+      if (!S.current || !S.pl.idle || S.loading) return togglePlay();
+      if (roomGuest()) {
+        if (S.playError) return;
+        const d = S.current.duration || 0;
+        if (at != null ? d > 0 && at > d - 2 : S.roomEnded === S.current) return;
+      }
+      playAt(S.qi, false, at > 0 ? { at } : undefined);
+    },
     pause: () => { if (playing()) togglePlay(); },
     toggle: () => togglePlay(),
     next: () => next(false),
     prev: () => prev(),
-    seek: (sec) => { if (S.current) seekTo(sec); },
+    // файла в плеере нет — перематывать нечего: место запоминается для следующего «играть» (выше)
+    seek: (sec) => {
+      if (!S.current) return;
+      if (S.pl.idle && !S.loading) S.idleSeek = Math.max(0, Number(sec) || 0);
+      else seekTo(sec);
+    },
     setVolume: (v) => {
       S.volume = Math.round(v * 100);
       S.muted = false;
@@ -218,9 +308,48 @@
       time: S.pl.pos || 0,
       rate: S.rate || 1,
       buffering: false,
-      error: false,
+      // трек не открылся (и повтор со свежей ссылкой тоже): гость комнаты по этому говорит ведущему «нет у меня»
+      error: !!S.playError && !S.loading,
     }),
   });
+  // Гость вошёл в комнату или вернулся к ведущему — это действие пользователя: трек, который раньше не открылся,
+  // можно запросить снова, и прошлые неудачные поиски ВКонтакте не в счёт (иначе перезаход минуту не находил трек)
+  let roomFollowed = "";
+  W.on("room", (r) => {
+    const now = r && r.inRoom && !r.host && r.follow ? String(r.code || "") : "";
+    if (now && now !== roomFollowed) {
+      S.playError = false;
+      for (const [k, v] of vkFound) if (v.failed) vkFound.delete(k);
+    }
+    roomFollowed = now;
+  });
+  // ---------- кнопки плеера у гостя комнаты ----------
+  // Ядро (together.js) у гостя глушит «вперёд / назад» и кнопки режимов (роли player.next/prev, fullplayer.next/prev,
+  // player.mode) перехватом на document — даже когда гость отошёл от ведущего и слушает своё: переключить свой трек
+  // было нельзя. И «Текст песни» и «Постоянный уровень громкости» у нас тоже .modebtn — их ядро глушило у любого гостя.
+  // Эти нажатия ловим раньше — на window (фаза захвата идёт от window к document) — и выполняем сами:
+  // «Текст песни» и громкость — всегда, остальное — когда гость отошёл (следует за ведущим — пусть решает ядро).
+  const GUEST_OWN = [
+    ["#lyrBtn", () => toggleLyrics(), true],
+    ["#normBtn", () => toggleNormalize(), true],
+    ["#next, #fNext", () => next(false)],
+    ["#prev, #fPrev", () => prev()],
+    ["#shuffleBtn", () => toggleShuffle()],
+    ["#repeatBtn", () => cycleRepeat()],
+  ];
+  window.addEventListener("click", (e) => {
+    const room = W.modules.together, info = room && room.info && room.info();
+    if (!info || info.host || !e.target.closest) return;
+    for (const [sel, fn, always] of GUEST_OWN) {
+      const b = e.target.closest(sel);
+      if (!b || b.disabled || (!always && info.follow)) continue;
+      e.stopPropagation();
+      e.preventDefault();
+      fn();
+      return;
+    }
+  }, true);
+
   // меню трека, консоль и «Слушать вместе» зовут это с треком app.js (старое имя из ядра)
   window.playNext = (t, quiet) => W.queue.playNext(t, { quiet: !!quiet });
 
@@ -362,6 +491,19 @@
     if (!tmenu.children.length) menuNote(L("Здесь пока нечего делать"));
     placeMenu();
   }
+  /**
+   * Меню выбора у кнопки (язык текста песни): items — [{ label, on, fn }]. То же .tmenu, что «⋯» трека — в оформлении
+   * темы, а не выпадающий список <select> (его WebKitGTK рисует белым GTK).
+   */
+  window.openPickMenu = (btn, items) => openMenu(btn, () => {
+    menuReset();
+    for (const it of items || []) {
+      const b = menuItem(it.on ? Icons.svg("check") : "", String(it.label), it.fn);
+      b.classList.toggle("on", !!it.on);
+      b.setAttribute("aria-checked", it.on ? "true" : "false");
+    }
+    placeMenu();
+  });
   /** Меню «⋯» трека app.js у кнопки btn (строка списка, плеер). */
   window.openTrackMenu = (t, btn) => openMenu(btn, () => trackMenuMain(t));
   document.addEventListener("pointerdown", (e) => { if (!tmenu.hidden && !tmenu.contains(e.target) && !(tmenuBtn && tmenuBtn.contains(e.target))) closeTrackMenu(); }, true);
@@ -414,14 +556,54 @@
   // на которую только что нажали. «Отмена» просто закрывает окошко — действие не выполняется.
   let lastButton = null;
   document.addEventListener("pointerdown", (ev) => { lastButton = ev.target.closest && ev.target.closest("button"); }, true);
+  // fallback — у какой кнопки спросить, если нажатую уже убрали (кнопка в подсказке, которая закрылась)
+  const askConfirm = ({ title, text, ok } = {}, fallback = null) => new Promise((resolve) => {
+    let btn = lastButton && lastButton.isConnected ? lastButton : document.activeElement;
+    if ((!btn || btn === document.body) && fallback && fallback.isConnected) btn = fallback;
+    if (!btn || btn === document.body) return resolve(false);
+    // после текущего нажатия: оно ещё всплывает до document, а там нажатие мимо окошка его закрывает
+    setTimeout(() => confirmClick(btn, () => resolve(true), [title, text].filter(Boolean).join(" "), ok || L("Удалить")), 0);
+  });
+
+  // ---------- «Темы комнаты» («Слушать вместе»): текущий стиль файлом и установка темы из файла ----------
+  // Делиться можно только темой из файла: основы Whisper (neon, royal, steam, lolitta) есть у всех, а «Цвета»
+  // пользователя (vkm_colors) в файл темы не входят.
+  async function themeExport() {
+    const th = S.theme;
+    if (!th || !th.file) throw new Error(L("Поделиться можно темой из файла — основы Whisper и так есть у всех"));
+    const bytes = new Uint8Array(await invoke("theme_file", { id: th.id }));
+    const info = (S.themes || []).find((x) => x.id === th.id);
+    return { id: th.id, name: th.name || (info && info.name) || th.id, author: (info && info.author) || "", bytes };
+  }
+  // true — поставлена и включена, false — не вышло (ошибка уже показана), null — не стали заменять свою тему с тем же id
+  async function themeImport(bytes) {
+    bytes = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+    let id = "";
+    try { id = String((await WMT.open(bytes)).manifest.id || ""); } catch {}
+    const list = await invoke("themes_list").catch(() => S.themes || []);
+    const have = id && list.find((x) => x.id === id && !x.builtin);
+    if (have) {
+      const old = new Uint8Array(await invoke("theme_file", { id }).catch(() => new ArrayBuffer(0)));
+      const same = old.length === bytes.length && old.every((b, i) => b === bytes[i]);
+      const ask = { text: L("У вас уже есть тема «{0}» — заменить её этой?", have.name), ok: L("Заменить") };
+      if (!same && !(await askConfirm(ask, document.getElementById("togetherBtn")))) return null;
+    }
+    try {
+      const info = await invoke("theme_install", bytes);
+      await selectTheme(info.id);
+      toast(L("Тема «{0}» установлена", info.name), "ok");
+      return true;
+    } catch (e) {
+      toast(errMsg(e), "error");
+      return false;
+    }
+  }
+
   W.ui.provide({
     toast: (text, ms, opts) => toast(text, opts && opts.kind === "err" ? "error" : opts && opts.kind === "ok" ? "ok" : null, opts && opts.action, ms),
-    confirm: ({ title, text, ok } = {}) => new Promise((resolve) => {
-      const btn = lastButton && lastButton.isConnected ? lastButton : document.activeElement;
-      if (!btn || btn === document.body) return resolve(false);
-      // после текущего нажатия: оно ещё всплывает до document, а там нажатие мимо окошка его закрывает
-      setTimeout(() => confirmClick(btn, () => resolve(true), [title, text].filter(Boolean).join(" "), ok || L("Удалить")), 0);
-    }),
+    confirm: (o) => askConfirm(o),
+    themeExport,
+    themeImport,
     closeMenu: () => { closeTrackMenu(); closePopups(); closeConfirm(); },
     trackMenu: (t, btn) => { const raw = fromCore(t); if (raw) window.openTrackMenu(raw, btn); },
     icon: (name) => ({ more: Icons.svg("dots"), plus: Icons.svg("plus"), grip: Icons.svg("grip") }[name] || ""),
@@ -438,6 +620,11 @@
       close: closeTrackMenu,
       append: (x) => tmenu.append(x),
     }),
+    // «сердце» в строках очереди и истории (core/queue.js): то же, что в наших списках — трек в библиотеке
+    likeButton: (x) => {
+      const t = fromCore(x);
+      return t && !t.room && !t.unavailable ? likeButton(t) : null;
+    },
     settingsCard,
     accentColors,
     obsTheme: () => obsTheme(),

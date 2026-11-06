@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Только главное окно. Окно входа ВКонтакте (внешняя страница) никаких прав не получает.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-request-user-attention"]
 }

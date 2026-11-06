@@ -791,7 +791,7 @@ async fn svc_logout(app: AppHandle, st: State<'_, AppState>, service: String) ->
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn vk_search(app: AppHandle, st: State<'_, AppState>, query: String, more: Option<vk::More>) -> Res<vk::Page> {
+async fn vk_search(app: AppHandle, st: State<'_, AppState>, query: String, more: Option<vk::More>, live: Option<bool>) -> Res<vk::Page> {
     let query = query.trim();
     if query.is_empty() || query.chars().count() > 200 {
         return Err("Введите запрос до 200 символов".into());
@@ -800,7 +800,8 @@ async fn vk_search(app: AppHandle, st: State<'_, AppState>, query: String, more:
         return Err("Неверное продолжение поиска".into());
     }
     let session = vk_session(&app).await?;
-    st.vk.search(&session, query, more).await
+    // live — из строки поиска (пока печатают): устаревший запрос в очереди не ждёт, см. Vk::search
+    st.vk.search(&session, query, more, live == Some(true)).await
 }
 
 /// Играть трек ВК: ссылку получает Rust (одну, по нажатию), интерфейс её не видит.
@@ -1098,13 +1099,13 @@ async fn sc_status(app: AppHandle, st: State<'_, AppState>) -> Res<ScStatus> {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn sc_search(app: AppHandle, st: State<'_, AppState>, query: String, offset: Option<u64>) -> Res<sc::Page> {
+async fn sc_search(app: AppHandle, st: State<'_, AppState>, query: String, offset: Option<u64>, live: Option<bool>) -> Res<sc::Page> {
     let query = query.trim();
     if query.is_empty() || query.chars().count() > 200 {
         return Err("Введите запрос до 200 символов".into());
     }
     let token = sc_session(&app).await;
-    st.sc.search(token.as_deref(), query, offset.unwrap_or(0).min(10_000)).await
+    st.sc.search(token.as_deref(), query, offset.unwrap_or(0).min(10_000), live == Some(true)).await
 }
 
 /// Ссылка на трек/плейлист SoundCloud → треки.
@@ -1648,6 +1649,38 @@ fn theme_file(st: State<'_, AppState>, id: String) -> Res<tauri::ipc::Response> 
     st.themes.raw(&id).map(tauri::ipc::Response::new)
 }
 
+/// «Сохранить стиль в файл…»: тема, собранная интерфейсом (текущий стиль с цветами и эффектами пользователя),
+/// сырым телом → папка загрузок, «<название>.wmt» (свободное имя). Без системного диалога: он белый (GTK) и
+/// выбивается из оформления. Файл должен быть темой — иначе отказ. Возвращает путь.
+#[tauri::command(rename_all = "snake_case")]
+async fn theme_save(st: State<'_, AppState>, request: tauri::ipc::Request<'_>) -> Res<String> {
+    let tauri::ipc::InvokeBody::Raw(body) = request.body() else {
+        return Err("Нет данных темы".into());
+    };
+    if body.len() > wmt::MAX_FILE {
+        return Err("файл темы больше 64 МБ".into());
+    }
+    let bytes = body.clone();
+    let dest = st.cfg.lock().unwrap().download_dir();
+    tauri::async_runtime::spawn_blocking(move || -> Res<String> {
+        let theme = wmt::open(&bytes).map_err(|e| format!("Тема не собралась: {e}"))?;
+        let ext = "wmt";
+        std::fs::create_dir_all(&dest).map_err(|e| format!("Не удалось создать {}: {e}", dest.display()))?;
+        let out = cache::free_path(&dest, &cache::file_name("", theme.name()), ext);
+        std::fs::write(&out, &bytes).map_err(|e| format!("Не удалось сохранить тему: {e}"))?;
+        Ok(out.display().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn open_download_dir(st: State<'_, AppState>) -> Res<()> {
+    let dir = st.cfg.lock().unwrap().download_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    os::open(&dir)
+}
+
 /// Тема перетащена в окно — приходит путь к файлу.
 #[tauri::command(rename_all = "snake_case")]
 fn theme_install_path(st: State<'_, AppState>, path: String) -> Res<themes::ThemeInfo> {
@@ -1903,7 +1936,9 @@ fn main() {
         themes: themes::ThemeStore::new(),
         http: themelib::client(),
         vk,
-        sc: sc::Sc::new(),
+        sc: sc::Sc::new().with_cid_file(
+            dirs::cache_dir().unwrap_or_else(|| config::home().join(".cache")).join("vkmusic").join("sc-client-id"),
+        ),
         saved: saved::SavedStore::new(),
         playlists,
         order: order::OrderStore::new(),
@@ -2034,6 +2069,8 @@ fn main() {
             theme_select,
             theme_install,
             theme_install_path,
+            theme_save,
+            open_download_dir,
             theme_file,
             theme_remove,
             themelib_list,
@@ -2106,6 +2143,16 @@ fn main() {
             whisper::rooms::wa_room_dismiss,
             whisper::rooms::wa_room_transfer,
             whisper::rooms::wa_room_ping,
+            whisper::rooms::wa_room_missing,
+            whisper::rooms::wa_room_friends,
+            whisper::rooms::wa_room_friend_forget,
+            whisper::rooms::wa_room_invite,
+            whisper::rooms::wa_room_invites,
+            whisper::rooms::wa_room_invite_dismiss,
+            whisper::rooms::wa_room_theme_share,
+            whisper::rooms::wa_room_theme_get,
+            whisper::rooms::wa_room_theme_remove,
+            whisper_vk::wa_room_cache_track,
             deeplink::room_link_take,
             // Discord и виджет OBS
             discord::discord_config,

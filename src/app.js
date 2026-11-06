@@ -12,6 +12,32 @@ const HOST = !!TAURI.__host;
 const VKM = TAURI.core.convertFileSrc("", "vkm");
 
 const $ = (sel, root = document) => root.querySelector(sel);
+
+// Без подсказок title (просьба владельца, 2026-11-06): в WebKitGTK их рисует GTK — своим окном поверх любой темы.
+// Атрибут переносится в aria-label (имя кнопки для чтения с экрана; applyStatic переводит и его) — у всех
+// элементов, в том числе у модулей ядра; пустой title снимает aria-label, который сюда же и поставили.
+(() => {
+  const ours = new WeakSet();
+  const strip = (e) => {
+    const v = e.getAttribute("title");
+    if (v === null) return;
+    e.removeAttribute("title");
+    if (v) (e.setAttribute("aria-label", v), ours.add(e));
+    else if (ours.has(e)) (e.removeAttribute("aria-label"), ours.delete(e));
+  };
+  const sweep = (n) => {
+    if (n.nodeType !== 1) return;
+    strip(n);
+    for (const e of n.querySelectorAll("[title]")) strip(e);
+  };
+  sweep(document.body);
+  new MutationObserver((recs) => {
+    for (const r of recs) {
+      if (r.type === "attributes") strip(r.target);
+      else for (const n of r.addedNodes) sweep(n);
+    }
+  }).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["title"] });
+})();
 /** Прокручивается средняя панель целиком (как у Whisper): .main. */
 const scroller = () => document.querySelector(".main");
 const el = (tag, cls, text) => {
@@ -25,7 +51,7 @@ const el = (tag, cls, text) => {
 const PAGES = {
   library: "Библиотека",
   wave: "VK Микс",
-  vk: "Миксы и плейлисты",
+  vk: "Плейлисты",
   search: "Поиск",
   stats: "Статистика",
   services: "Сервисы",
@@ -82,7 +108,7 @@ const S = {
   libCats: [],        // категории библиотеки (папки репозитория): { id, name, description }
   libHidden: [],      // id скрытых категорий (config.json)
   statsData: null,    // вся статистика (stats_all) для страницы «Статистика»; null — не загружена
-  vkHome: null,       // раздел «Миксы»: { mixes, groups, mine } | { error }; null — не загружен
+  vkHome: null,       // раздел «Плейлисты»: { mixes, groups, mine } | { error }; null — не загружен
   vkPl: null,         // открытый плейлист ВК: { pl, tracks, next, busy, error, from: страница, где открыт }
   myPl: null,         // ваши плейлисты ВК для библиотеки: { list } | { loading } | { error }; null — не загружены
   queueMix: null,     // очередь играет VK Микс (id) — по мере игры догружается
@@ -330,6 +356,20 @@ let libIndex = { saved: null, local: null, byKey: new Map(), byText: new Map() }
 function libraryMatch(t) {
   if (!t) return null;
   if (t.path) return t;
+  freshLibIndex();
+  const exact = libIndex.byKey.get(t.key);
+  if (exact) return exact;
+  const same = libIndex.byText.get(normText(t.artist) + "\n" + normText(t.title)) || [];
+  return same.find((x) => !x.duration || !t.duration || Math.abs(x.duration - t.duration) <= 3) || null;
+}
+
+/** Трек библиотеки с этим ключом (без перебора: модули ядра зовут это для каждой строки очереди и истории). */
+function libraryByKey(key) {
+  freshLibIndex();
+  return libIndex.byKey.get(key) || null;
+}
+
+function freshLibIndex() {
   if (libIndex.saved !== S.saved || libIndex.local !== S.local) {
     libIndex = { saved: S.saved, local: S.local, byKey: new Map(), byText: new Map() };
     for (const x of S.local.concat(S.saved)) {
@@ -340,10 +380,6 @@ function libraryMatch(t) {
       libIndex.byText.get(k).push(x);
     }
   }
-  const exact = libIndex.byKey.get(t.key);
-  if (exact) return exact;
-  const same = libIndex.byText.get(normText(t.artist) + "\n" + normText(t.title)) || [];
-  return same.find((x) => !x.duration || !t.duration || Math.abs(x.duration - t.duration) <= 3) || null;
 }
 
 function allTracks() {
@@ -502,10 +538,13 @@ function likeButton(t) {
   const lib = libraryMatch(t);
   setHeart(b, !!lib);
   b.title = lib ? L("В библиотеке") : L("В библиотеку");
-  b.addEventListener("click", (ev) => {
+  b.addEventListener("click", async (ev) => {
     ev.stopPropagation();
-    if (!libraryMatch(t)) saveTrack(t);
-    else toast(L("Трек уже в библиотеке"));
+    if (libraryMatch(t)) return toast(L("Трек уже в библиотеке"));
+    await saveTrack(t);
+    const on = !!libraryMatch(t);
+    setHeart(b, on);
+    b.title = on ? L("В библиотеке") : L("В библиотеку");
   });
   return b;
 }
@@ -990,6 +1029,8 @@ function renderNowCard() {
 // кэшируются: вернулись к прежнему запросу или снова включили сервис — результаты появляются сразу, без запросов.
 
 const SEARCH_DELAY = 450;
+/** Ошибка Rust (vk::ERR_SUPERSEDED): поиск из строки не ушёл в сервис — пока ждал очереди, пришёл более новый. */
+const SEARCH_SUPERSEDED = "Поиск заменён более новым запросом";
 const SEARCH_MIN = 2;
 
 const isUrl = (s) => /^https?:\/\/\S+$/i.test(s);
@@ -1154,9 +1195,12 @@ function fetchSection(id, sec, more) {
   const sr = S.sr;
   sec.busy = true;
   let call;
-  if (id === "vk") call = invoke("vk_search", { query: sr.q, more: more ? sec.next : null }).then((p) => [p.tracks, p.more]);
+  // live — первая страница из строки поиска: пока вы печатаете дальше, Rust не отправит устаревший запрос, который
+  // ещё ждёт очереди (иначе итоговый ждал бы все промежуточные — по секунде и больше на каждый)
+  const live = !more;
+  if (id === "vk") call = invoke("vk_search", { query: sr.q, more: more ? sec.next : null, live }).then((p) => [p.tracks, p.more]);
   else if (sr.kind === "url") call = invoke("sc_resolve", { url: sr.q }).then((list) => [list, null]);
-  else call = invoke("sc_search", { query: sr.q, offset: more ? sec.next : 0 }).then((p) => [p.tracks, p.next_offset]);
+  else call = invoke("sc_search", { query: sr.q, offset: more ? sec.next : 0, live }).then((p) => [p.tracks, p.next_offset]);
   const key = `${id}|${sr.kind}|${sr.q}`;
   call
     .then(([list, next]) => {
@@ -1165,6 +1209,11 @@ function fetchSection(id, sec, more) {
     })
     .catch((e) => {
       const msg = errText(e);
+      // запрос заменён более новым — не ошибка: забываем; если это снова текущий запрос, renderSearch спросит заново
+      if (msg === SEARCH_SUPERSEDED) {
+        if (searchCache.get(key) === sec) searchCache.delete(key);
+        return;
+      }
       Object.assign(sec, { busy: false, error: msg, login: /не вошли/i.test(msg) });
       // ошибки не кэшируем — следующий раз спросим снова (например, после входа)
       if (!more) searchCache.delete(key);
@@ -1730,8 +1779,9 @@ function renderVk() {
     const retry = button(null, L("Повторить"), "", () => loadVkHome(true));
     return c.append(emptyState("x", L(h.error), retry));
   }
-  // миксы ВК — карточками с кнопкой «Слушать»; главный (VK Микс) — ещё и отдельной страницей с большой кнопкой
-  const mixes = h.mixes || [];
+  // миксы ВК — карточками с кнопкой «Слушать»; главный (VK Микс) — только своей страницей с большой кнопкой
+  // (просьба владельца, 2026-11-06: в разделе «Плейлисты» его карточки нет)
+  const mixes = (h.mixes || []).filter((m) => m.id !== "common");
   if (mixes.length) {
     const sec = el("section", "similar mixsec");
     sec.append(el("h3", null, L("Миксы")));
@@ -1739,8 +1789,8 @@ function renderVk() {
     for (const m of mixes) {
       const card = el("div", "card vk-mix" + (S.queueMix === m.id ? " on" : ""));
       card.append(
-        el("h3", null, m.id === "common" ? L("VK Микс") : m.title),
-        el("p", "status", m.id === "common" ? L("Бесконечная подборка по вашему вкусу") : m.description || "")
+        el("h3", null, m.title),
+        el("p", "status", m.description || "")
       );
       const row = el("div", "row");
       row.append(button("play", S.queueMix === m.id ? L("Играет") : L("Слушать"), "primary", (b) => playMix(m.id, b)));
@@ -2672,6 +2722,7 @@ let thKey = "";
 function applyHooks() {
   const de = document.documentElement, vb = $("#volBtn");
   de.toggleAttribute("data-vol-knob", volKnob());
+  syncVolumeVar();
   if (volKnob()) {
     vb.setAttribute("role", "slider");
     vb.setAttribute("aria-valuemin", "0");
@@ -2764,43 +2815,116 @@ async function setFont(name) {
   }
 }
 
-function renderFontPicker() {
-  const box = el("div", "font-picker");
-  const sel = el("select", "field");
-  const def = el("option", null, L("Как в теме"));
-  def.value = "";
-  sel.append(def);
-  const preview = el("div", "font-preview", L("Съешь же ещё этих мягких французских булок, да выпей чаю — 0123456789"));
-  const fill = () => {
-    const list = S.fonts || [];
-    if (S.font && !list.includes(S.font)) list.unshift(S.font);
-    for (const f of list) {
-      const o = el("option", null, f);
-      o.value = f;
-      o.style.fontFamily = `"${f}"`;
-      if (f === S.font) o.selected = true;
-      sel.append(o);
-    }
+/**
+ * Шрифт интерфейса (как uifont.js у Whisper Yandex): текущий шрифт, «Выбрать…» — список шрифтов системы с поиском,
+ * каждое название своим шрифтом. Свой список, а не <select>: выпадающий список WebKitGTK рисует GTK — белым
+ * поверх любой темы. Разметка и классы — как у Whisper (#fontCard, .fontcur, .fontbox, #fontFind, .fontlist >
+ * .fontitem): оформление — в whisper.css, темы его знают.
+ */
+function renderFontPicker(card) {
+  card.id = "fontCard";
+  const cur = el("div", "fontcur");
+  const name = el("span", "fontname");
+  const pick = el("button", "nav");
+  pick.type = "button";
+  const reset = el("button", "nav", L("Шрифт стиля"));
+  reset.type = "button";
+  reset.title = L("Вернуть шрифт, который задан в стиле");
+  cur.append(name, pick, reset);
+  const box = el("div", "fontbox");
+  box.hidden = true;
+  const find = el("input", "search");
+  find.id = "fontFind";
+  find.type = "search";
+  find.placeholder = L("Найти шрифт");
+  find.autocomplete = "off";
+  find.spellcheck = false;
+  const list = el("div", "fontlist");
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", L("Шрифты на компьютере"));
+  box.append(find, list);
+  const note = el("p", "status");
+  card.append(cur, box, note);
+  const MAX = 600;
+
+  const paint = () => {
+    name.textContent = S.font || L("Шрифт стиля");
+    if (S.font) name.style.setProperty("font-family", `"${S.font.replace(/["\\]/g, "")}", system-ui, sans-serif`, "important");
+    else name.style.removeProperty("font-family");
+    reset.hidden = !S.font;
+    pick.textContent = box.hidden ? L("Выбрать…") : L("Скрыть список");
+    for (const b of list.children) b.classList.toggle("on", b.dataset.font === S.font);
   };
-  if (S.fonts) fill();
-  else {
-    const wait = el("option", null, L("Загружаю список шрифтов…"));
-    wait.disabled = true;
-    sel.append(wait);
-    invoke("fonts_list")
-      .then((list) => {
-        S.fonts = list;
-        wait.remove();
-        fill();
-      })
-      .catch((e) => {
-        wait.textContent = L("Не удалось получить шрифты");
-        toast(errMsg(e), "error");
-      });
-  }
-  sel.addEventListener("change", () => setFont(sel.value));
-  box.append(sel, preview);
-  return box;
+  const choose = (f) => setFont(f).then(paint);
+  const renderList = () => {
+    const q = find.value.trim().toLowerCase();
+    const items = (S.fonts || []).filter((f) => !q || f.toLowerCase().includes(q));
+    const frag = document.createDocumentFragment();
+    for (const f of items.slice(0, MAX)) {
+      const b = el("button", "fontitem", f);
+      b.type = "button";
+      b.dataset.font = f;
+      b.setAttribute("role", "option");
+      // каждое название — своим шрифтом (important: поверх выбранного шрифта интерфейса)
+      b.style.setProperty("font-family", `"${f.replace(/["\\]/g, "")}", system-ui, sans-serif`, "important");
+      b.addEventListener("click", () => choose(f));
+      frag.append(b);
+    }
+    list.replaceChildren(frag);
+    note.textContent = !(S.fonts || []).length ? "" : !items.length ? L("Ничего не найдено")
+      : items.length > MAX ? L("Показаны первые {0} из {1} — уточните поиск", MAX, items.length) : "";
+    paint();
+  };
+  pick.addEventListener("click", async () => {
+    box.hidden = !box.hidden;
+    paint();
+    if (box.hidden) return;
+    if (!S.fonts) {
+      note.textContent = L("Загружаю список шрифтов…");
+      try {
+        S.fonts = await invoke("fonts_list");
+      } catch (e) {
+        note.textContent = L("Не удалось получить шрифты");
+        return toast(errMsg(e), "error");
+      }
+    }
+    renderList();
+    find.focus();
+    const on = list.querySelector(".fontitem.on");
+    if (on) on.scrollIntoView({ block: "center" });
+  });
+  reset.addEventListener("click", () => choose(""));
+  let t = 0;
+  find.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(renderList, 120);
+  });
+  find.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      if (find.value) {
+        find.value = "";
+        renderList();
+      } else pick.click();
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const first = list.querySelector(".fontitem");
+      if (first) first.focus();
+    }
+  });
+  // стрелки по списку
+  list.addEventListener("keydown", (e) => {
+    const b = e.target.closest && e.target.closest(".fontitem");
+    if (!b || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const n = e.key === "ArrowDown" ? b.nextElementSibling : b.previousElementSibling;
+    if (n) {
+      n.focus();
+      n.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "ArrowUp") find.focus();
+  });
+  paint();
 }
 
 async function selectTheme(id) {
@@ -2833,6 +2957,102 @@ async function installThemePath(path) {
     await selectTheme(info.id);
   } catch (e) {
     toast(errMsg(e), "error");
+  }
+}
+
+// ───────────────────────── «Сохранить стиль в файл…» (как у Whisper Yandex) ─────────────────────────
+// Текущий стиль со всем, что пользователь в нём поменял (основной/второй цвет, «Тонкая настройка», свечение,
+// прозрачность панелей, затемнение и размытие фона, свой шрифт), — файлом .wmt. Его можно поправить в редакторе
+// и загрузить обратно («Загрузить .wmt»: тот же id обновляет стиль) или отдать другу.
+// * Основа Whisper (Неон, Королевский…) — копия «<основа>-copy»: правила стиля вынимаются из CSS приложения уже
+//   без привязки к стилю (WhisperThemeCss.extractFrom), как у Whisper Yandex.
+// * Своя тема — тот же id, её секции, настройки и файлы (фон, превью, шрифты) как были; меняются цвета и эффекты.
+// * Встроенная тема VK Music — копия «<id>-copy» (свою с id встроенной не установить).
+
+/** Правила встроенного стиля st из всех таблиц стилей приложения — без привязки к стилю. */
+async function extractStyleCss(st) {
+  const out = [];
+  for (const link of document.querySelectorAll('link[rel="stylesheet"]')) {
+    let src = "";
+    try { src = await (await fetch(link.href)).text(); } catch { continue; }
+    const part = WhisperThemeCss.extractFrom(src, st);
+    if (part.length) out.push(`/* ---------------- из ${link.getAttribute("href")} ---------------- */`, ...part);
+  }
+  return out.join("\n\n");
+}
+
+async function buildStyleFile() {
+  const de = document.documentElement, cs = getComputedStyle(de);
+  const th = S.theme || {}, base = BASES.includes(de.dataset.base) ? de.dataset.base : "neon";
+  const info = (S.themes || []).find((x) => x.id === th.id);
+  const orig = th.file ? await WMT.open(new Uint8Array(await invoke("theme_file", { id: th.id }))) : null;
+  const copy = !orig || !!(info && info.builtin);
+  const m0 = (orig && orig.manifest) || {};
+  const baseName = (BASE_CARDS.find((b) => b[0] === base) || [])[1] || base;
+  const name = orig ? m0.name || th.name : L(baseName);
+  const id = copy ? `${(orig ? th.id : base).slice(0, 40)}-copy` : th.id;
+  const manifest = {
+    ...m0,
+    id,
+    name: copy ? L("{0} (копия)", name).slice(0, 80) : name,
+    author: m0.author || (orig ? "" : "Whisper Music"),
+    description: copy ? L("Копия стиля «{0}». Поправьте и загрузите обратно", name) : m0.description || "",
+    version: m0.version || "1.0",
+    base,
+    created: m0.created || new Date().toISOString(),
+  };
+  delete manifest.preview;                       // у копии превью своей картинкой не будет — пусть берётся фон
+  if (orig && !copy && m0.preview) manifest.preview = m0.preview;
+  const hex = (v) => (/^#[0-9a-f]{6}$/i.test(String(v).trim()) ? String(v).trim() : undefined);
+  const px = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : undefined; };
+  const t0 = (orig && orig.tokens) || {};
+  const tokens = { ...t0 };
+  tokens.color = { ...(t0.color || {}), accent: hex(cs.getPropertyValue("--accent")), accent2: hex(cs.getPropertyValue("--accent2")) };
+  if (!orig) tokens.color.text = hex(cs.getPropertyValue("--text"));
+  tokens.effects = {
+    ...(t0.effects || {}),
+    glow: px(cs.getPropertyValue("--glow")),
+    panelOpacity: px(cs.getPropertyValue("--panel-a")),
+    dim: px(cs.getPropertyValue("--dim")),
+    backgroundBlur: px(cs.getPropertyValue("--bgblur")),
+  };
+  if (S.font) {
+    const fam = `"${S.font.replace(/["\\]/g, "")}", system-ui, sans-serif`;
+    tokens.font = { ...(t0.font || {}), body: fam, display: fam };
+  }
+  const settings = { ...((orig && orig.settings("whisper-music")) || {}) };
+  const cc = window.Colors ? window.Colors.ccOf(de.dataset.style) : {};
+  if (Object.keys(cc).length) settings.colorOverrides = cc;
+  else delete settings.colorOverrides;
+  const css = {
+    "whisper-core": (orig && orig.css("whisper-core")) || "/* Общие правила для всех приложений Whisper (Yandex, VK…) — по ролям, а не по классам.\n   Например: [data-w=\"search\"] { border-radius: 0; }. Роли — docs/CORE.md в whisper-core. */",
+    "whisper-music": orig ? orig.css("whisper-music") || "" : `/* Правила стиля «${name}». Пишите обычный CSS — приложение само привяжет его к этому стилю:\n   «.panel {…}» станет «:root[data-style="${id}"] .panel {…}». Цвета, текст и шрифты из tokens главнее. */\n\n` + (await extractStyleCss(base)),
+    "whisper-vk": (orig && orig.css("whisper-vk")) || "",
+    "whisper-obs": (orig && orig.css("whisper-obs")) || "",
+  };
+  const obsSettings = (orig && orig.settings("whisper-obs")) || {};
+  const comment = [
+    "Whisper Music Theme — файл темы оформления (сохранён VK Music: «Сохранить стиль в файл…»).",
+    "Поправьте цвета в tokens и правила в «@@ css whisper-music» и загрузите обратно: Настройки → Оформление →",
+    "«Загрузить .wmt» — тема с тем же manifest.id обновится. Другой id — будет отдельной темой.",
+    "Если стиль сломал вид окна: Ctrl+Shift+Backspace вернёт встроенный «Неон».",
+  ].join("\n");
+  // файлы своей темы (фон, превью, шрифты) — как были, тем же именем
+  const files = orig ? [...orig.assets.values()].filter((a) => WMT.NAME_RE.test(a.name)).map((a) => ({ name: a.name, bytes: a.bytes })) : [];
+  const data = await WMT.pack({ comment, manifest, tokens, settings: { "whisper-music": settings, "whisper-obs": obsSettings }, css, files });
+  return { manifest, data };
+}
+
+async function saveStyleFile(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const { data } = await buildStyleFile();
+    const path = await invoke("theme_save", data);
+    toast(L("Стиль сохранён: {0}", path.replace(/^\/home\/[^/]+/, "~")), "ok", { label: L("Открыть папку"), fn: () => invoke("open_download_dir").catch((e) => toast(errMsg(e), "error")) }, 8000);
+  } catch (e) {
+    toast(L("Не удалось сохранить стиль: {0}", errMsg(e && e.message ? e.message : e)), "error");
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -2920,8 +3140,10 @@ function renderThemes() {
     input.value = "";
   });
   const row = el("div", "row");
-  row.append(button("download", L("Магазин тем"), "primary", () => go("store")), button("upload", L("Загрузить .wmt"), "", () => input.click()), input);
-  c.append(row, el("p", "status stylecap", L("Файл темы .wmt можно перетащить прямо в окно.")));
+  const saveBtn = button("download", L("Сохранить стиль в файл…"), "", () => saveStyleFile(saveBtn));
+  saveBtn.title = L("Текущий стиль с вашими цветами и эффектами — файлом .wmt в папку загрузок: поправьте и загрузите обратно");
+  row.append(button("download", L("Магазин тем"), "primary", () => go("store")), button("upload", L("Загрузить .wmt"), "", () => input.click()), saveBtn, input);
+  c.append(row, el("p", "status stylecap", L("Файл темы .wmt можно перетащить прямо в окно. Сломался вид окна — Ctrl+Shift+Backspace вернёт «Неон».")));
   // список тем — с диска (свои могли появиться), карточка перерисуется
   invoke("themes_list").then((list) => {
     const same = JSON.stringify(list) === JSON.stringify(S.themes);
@@ -2935,8 +3157,7 @@ function renderThemes() {
     if (full) renderSettings();
   });
 
-  const fc = setCard("look", L("Шрифт"));
-  fc.append(renderFontPicker());
+  renderFontPicker(setCard("look", L("Шрифт")));
 
   const bc = setCard("look", L("Фон и панели"), "colbreak");
   bc.append(switchRow(L("Фон по обложке трека"), dynOn, (on) => {
@@ -3293,8 +3514,19 @@ function shufflePick() {
   return S.shuffleNext;
 }
 
+/**
+ * «Слушать вместе»: мы гость и следуем за ведущим — что играть дальше, решает он. Тогда своя очередь не двигается
+ * (доигравший трек ждёт следующего от ведущего, а не включает свой — ядро сочло бы это уходом из комнаты) и
+ * ничего для неё не запрашивается заранее.
+ */
+function roomGuest() {
+  const room = Whisper.modules.together, info = room && room.info && room.info();
+  return !!(info && !info.host && info.follow);
+}
+
 /** Текущий трек уже в кэше — кэшируем следующий в очереди (только трек библиотеки; проверяет Rust). */
 function prefetchNext() {
+  if (roomGuest()) return;
   const t = S.queue[upcoming()];
   if (!t || t.unavailable || t === S.current) return;
   invoke("cache_prefetch", { key: t.key }).catch(() => {});
@@ -3310,11 +3542,22 @@ async function playAt(i, fresh, opts) {
   if (!t) return;
   const at = (opts && opts.at) || 0, hold = !!(opts && opts.hold);
   const seq = ++S.playSeq;
+  // пауза, нажатая, пока включался прошлый трек, новому не достаётся: новый трек играет
+  if (S.wantPaused != null) invoke("player_cue", { at: 0, hold: false }).catch(() => {});
   S.qi = i;
   S.current = t;
   S.retried = !!fresh;
   // состояния mpv о прошлом файле (номер file не вырос) больше не в счёт: ни позиция, ни «загрузился»
-  Object.assign(S, { loading: true, startAt: at, needAudible: true, holdPending: hold, fileAtPlay: S.pl.file || 0 });
+  Object.assign(S, { loading: true, startAt: at, needAudible: true, holdPending: hold, fileAtPlay: S.pl.file || 0, playError: false, roomEnded: null, idleSeek: null,
+    pendingPlay: true, wantPaused: null });
+  // прошлый трек замолкает сразу, а не когда загрузится новый: ссылка на поток, архив, поиск трека комнаты — это
+  // секунды, и гость комнаты слышал старый трек, пока у ведущего уже играл новый. Остановка, а не пауза: если
+  // новый не откроется, «играть» не должно продолжить прошлый файл. Файл из папки музыки открывается сразу —
+  // ему остановка не нужна (только мигнуло бы «играет» у тем).
+  if (!S.pl.idle && !t.path) {
+    S.pl.idle = true;
+    invoke("player_stop").catch(() => {});
+  }
   Object.assign(S.pl, { pos: 0, duration: 0 });
   if (!t.room) startListen(t);
   updateNowPlaying();
@@ -3330,6 +3573,7 @@ async function playAt(i, fresh, opts) {
     if (hit) {
       try {
         await invoke("wa_play", { id: hit.id, title });
+        settlePlay(seq);
         if (t.room) startListen(t);
         Whisper.player.report({ source: hit.source });
         return;
@@ -3353,12 +3597,14 @@ async function playAt(i, fresh, opts) {
     else if (t.service === "vk") caching = await invoke("vk_play", { reload: t.reload, title, fresh: !!fresh });
     else if (t.service === "sc") caching = await invoke("sc_play", { id: t.id, title, fresh: !!fresh });
     else caching = await invoke("player_play", { src: t.path, title });
+    settlePlay(seq);
     // текущий уже в кэше (или не из библиотеки) — следующий сразу, иначе — после cache://event
     if (!caching && S.current === t) prefetchNext();
     // VK Микс бесконечный: очередь подходит к концу — догружаем следующие треки
-    if (S.queueMix && S.qi >= S.queue.length - 2) extendMix();
+    if (S.queueMix && S.qi >= S.queue.length - 2 && !roomGuest()) extendMix();
   } catch (e) {
-    if (seq === S.playSeq) S.loading = false;
+    if (seq === S.playSeq) Object.assign(S, { loading: false, playError: true });
+    settlePlay(seq);
     toast(errMsg(e), "error");
   }
 }
@@ -3374,6 +3620,12 @@ function next(auto) {
   // «Слушать вместе»: режим «Ставить в очередь» успевает поставить предложенный трек следующим
   const room = Whisper.modules.together;
   if (room && room.take) room.take();
+  if (auto && roomGuest()) {
+    S.roomEnded = S.current;
+    S.pl.paused = true;
+    updatePlayButton();
+    return;
+  }
   if (!S.queue.length) return;
   if (auto && S.repeat === "one") return playAt(S.qi);
   let i;
@@ -3420,7 +3672,29 @@ function togglePlay() {
   const paused = !S.pl.paused;
   S.pl.paused = paused;
   updatePlayButton();
+  // трек ещё включается (ссылка на поток, архив — секунды): Rust при загрузке ставит mpv pause = hold и снял бы эту
+  // паузу — трек заиграл бы сам, сколько ни нажимай. Поэтому желание кладётся и в hold загрузки (player_cue),
+  // а когда загрузка дошла до mpv, playAt повторяет его (settlePlay)
+  if (S.pendingPlay) {
+    S.wantPaused = paused;
+    invoke("player_cue", { at: S.startAt || 0, hold: paused }).catch(() => {});
+  }
   invoke("player_pause", { paused }).catch((e) => toast(errMsg(e), "error"));
+}
+
+/** Загрузка трека playAt дошла до mpv (или не удалась): пауза, нажатая во время неё, — ещё раз, уже точно после
+ *  load; cue, если его ставило нажатие, — в нейтральный (иначе достался бы следующему треку). */
+function settlePlay(seq) {
+  if (seq !== S.playSeq || !S.pendingPlay) return;
+  S.pendingPlay = false;
+  if (S.wantPaused == null) return;
+  const paused = S.wantPaused;
+  S.wantPaused = null;
+  invoke("player_cue", { at: 0, hold: false }).catch(() => {});
+  if (S.playError) return;
+  S.pl.paused = paused;
+  updatePlayButton();
+  invoke("player_pause", { paused }).catch(() => {});
 }
 
 // ───────────────────────── правая панель и статистика прослушивания ─────────────────────────
@@ -3692,15 +3966,12 @@ function renderLyrics() {
   const trans = d && d.status === "found" ? d.translations || [] : [];
   sel.hidden = !trans.length;
   if (trans.length) {
-    // оригинал — первым, подписан своим языком
-    sel.replaceChildren(el("option", null, d.language ? langName(d.language) : L("Оригинал")));
-    sel.firstChild.value = "";
-    for (const t of trans) {
-      const o = el("option", null, langName(t.language));
-      o.value = t.language;
-      sel.append(o);
-    }
-    sel.value = lyr.lang || "";
+    // оригинал — первым, подписан своим языком. Выбор — меню в оформлении темы (window.openPickMenu, whisper-vk.js),
+    // а не <select>: его выпадающий список WebKitGTK рисует белым GTK
+    const opts = [["", d.language ? langName(d.language) : L("Оригинал")], ...trans.map((t) => [t.language, langName(t.language)])];
+    const cur = lyr.lang || "";
+    sel.textContent = ((opts.find((o) => o[0] === cur) || opts[0])[1]) + " ▾";
+    sel.onclick = () => window.openPickMenu(sel, opts.map(([v, label]) => ({ label, on: v === cur, fn: () => selectLyricsLang(v || null) })));
   }
   src.hidden = !(d && (d.url || d.source === "vk"));
   src.disabled = false;
@@ -4085,16 +4356,16 @@ function updateQueueInfo() {
   $("#queueInfo").textContent = S.queue.length ? L("Очередь: {0} из {1}", S.qi + 1, S.queue.length) : "";
 }
 
-/** «Сердце» у играющего трека: в библиотеке ли он (у трека сервиса не из библиотеки — добавить); «⋯». */
+/** «Сердце» у играющего трека — только чтобы добавить трек сервиса в библиотеку: уже добавленному его не показываем
+ *  (просьба владельца, 2026-11-06; убрать — кнопкой в строке библиотеки); «⋯». */
 function syncNpAdd() {
   const t = S.current;
   $("#pMore").disabled = !t;
   for (const b of [$("#likeBtn"), $("#fLike")]) {
-    b.hidden = !t || !t.service || t.unavailable;
+    b.hidden = !t || !t.service || t.unavailable || !!libraryMatch(t);
     if (!b.hidden) {
-      const on = !!libraryMatch(t);
-      setHeart(b, on);
-      b.title = on ? L("В библиотеке") : L("В библиотеку");
+      setHeart(b, false);
+      b.title = L("В библиотеку");
     }
   }
 }
@@ -4112,8 +4383,10 @@ function updatePlayButton() {
 
 function updateProgress() {
   const d = S.pl.duration || (S.current && S.current.duration) || 0;
+  // пока ползунок держат — время под ним, а не от mpv
+  const pos = S.seeking ? ($("#seek").value / 1000) * d : S.pl.pos;
   for (const [c, du] of [["#tCur", "#tDur"], ["#fTCur", "#fTDur"]]) {
-    $(c).textContent = fmt(S.pl.pos);
+    $(c).textContent = fmt(pos);
     $(du).textContent = fmt(d);
   }
   if (!S.seeking) setBar(d ? S.pl.pos / d : 0);
@@ -4147,18 +4420,8 @@ function initPlayer() {
   $("#prev").addEventListener("click", prev);
   $("#fNext").addEventListener("click", () => next(false));
   $("#fPrev").addEventListener("click", prev);
-  $("#shuffleBtn").addEventListener("click", () => {
-    S.shuffle = !S.shuffle;
-    S.shuffleNext = null;
-    S.history = [];
-    syncModes();
-    invoke("save_prefs", { shuffle: S.shuffle }).catch(() => {});
-  });
-  $("#repeatBtn").addEventListener("click", () => {
-    S.repeat = { off: "all", all: "one", one: "off" }[S.repeat];
-    syncModes();
-    invoke("save_prefs", { repeat: S.repeat }).catch(() => {});
-  });
+  $("#shuffleBtn").addEventListener("click", toggleShuffle);
+  $("#repeatBtn").addEventListener("click", cycleRepeat);
   // обложка — текст и обложка на весь экран (как у Whisper)
   $("#cover").addEventListener("click", () => S.current && openFull("lyrics"));
   $("#fClose").addEventListener("click", closeFull);
@@ -4166,27 +4429,28 @@ function initPlayer() {
 
   const vol = $("#vol");
   vol.value = S.volume;
-  let volTimer = null;
+  // Ползунок шлёт input на каждый пиксель: интерфейс обновляется раз за кадр, а в mpv громкость уходит не чаще
+  // раза в 50 мс (последнее значение — всегда). Раньше каждое событие перерисовывало всё сразу, а громкость в mpv
+  // менялась, только когда ползунок останавливался.
+  let volFrame = 0, volSent = 0, volTimer = null;
+  const sendVolume = () => {
+    clearTimeout(volTimer);
+    const wait = 50 - (Date.now() - volSent);
+    if (wait > 0) return void (volTimer = setTimeout(sendVolume, wait));
+    volSent = Date.now();
+    invoke("player_volume", { volume: S.volume }).catch(() => {});
+  };
   vol.addEventListener("input", () => {
     S.volume = Number(vol.value);
     S.muted = false;
-    syncVolume();
-    clearTimeout(volTimer);
-    volTimer = setTimeout(() => invoke("player_volume", { volume: S.volume }).catch(() => {}), 40);
+    if (!volFrame) volFrame = requestAnimationFrame(() => ((volFrame = 0), syncVolume()));
+    sendVolume();
   });
   vol.addEventListener("change", () => invoke("save_prefs", { volume: S.volume }).catch(() => {}));
   // текст песни — своей кнопкой в плеере (раньше — только нажатием на обложку, его не находили); повторное — закрыть
   $("#lyrBtn").append(Icons.icon("lyrics"));
-  $("#lyrBtn").addEventListener("click", () => {
-    if (!$("#full").hidden && $("#full").dataset.mode === "lyrics") return closeFull();
-    if (!S.current) return toast(L("Сначала включите трек"));
-    openFull("lyrics");
-  });
-  $("#normBtn").addEventListener("click", () => {
-    S.normalize = !S.normalize;
-    syncNormalize();
-    invoke("player_normalize", { on: S.normalize }).catch((e) => toast(errMsg(e), "error"));
-  });
+  $("#lyrBtn").addEventListener("click", toggleLyrics);
+  $("#normBtn").addEventListener("click", toggleNormalize);
   $("#volBtn").addEventListener("click", () => {
     if (knob.moved) return (knob.moved = false);
     S.muted = !S.muted;
@@ -4223,10 +4487,34 @@ function initPlayer() {
     e.preventDefault();
     setVolume(S.volume + (e.deltaY < 0 ? 5 : -5));
   }, { passive: false });
+  // .volpop открыт и по :focus-within (whisper.css): после нажатия мышью фокус оставался на ползунке/кнопке —
+  // панель не закрывалась, пока не щёлкнешь мимо. Указатель ушёл — снимаем фокус, если его поставила мышь
+  // (с клавиатуры панель остаётся открытой); тянут ползунок за край — ждём отпускания
+  const vw = $("#volWrap");
+  let volPtr = false;
+  const volLeave = () => {
+    if (volPtr && vw.contains(document.activeElement)) document.activeElement.blur();
+    volPtr = false;
+  };
+  vw.addEventListener("pointerdown", () => (volPtr = true));
+  vw.addEventListener("pointerleave", (e) => {
+    if (!e.buttons) return volLeave();
+    window.addEventListener("pointerup", () => vw.matches(":hover") || volLeave(), { once: true });
+  });
 
   // перемотка: ползунки Whisper (#seek в плеере, #fSeek на весь экран), 0–1000; mpv перематывает на отпускании
+  // S.seeking — с нажатия, а не с первого сдвига: иначе зажатый на месте ползунок уезжал из-под пальца вместе с
+  // временем. Отпустили — снимаем после change (он перематывает); отпустили без сдвига — change нет, трек идёт дальше.
+  const seekRelease = () => {
+    if (S.seeking) setTimeout(() => ((S.seeking = false), updateProgress()), 0);
+  };
+  window.addEventListener("pointerup", seekRelease);
+  window.addEventListener("pointercancel", seekRelease);
   for (const id of ["#seek", "#fSeek"]) {
     const bar = $(id);
+    bar.addEventListener("pointerdown", (e) => {
+      if (e.button === 0 && S.current) S.seeking = true;
+    });
     bar.addEventListener("input", () => {
       if (!S.current) return;
       S.seeking = true;
@@ -4255,17 +4543,22 @@ function initPlayer() {
     if (e.type === "state") {
       // пока новый трек не загрузился, позиция и длительность — от прошлого: не показываем и не отдаём ядру
       const stale = S.loading && !(e.file > (S.fileAtPlay || 0));
-      Object.assign(S.pl, { pos: stale ? 0 : e.pos, duration: stale ? 0 : e.duration, paused: e.paused, idle: e.idle, file: e.file });
-      // трек загрузился: загружали «без звука», а ведущий комнаты уже играет — не держать
+      let paused = e.paused;
+      // трек загрузился: загружали «без звука», а ведущий комнаты уже играет — не держать. Пауза снимается и в
+      // состоянии сразу: иначе ядро увидело бы «загрузился и стоит на паузе» и сочло бы это паузой гостя (уход)
       if (S.loading && !stale && !e.idle && e.duration > 0) {
         S.loading = false;
         const room = Whisper.modules.together;
-        if (S.holdPending && room && room.wantsPlay && room.wantsPlay()) invoke("player_pause", { paused: false }).catch(() => {});
+        if (S.holdPending && paused && room && room.wantsPlay && room.wantsPlay()) {
+          paused = false;
+          invoke("player_pause", { paused: false }).catch(() => {});
+        }
         S.holdPending = false;
       }
-      Whisper.player.report({ playing: !e.paused && !e.idle });
+      Object.assign(S.pl, { pos: stale ? 0 : e.pos, duration: stale ? 0 : e.duration, paused, idle: e.idle, file: e.file });
+      Whisper.player.report({ playing: !paused && !e.idle });
       // звук реально пошёл (после загрузки) — ядру: «Слушать вместе» догоняет ведущего по этому моменту
-      if (S.needAudible && !S.loading && !e.paused && !e.idle) {
+      if (S.needAudible && !S.loading && !paused && !e.idle) {
         S.needAudible = false;
         Whisper.player.report({ audible: true });
       }
@@ -4288,6 +4581,31 @@ function initPlayer() {
   syncNormalize();
 }
 
+// Кнопки плеера именованными функциями: их зовёт и whisper-vk.js — гостю комнаты, у которого ядро глушит
+// нажатия этих кнопок (см. там «кнопки плеера у гостя»).
+function toggleShuffle() {
+  S.shuffle = !S.shuffle;
+  S.shuffleNext = null;
+  S.history = [];
+  syncModes();
+  invoke("save_prefs", { shuffle: S.shuffle }).catch(() => {});
+}
+function cycleRepeat() {
+  S.repeat = { off: "all", all: "one", one: "off" }[S.repeat];
+  syncModes();
+  invoke("save_prefs", { repeat: S.repeat }).catch(() => {});
+}
+function toggleLyrics() {
+  if (!$("#full").hidden && $("#full").dataset.mode === "lyrics") return closeFull();
+  if (!S.current) return toast(L("Сначала включите трек"));
+  openFull("lyrics");
+}
+function toggleNormalize() {
+  S.normalize = !S.normalize;
+  syncNormalize();
+  invoke("player_normalize", { on: S.normalize }).catch((e) => toast(errMsg(e), "error"));
+}
+
 function syncNormalize() {
   const b = $("#normBtn");
   if (!b.firstChild) b.append(Icons.icon("levels"));
@@ -4300,8 +4618,10 @@ function onPlayError(message) {
   if (/mpv остановился/.test(message)) return toast(message, "error");
   // ссылка из кэша могла протухнуть раньше срока — один раз пробуем свежую
   if (t && t.service && !S.retried) return playAt(S.qi, true);
+  S.playError = true;
   toast(L("Не удалось воспроизвести «{0}»: {1}", t ? t.title : "", L(message)), "error");
-  if (++S.skips < 5) setTimeout(() => next(true), 800);
+  // гость комнаты не перескакивает на свой трек: ядро увидит ошибку (media().error) и скажет ведущему, что трека нет
+  if (++S.skips < 5 && !roomGuest()) setTimeout(() => next(true), 800);
 }
 
 function syncModes() {
@@ -4317,15 +4637,30 @@ function syncModes() {
 }
 
 function syncVolume() {
-  Whisper.player.report({ volume: S.muted ? 0 : S.volume / 100 });
-  $("#volBtn").replaceChildren(Icons.icon(S.muted || S.volume === 0 ? "mute" : "volume"));
-  $("#volVal").textContent = S.muted ? "0" : String(S.volume);
-  const v = $("#vol");
-  v.style.setProperty("--p", (S.muted ? 0 : S.volume) + "%");
-  // громкость числом 0…1 — для CSS тем (ручка громкости)
-  document.documentElement.style.setProperty("--vol", String(S.muted ? 0 : S.volume / 100));
-  if (volKnob()) $("#volBtn").setAttribute("aria-valuenow", String(S.muted ? 0 : S.volume));
+  const v = S.muted ? 0 : S.volume, vb = $("#volBtn");
+  Whisper.player.report({ volume: v / 100 });
+  // значок — только когда он меняется (без звука ↔ со звуком), а не новым SVG на каждый шаг
+  const icon = v === 0 ? "mute" : "volume";
+  if (vb.dataset.ic !== icon || !vb.firstChild) {
+    vb.dataset.ic = icon;
+    vb.replaceChildren(Icons.icon(icon));
+  }
+  $("#volVal").textContent = String(v);
+  $("#vol").style.setProperty("--p", v + "%");
+  syncVolumeVar();
+  if (volKnob()) vb.setAttribute("aria-valuenow", String(v));
   thSync();
+}
+
+/**
+ * Громкость числом 0…1 (--vol на <html>) — для ручки громкости темы (controls.volume = "knob"). Только для неё:
+ * переменная на корне пересчитывает стили всего документа, и с ней на каждом шаге ползунок громкости заметно
+ * тормозил на длинных списках.
+ */
+function syncVolumeVar() {
+  const root = document.documentElement.style;
+  if (volKnob()) root.setProperty("--vol", String(S.muted ? 0 : S.volume / 100));
+  else if (root.getPropertyValue("--vol")) root.removeProperty("--vol");
 }
 
 // глобальные горячие клавиши (hotkeys.rs → событие hotkey; сочетания — hotkeys.js)
@@ -4414,7 +4749,6 @@ async function boot() {
   $("#wMax").addEventListener("click", () => invoke("win_toggle_max").catch(() => {}));
   $("#wClose").addEventListener("click", () => invoke("win_close").catch(() => {}));
   // перевод текста, пояснения, закрытие пояснения кликом мимо и прокруткой
-  $("#fLang").addEventListener("change", (ev) => selectLyricsLang(ev.target.value || null));
   $("#fNotes").addEventListener("change", (ev) => {
     lyricsNotes = ev.target.checked;
     localStorage.setItem("lyricsNotes", lyricsNotes ? "1" : "0");

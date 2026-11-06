@@ -18,6 +18,7 @@
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(ly)); } catch {} };
   const root = document.documentElement;
   const T = (s) => (typeof L === "function" ? L(s) : s);
+  const Tc = (ctx, s) => (typeof Lc === "function" ? Lc(ctx, s) : s);
 
   function apply() {
     for (const k of Object.keys(OPTS)) root.setAttribute("data-ly-" + k, ly[k]);
@@ -29,15 +30,10 @@
     else { root.style.removeProperty("--ly-ph"); root.removeAttribute("data-ly-ph"); }
     const fold = document.getElementById("sideFold");
     if (fold) {
-      fold.textContent = T("Свернуть панель");
-      fold.title = ly.sb === "mini" ? T("Развернуть панель") : T("Свернуть панель");
+      fold.textContent = Tc("панель", "Свернуть");
+      fold.setAttribute("aria-label", ly.sb === "mini" ? T("Развернуть панель") : T("Свернуть панель"));
       fold.setAttribute("aria-expanded", ly.sb === "mini" ? "false" : "true");
     }
-    // в свёрнутой панели подписей не видно — показываем их подсказкой
-    document.querySelectorAll(".side > .nav:not(.sidefold)").forEach((b) => {
-      if (ly.sb === "mini") { if (!b.title) { b.title = b.textContent.trim(); b.dataset.lyTitle = "1"; } }
-      else if (b.dataset.lyTitle) { b.removeAttribute("title"); delete b.dataset.lyTitle; }
-    });
     measureSide();
     document.querySelectorAll(".lyseg[data-k]").forEach((g) => {
       g.querySelectorAll(".chip").forEach((c) => {

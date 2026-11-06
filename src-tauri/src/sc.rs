@@ -56,8 +56,13 @@ pub struct Page {
 pub struct Sc {
     http: reqwest::Client,
     client_id: std::sync::Mutex<Option<String>>,
+    /// где помнить client_id между запусками (он общий для всех, не секрет): иначе первый поиск после каждого
+    /// запуска ждал главную страницу и скрипты сайта (~1,5 с)
+    cid_file: Option<std::path::PathBuf>,
     last: tokio::sync::Mutex<Option<Instant>>,
     profile: std::sync::Mutex<Option<Profile>>,
+    /// номер последнего поиска из строки поиска (как у ВК: устаревший в очереди не ждёт)
+    live_search: std::sync::atomic::AtomicU64,
 }
 
 // ───────────────────────── сессия ─────────────────────────
@@ -202,29 +207,46 @@ impl Sc {
         Sc {
             http,
             client_id: std::sync::Mutex::new(None),
+            cid_file: None,
             last: tokio::sync::Mutex::new(None),
             profile: std::sync::Mutex::new(None),
+            live_search: std::sync::atomic::AtomicU64::new(0),
         }
+    }
+
+    /// client_id — из этого файла (и туда же, когда найден заново).
+    pub fn with_cid_file(mut self, path: std::path::PathBuf) -> Sc {
+        let saved = std::fs::read_to_string(&path).ok().map(|s| s.trim().to_string());
+        if let Some(id) = saved.filter(|s| s.len() == 32 && s.bytes().all(|b| b.is_ascii_alphanumeric())) {
+            *self.client_id.lock().unwrap() = Some(id);
+        }
+        self.cid_file = Some(path);
+        self
     }
 
     pub fn forget(&self) {
         *self.profile.lock().unwrap() = None;
     }
 
-    /// GET с очередью (не чаще раза в секунду); тело — текст.
-    async fn get(&self, url: reqwest::Url, token: Option<&str>) -> Res<(u16, String)> {
+    /// GET с очередью: по одному, начало — не чаще раза в секунду; тело — текст. Запрос уходит, только если
+    /// `wanted()` всё ещё правда, когда до него дошла очередь.
+    async fn get(&self, url: reqwest::Url, token: Option<&str>, wanted: &(dyn Fn() -> bool + Sync)) -> Res<(u16, String)> {
         let mut last = self.last.lock().await;
         if let Some(t) = *last {
             if t.elapsed() < GAP {
                 tokio::time::sleep(GAP - t.elapsed()).await;
             }
         }
+        if !wanted() {
+            return Err(crate::vk::ERR_SUPERSEDED.into());
+        }
         let mut req = self.http.get(url).header("Origin", SITE).header("Referer", format!("{SITE}/"));
         if let Some(t) = token {
             req = req.header("Authorization", format!("OAuth {t}"));
         }
+        let started = Instant::now();
         let res = req.send().await;
-        *last = Some(Instant::now());
+        *last = Some(started);
         drop(last);
         let res = res.map_err(|e| format!("Нет связи с SoundCloud: {e}"))?;
         let status = res.status().as_u16();
@@ -244,15 +266,19 @@ impl Sc {
                 return Ok(id);
             }
         }
-        let (status, html) = self.get(reqwest::Url::parse(SITE).unwrap(), None).await?;
+        let (status, html) = self.get(reqwest::Url::parse(SITE).unwrap(), None, &|| true).await?;
         if status != 200 {
             return Err(format!("SoundCloud ответил HTTP {status}"));
         }
         for src in script_urls(&html).iter().rev().take(10) {
             let Ok(u) = reqwest::Url::parse(src) else { continue };
-            let Ok((200, js)) = self.get(u, None).await else { continue };
+            let Ok((200, js)) = self.get(u, None, &|| true).await else { continue };
             if let Some(id) = find_client_id(&js) {
                 *self.client_id.lock().unwrap() = Some(id.clone());
+                if let Some(f) = &self.cid_file {
+                    let _ = f.parent().map(std::fs::create_dir_all);
+                    let _ = std::fs::write(f, &id);
+                }
                 return Ok(id);
             }
         }
@@ -261,11 +287,15 @@ impl Sc {
 
     /// Запрос к api-v2 с client_id; при 401/403 один раз обновляет client_id.
     async fn api(&self, path: &str, params: &[(&str, String)], token: Option<&str>) -> Res<Value> {
+        self.api_if(path, params, token, &|| true).await
+    }
+
+    async fn api_if(&self, path: &str, params: &[(&str, String)], token: Option<&str>, wanted: &(dyn Fn() -> bool + Sync)) -> Res<Value> {
         for fresh in [false, true] {
             let cid = self.client_id(fresh).await?;
             let mut u = reqwest::Url::parse(&format!("{API}{path}")).map_err(|e| e.to_string())?;
             u.query_pairs_mut().extend_pairs(params.iter().map(|(k, v)| (*k, v.as_str()))).append_pair("client_id", &cid);
-            let (status, text) = self.get(u, token).await?;
+            let (status, text) = self.get(u, token, wanted).await?;
             match status {
                 200 => return serde_json::from_str(&text).map_err(|_| "SoundCloud ответил не данными".to_string()),
                 401 | 403 if !fresh => continue,
@@ -296,12 +326,17 @@ impl Sc {
         Ok(p)
     }
 
-    pub async fn search(&self, token: Option<&str>, query: &str, offset: u64) -> Res<Page> {
+    /// `live` — запрос из строки поиска: более новый отменяет этот, пока он ждёт очереди.
+    pub async fn search(&self, token: Option<&str>, query: &str, offset: u64, live: bool) -> Res<Page> {
+        use std::sync::atomic::Ordering::SeqCst;
+        let my = if live { self.live_search.fetch_add(1, SeqCst) + 1 } else { 0 };
+        let wanted = || my == 0 || self.live_search.load(SeqCst) == my;
         let v = self
-            .api(
+            .api_if(
                 "/search/tracks",
                 &[("q", query.into()), ("limit", PAGE.to_string()), ("offset", offset.to_string()), ("linked_partitioning", "1".into())],
                 token,
+                &wanted,
             )
             .await?;
         let tracks = v
@@ -396,6 +431,24 @@ impl Sc {
 
 #[cfg(test)]
 mod tests {
+
+    /// Сколько идёт поиск SoundCloud (без входа): VKM_QUERY=… cargo test live_sc_search -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn live_sc_search() {
+        let q = std::env::var("VKM_QUERY").unwrap_or_else(|_| "linkin park numb".into());
+        let sc = Sc::new();
+        tauri::async_runtime::block_on(async {
+            let t = std::time::Instant::now();
+            let id = sc.client_id(false).await;
+            println!("client_id: {:?} за {:?}", id.is_ok(), t.elapsed());
+            for i in 0..2 {
+                let t = std::time::Instant::now();
+                let r = sc.search(None, &q, 0, false).await;
+                println!("поиск {i}: {:?} треков за {:?}", r.as_ref().map(|p| p.tracks.len()), t.elapsed());
+            }
+        });
+    }
     use super::*;
     use serde_json::json;
 

@@ -92,15 +92,17 @@ html:root[data-style="lolitta"] .side > .nav.sidefold { color: var(--l-ink2, var
 html:root[data-style="lolitta"] .side > .nav.sidefold:hover { color: var(--l-ink, var(--text)); background: rgba(255,255,255,.35); }
 html:root[data-style="lolitta"] .side > .nav.sidefold::before { background: currentColor; }
 :where(html:root) .side > .sidefold::before {
-  content: ""; flex: none; width: 16px; height: 16px; background: currentColor;
+  content: ""; flex: none; width: 17px; height: 16px; background: currentColor;
   -webkit-mask: var(--ic) center / contain no-repeat; mask: var(--ic) center / contain no-repeat;
 }
-html:root .side > .nav.sidefold::before { width: 16px; height: 16px; filter: none; }
+/* три стрелки — значок шире квадрата (viewBox 25×24) */
+html:root .side > .nav.sidefold::before { width: 17px; height: 16px; filter: none; }
 html:root[data-ly-side="left"][data-ly-sb="mini"] .side > .sidefold::before,
 html:root[data-ly-side="right"]:not([data-ly-sb="mini"]) .side > .sidefold::before { transform: scaleX(-1); }
 html:root[data-ly-side="right"]:not([data-ly-sb="mini"]) .side > .nav.sidefold { flex-direction: row-reverse; }
-html:root[data-ly-sb="mini"] .side > .nav.sidefold { justify-content: center; padding: 0; font-size: 0; height: 36px; }
-html:root[data-ly-sb="mini"] .side > .sidefold::before { width: 18px; height: 18px; }
+/* gap — 0: подпись скрыта (font-size: 0), но отступ до неё оставался — стрелка уезжала на 4px влево от значков */
+html:root[data-ly-sb="mini"] .side > .nav.sidefold { justify-content: center; padding: 0; gap: 0; font-size: 0; height: 36px; }
+html:root[data-ly-sb="mini"] .side > .sidefold::before { width: 19px; height: 18px; }
 
 :where(html:root[data-ly-sb="mini"]) .side .nav::before {
   content: ""; flex: none; width: 22px; height: 22px; background: currentColor;
@@ -192,7 +194,7 @@ html:root[data-ly-time="hover"] .seekrow.tipon .time { opacity: .35; }
   --ly-i-stats: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 13h4v7H4zM10 4h4v16h-4zM16 9h4v11h-4z'/%3E%3C/svg%3E");
   --ly-i-gear: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M10.3 2h3.4l.5 2.6 1.8.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.8 2.6.5v3.4l-2.6.5-.8 1.8 1.5 2.2-2.4 2.4-2.2-1.5-1.8.8-.5 2.6h-3.4l-.5-2.6-1.8-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.8L2 13.7v-3.4l2.6-.5.8-1.8-1.5-2.2 2.4-2.4 2.2 1.5 1.8-.8zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z'/%3E%3C/svg%3E");
   --ly-i-user: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='8' r='4.2'/%3E%3Cpath d='M3.5 21a8.5 8.5 0 0 1 17 0z'/%3E%3C/svg%3E");
-  --ly-i-fold: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m11 6-6 6 6 6M19 6l-6 6 6 6'/%3E%3C/svg%3E");
+  --ly-i-fold: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 25 24' fill='none' stroke='%23000' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 6l-5 6 5 6M15 6l-5 6 5 6M22 6l-5 6 5 6'/%3E%3C/svg%3E");
   --ly-i-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='m15.5 15.5 5 5'/%3E%3C/svg%3E");
 }
 
