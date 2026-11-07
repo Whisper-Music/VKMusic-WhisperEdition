@@ -1,6 +1,6 @@
 [package]
 name = "vkmusic"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "VK Music Whisper Edition — музыкальный плеер на Rust + Tauri: ВКонтакте, SoundCloud, свои файлы, темы Whisper"
 license = "PolyForm-Noncommercial-1.0.0"
