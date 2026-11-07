@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -33,6 +33,14 @@ pub enum PlayerEvent {
     Error { message: String },
 }
 
+/// Устройство вывода звука из `audio-device-list` mpv.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct AudioDevice {
+    /// имя для `audio-device` (например, `pipewire/alsa_output…`; `auto` — системное по умолчанию)
+    pub name: String,
+    pub description: String,
+}
+
 pub struct Player {
     writer: Mutex<ipc::Writer>,
     child: Mutex<Child>,
@@ -43,6 +51,13 @@ pub struct Player {
     /// ведущего и, пока тот грузит трек, готовит его без звука); действует CUE_TTL — иначе случайно достался бы
     /// следующему включению, если это не загрузилось
     cue: Mutex<Option<(f64, bool, Instant)>>,
+    /// «Постоянный уровень громкости»: включён ли и что сейчас играет (фильтр зависит от файла)
+    norm: Mutex<bool>,
+    current: Mutex<String>,
+    loud: Arc<crate::loudness::Loudness>,
+    /// устройства вывода и текущее (`audio-device`) — mpv присылает их сам (observe_property), в том числе
+    /// когда подключили наушники
+    devices: Arc<Mutex<(Vec<AudioDevice>, String)>>,
 }
 
 const CUE_TTL: Duration = Duration::from_secs(30);
@@ -77,7 +92,7 @@ fn sock_path() -> PathBuf {
 }
 
 impl Player {
-    pub fn start<F>(volume: f64, on_event: F) -> Result<Player, String>
+    pub fn start<F>(volume: f64, loud: Arc<crate::loudness::Loudness>, on_event: F) -> Result<Player, String>
     where
         F: Fn(PlayerEvent) + Send + 'static,
     {
@@ -141,17 +156,36 @@ impl Player {
                 }
             }
         };
-        let player = Player { writer: Mutex::new(writer), child: Mutex::new(child), sock, cue: Mutex::new(None) };
+        let player = Player {
+            writer: Mutex::new(writer),
+            child: Mutex::new(child),
+            sock,
+            cue: Mutex::new(None),
+            norm: Mutex::new(false),
+            current: Mutex::new(String::new()),
+            loud,
+            devices: Arc::new(Mutex::new((Vec::new(), "auto".into()))),
+        };
 
-        for (id, prop) in [(1, "time-pos"), (2, "duration"), (3, "pause"), (4, "idle-active"), (5, "volume")] {
+        let props = [
+            (1, "time-pos"),
+            (2, "duration"),
+            (3, "pause"),
+            (4, "idle-active"),
+            (5, "volume"),
+            (6, "audio-device-list"),
+            (7, "audio-device"),
+        ];
+        for (id, prop) in props {
             player.send(json!(["observe_property", id, prop]))?;
         }
         // сообщения mpv об ошибках — чтобы к «loading failed» дописать причину (HTTP 403, TLS, формат)
         player.send(json!(["request_log_messages", "warn"]))?;
 
+        let devices = player.devices.clone();
         std::thread::Builder::new()
             .name("mpv-events".into())
-            .spawn(move || read_events(reader, on_event))
+            .spawn(move || read_events(reader, devices, on_event))
             .map_err(|e| e.to_string())?;
         Ok(player)
     }
@@ -177,7 +211,19 @@ impl Player {
         self.send(json!(["set_property", "force-media-title", title]))?;
         self.send(json!(["set_property", "start", if at > 0.0 { format!("{at:.3}") } else { "none".into() }]))?;
         self.send(json!(["set_property", "pause", hold]))?;
+        *self.current.lock().unwrap() = src.to_string();
+        if *self.norm.lock().unwrap() {
+            self.send(json!(["set_property", "af", self.norm_filter(src)]))?;
+        }
         self.send(json!(["loadfile", src, "replace"]))
+    }
+
+    /// Фильтр выравнивания для источника: файл на диске — по замеру (`loudness.rs`), поток — на лету.
+    fn norm_filter(&self, src: &str) -> String {
+        if src.is_empty() || src.contains("://") {
+            return crate::loudness::LIVE_FILTER.into();
+        }
+        self.loud.filter(std::path::Path::new(src))
     }
 
     /// Скорость воспроизведения (высота звука сохраняется — scaletempo mpv).
@@ -198,10 +244,43 @@ impl Player {
         self.load(url, title)
     }
 
-    /// Выравнивание громкости: тихие и громкие треки звучат одинаково (фильтр dynaudnorm).
+    /// «Постоянный уровень громкости»: разные треки — одной громкости (−14 LUFS, `loudness.rs`).
     pub fn set_normalize(&self, on: bool) -> Result<(), String> {
-        let af = if on { "lavfi=[dynaudnorm=f=250:g=15:p=0.9:m=10]" } else { "" };
+        *self.norm.lock().unwrap() = on;
+        let cur = self.current.lock().unwrap().clone();
+        let af = if on { self.norm_filter(&cur) } else { String::new() };
         self.send(json!(["set_property", "af", af]))
+    }
+
+    /// Устройства вывода и текущее.
+    pub fn devices(&self) -> (Vec<AudioDevice>, String) {
+        self.devices.lock().unwrap().clone()
+    }
+
+    /// Играть на устройстве `name` — только из списка mpv (`auto` — системное по умолчанию).
+    pub fn set_device(&self, name: &str) -> Result<(), String> {
+        if name != "auto" && !self.devices.lock().unwrap().0.iter().any(|d| d.name == name) {
+            return Err("Такого устройства вывода нет".into());
+        }
+        self.send(json!(["set_property", "audio-device", name]))
+    }
+
+    /// Устройство из настроек — когда mpv пришлёт список (сразу после запуска его ещё нет); не нашлось за
+    /// несколько секунд (наушники отключены) — остаётся системное.
+    pub fn restore_device(self: &Arc<Self>, name: String) {
+        if name.is_empty() || name == "auto" {
+            return;
+        }
+        let me = self.clone();
+        std::thread::spawn(move || {
+            for _ in 0..50 {
+                if !me.devices.lock().unwrap().0.is_empty() {
+                    let _ = me.set_device(&name);
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        });
     }
 
     pub fn set_pause(&self, paused: bool) -> Result<(), String> {
@@ -345,7 +424,96 @@ fn reason_of(why: &[String]) -> Option<String> {
     }
 }
 
-fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event: F) {
+/// Устройство для меню «Устройство вывода»: понятное имя и группа (звуковая карта).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ShownDevice {
+    /// имя для `audio-device`
+    pub name: String,
+    /// подпись без названия карты («Headphones», «HDMI / DisplayPort 1 Output»)
+    pub label: String,
+    /// название карты, общее для нескольких устройств (заголовок группы); None — подпись и так полная
+    pub group: Option<String>,
+}
+
+/// Список mpv для меню. mpv перечисляет каждое устройство в каждой звуковой системе (pipewire, pulse, alsa, jack…)
+/// и ещё плагины ALSA — на обычном ноутбуке это 30–40 строк, большинство из них — то же самое или не устройства.
+/// Основной список — «Системное» и настоящие устройства той системы, что у mpv первая (её mpv и использует при
+/// `auto`; на Linux обычно pipewire, на Windows — wasapi) и выбранное, если оно из другой. Остальное — `more`
+/// («Показать все»). В основном списке общее начало названий одной карты выносится в заголовок группы.
+pub fn shown_devices(list: &[AudioDevice], current: &str) -> (Vec<ShownDevice>, Vec<ShownDevice>) {
+    let backend = |n: &str| n.split_once('/').map(|x| x.0.to_string());
+    let primary = list.iter().find_map(|d| backend(&d.name));
+    let in_main = |d: &AudioDevice| d.name == current || (primary.is_some() && backend(&d.name) == primary);
+    let mut main: Vec<&AudioDevice> = list.iter().filter(|d| d.name != "auto" && in_main(d)).collect();
+    let more = list
+        .iter()
+        .filter(|d| d.name != "auto" && !in_main(d))
+        .map(|d| {
+            let b = backend(&d.name).unwrap_or_else(|| d.name.clone());
+            let label = if d.description.to_lowercase().contains(&b) { d.description.clone() } else { format!("{} · {b}", d.description) };
+            ShownDevice { name: d.name.clone(), label, group: None }
+        })
+        .collect();
+    // группы — по первому слову названия (карта); у групп из двух и больше — общее начало до границы слова
+    let first = |d: &AudioDevice| d.description.split_whitespace().next().unwrap_or("").to_string();
+    main.sort_by_key(|d| first(d)); // стабильно: внутри карты — порядок mpv, затем по подписи
+    let mut shown = vec![ShownDevice { name: "auto".into(), label: String::new(), group: None }];
+    let mut i = 0;
+    while i < main.len() {
+        let key = first(main[i]);
+        let j = main[i..].iter().position(|d| first(d) != key).map_or(main.len(), |p| i + p);
+        let descs: Vec<&str> = main[i..j].iter().map(|d| d.description.as_str()).collect();
+        let cut = if descs.len() > 1 { common_prefix(&descs) } else { 0 };
+        let mut group: Vec<ShownDevice> = main[i..j]
+            .iter()
+            .map(|d| {
+                let rest = d.description[cut..].trim();
+                let label = rest.strip_suffix(" (Stereo)").unwrap_or(rest).trim().to_string();
+                let group = (cut > 0).then(|| d.description[..cut].trim().trim_end_matches(['-', '/', ',']).trim().to_string());
+                ShownDevice { name: d.name.clone(), label, group }
+            })
+            .collect();
+        group.sort_by(|a, b| a.label.cmp(&b.label));
+        shown.extend(group);
+        i = j;
+    }
+    (shown, more)
+}
+
+/// Длина общего начала строк до границы слова (после пробела); 0 — если у какой-то строки после него ничего не остаётся.
+fn common_prefix(s: &[&str]) -> usize {
+    let mut n = s[0].len();
+    for x in &s[1..] {
+        n = s[0].bytes().zip(x.bytes()).take(n).take_while(|(a, b)| a == b).count();
+    }
+    while !s[0].is_char_boundary(n) {
+        n -= 1; // общие байты кончились посреди буквы (кириллица)
+    }
+    let head = &s[0][..n];
+    let cut = if s.iter().all(|x| x.len() > n && x.as_bytes()[n] == b' ') { n } else { head.rfind(' ').map_or(0, |p| p + 1) };
+    if cut < 4 || s.iter().any(|x| x[cut..].trim().is_empty()) { 0 } else { cut }
+}
+
+/// `audio-device-list` mpv → устройства.
+fn parse_devices(v: Option<&Value>) -> Vec<AudioDevice> {
+    v.and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|d| {
+                    let name = d.get("name")?.as_str()?.to_string();
+                    let description = d.get("description").and_then(Value::as_str).unwrap_or(&name).to_string();
+                    Some(AudioDevice { name, description })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn read_events<F: Fn(PlayerEvent)>(
+    lines: impl Iterator<Item = String>,
+    devices: Arc<Mutex<(Vec<AudioDevice>, String)>>,
+    on_event: F,
+) {
     let mut st = PlayerState { idle: true, ..Default::default() };
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     // ошибки из журнала mpv для текущего файла (первые — обычно причина: «HTTP error 403», последние — «Failed to open»)
@@ -362,6 +530,14 @@ fn read_events<F: Fn(PlayerEvent)>(lines: impl Iterator<Item = String>, on_event
                 let b = data.and_then(Value::as_bool);
                 let mut urgent = true;
                 match v.get("name").and_then(Value::as_str) {
+                    Some("audio-device-list") => {
+                        devices.lock().unwrap().0 = parse_devices(data);
+                        continue;
+                    }
+                    Some("audio-device") => {
+                        devices.lock().unwrap().1 = data.and_then(Value::as_str).unwrap_or("auto").to_string();
+                        continue;
+                    }
                     Some("time-pos") => {
                         raw_pos = f.unwrap_or(0.0);
                         st.pos = if loading { 0.0 } else { raw_pos };
@@ -448,6 +624,73 @@ mod tests {
             Some("Failed to open …")
         );
         assert_eq!(super::log_reason("Failed sending hook command auto_profiles/on_load."), None);
+    }
+
+    #[test]
+    fn devices_shown() {
+        let dev = |name: &str, description: &str| super::AudioDevice { name: name.into(), description: description.into() };
+        let cav = "pipewire/alsa_output.pci-0000_00_1f.3-platform-skl_hda_dsp_generic.HiFi__";
+        let list = vec![
+            dev("auto", "Autoselect device"),
+            dev("pipewire", "Default (pipewire)"),
+            dev(&format!("{cav}HDMI2__sink"), "Raptor Lake-P/U/H cAVS HDMI / DisplayPort 2 Output (Stereo)"),
+            dev(&format!("{cav}HDMI1__sink"), "Raptor Lake-P/U/H cAVS HDMI / DisplayPort 1 Output (Stereo)"),
+            dev(&format!("{cav}Headphones__sink"), "Raptor Lake-P/U/H cAVS Headphones"),
+            dev("pipewire/bluez_output.AA_BB", "WH-1000XM4"),
+            dev("pulse/alsa_output.x.HiFi__Headphones__sink", "Raptor Lake-P/U/H cAVS Headphones"),
+            dev("alsa", "Default (alsa)"),
+            dev("alsa/speex", "Plugin using Speex DSP (resample, agc, denoise, echo, dereverb)"),
+            dev("alsa/hdmi:CARD=NVidia,DEV=0", "HDA NVidia, HDMI 0/HDMI Audio Output"),
+            dev("jack", "Default (jack)"),
+        ];
+        let (main, more) = super::shown_devices(&list, "alsa/hdmi:CARD=NVidia,DEV=0");
+        let labels: Vec<(&str, Option<&str>)> = main.iter().map(|d| (d.label.as_str(), d.group.as_deref())).collect();
+        let card = Some("Raptor Lake-P/U/H cAVS");
+        assert_eq!(
+            labels,
+            [
+                ("", None),
+                ("HDA NVidia, HDMI 0/HDMI Audio Output", None), // выбранное — в основном списке, хоть и из alsa
+                ("HDMI / DisplayPort 1 Output", card),
+                ("HDMI / DisplayPort 2 Output", card),
+                ("Headphones", card),
+                ("WH-1000XM4", None),
+            ]
+        );
+        assert_eq!(main[0].name, "auto");
+        let more: Vec<&str> = more.iter().map(|d| d.label.as_str()).collect();
+        assert_eq!(
+            more,
+            [
+                "Default (pipewire)",
+                "Raptor Lake-P/U/H cAVS Headphones · pulse",
+                "Default (alsa)",
+                "Plugin using Speex DSP (resample, agc, denoise, echo, dereverb) · alsa",
+                "Default (jack)",
+            ]
+        );
+        // одна система без устройств (только «auto» и общие) — основной список из одного «Системного»
+        // кириллица: общее начало кончается посреди буквы («Аналоговый» / «Аналоговая» — общие байты до «ы»/«а»)
+        let ru = [dev("pipewire/a", "Встроенное аудио Аналоговый стерео"), dev("pipewire/b", "Встроенное аудио Аналоговая гарнитура")];
+        let (main, _) = super::shown_devices(&ru, "auto");
+        assert_eq!(main[1].label, "Аналоговая гарнитура");
+        assert_eq!(main[1].group.as_deref(), Some("Встроенное аудио"));
+        let (main, more) = super::shown_devices(&[dev("auto", "A"), dev("sdl", "Default (sdl)")], "auto");
+        assert_eq!(main.len(), 1);
+        assert_eq!(more.len(), 1);
+    }
+
+    #[test]
+    fn devices_from_mpv() {
+        let v = serde_json::json!([
+            { "name": "auto", "description": "Autoselect device" },
+            { "name": "pipewire/alsa_output.usb", "description": "USB наушники" },
+            { "description": "без имени" }
+        ]);
+        let d = super::parse_devices(Some(&v));
+        assert_eq!(d.len(), 2);
+        assert_eq!(d[1].description, "USB наушники");
+        assert!(super::parse_devices(None).is_empty());
     }
 
     #[test]

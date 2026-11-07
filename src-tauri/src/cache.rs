@@ -40,6 +40,8 @@ pub struct TrackCache {
     queue: Mutex<Queue>,
     /// вызывается после каждой фоновой задачи: (ключ библиотеки, получилось ли)
     notify: OnceLock<Box<dyn Fn(&str, bool) + Send + Sync>>,
+    /// вызывается с файлом каждого готового трека фоновой задачи (замер громкости — `loudness.rs`)
+    on_file: OnceLock<Box<dyn Fn(&Path) + Send + Sync>>,
     /// предел размера, байт; 0 — без ограничения
     limit: std::sync::atomic::AtomicU64,
 }
@@ -144,11 +146,15 @@ impl TrackCache {
     }
 
     fn at(dir: PathBuf) -> TrackCache {
-        TrackCache { dir, gate: Mutex::new(()), queue: Mutex::new(Queue::default()), notify: OnceLock::new(), limit: Default::default() }
+        TrackCache { dir, gate: Mutex::new(()), queue: Mutex::new(Queue::default()), notify: OnceLock::new(), on_file: OnceLock::new(), limit: Default::default() }
     }
 
     pub fn on_done(&self, f: impl Fn(&str, bool) + Send + Sync + 'static) {
         let _ = self.notify.set(Box::new(f));
+    }
+
+    pub fn on_file(&self, f: impl Fn(&Path) + Send + Sync + 'static) {
+        let _ = self.on_file.set(Box::new(f));
     }
 
     /// Включён трек: ожидающая предзагрузка прежнего «следующего» больше не нужна.
@@ -319,6 +325,9 @@ impl TrackCache {
                 eprintln!("vkmusic: кэш {}: {e}", job.key);
             } else {
                 me.prune(&job.key);
+            }
+            if let (Ok(path), Some(f)) = (&res, me.on_file.get()) {
+                f(path);
             }
             if let Some(f) = me.notify.get() {
                 f(&job.lib, res.is_ok());

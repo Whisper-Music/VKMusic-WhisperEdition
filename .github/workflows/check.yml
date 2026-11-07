@@ -1,0 +1,72 @@
+name: check
+# Проверки на каждый push и pull request (как security.yml у Whisper Yandex): тесты Rust на Linux, сборка под Windows
+# (cargo check — тесты там не гоняются), синтаксис JavaScript, известные уязвимости зависимостей (RustSec, cargo audit).
+# Раз в неделю — ещё и без изменений в коде: новые advisory появляются сами по себе.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  schedule:
+    - cron: '23 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }  # ядро Whisper (src/core) — подмодуль whisper-core
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          key: check-${{ matrix.os }}
+      - name: Системные библиотеки (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev \
+            libgtk-3-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev pkg-config
+      # tauri-build проверяет ресурсы bin/* (mpv, ffmpeg, yt-dlp кладёт только release.yml) — для проверки хватит пустышки
+      - name: Заглушка bin (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: mkdir -p src-tauri/bin && touch src-tauri/bin/placeholder.txt
+      # предупреждения — ошибки (только в своём коде и коде ядра: зависимостям cargo их глушит сам)
+      - name: Тесты (Linux)
+        if: runner.os == 'Linux'
+        env: { RUSTFLAGS: -D warnings }
+        run: cargo test --locked
+      - name: Сборка (Windows)
+        if: runner.os == 'Windows'
+        env: { RUSTFLAGS: -D warnings }
+        run: cargo check --locked --all-targets
+
+  js:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Синтаксис JavaScript
+        run: |
+          for f in src/*.js src/i18n/*.js; do node --check "$f" || exit 1; done
+      - name: Переводы интерфейса
+        run: node scripts/check-i18n.mjs
+
+  audit:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

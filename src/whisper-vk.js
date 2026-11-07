@@ -449,7 +449,7 @@
     build(menuSeq);
     placeMenu();
   }
-  const menuReset = () => (tmenu.replaceChildren(), ++menuSeq);
+  const menuReset = () => (tmenu.classList.remove("mlong"), tmenu.replaceChildren(), ++menuSeq);
   const menuAlive = (seq) => !tmenu.hidden && seq === menuSeq;
   // icon — SVG-строка (свои значки модулей ядра и наши Icons.svg), текст — только textContent
   function menuItem(icon, text, fn, { keep = false, arrow = false, danger = false, to = tmenu } = {}) {
@@ -488,8 +488,81 @@
     if (!t.room && !t.unavailable && !(S.current && S.current.key === t.key)) menuItem(Icons.svg("playnext"), L("Играть следующим"), () => window.playNext(t));
     if (canAddToPlaylist(t)) menuItem(Icons.svg("listadd"), L("В плейлист ВК"), () => addToPlaylistMenu(anchor, t));
     W.ui.trackMenu.build(t, null);                                    // «Сохранить в архив» (core/archive.js)
+    if (anchor && anchor.id === "pMore") playerMenuItems();
     if (!tmenu.children.length) menuNote(L("Здесь пока нечего делать"));
     placeMenu();
+  }
+
+  // ---------- «⋯» плеера: скорость и устройство вывода (как у Whisper Yandex — подменю того же .tmenu) ----------
+  const RATES = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 2];
+  const rateText = (r) => r.toLocaleString(document.documentElement.lang || "ru") + "×";
+  function playerMenuItems() {
+    menuSep();
+    const rate = S.rate || 1;
+    menuItem(Icons.svg("speed"), L("Скорость: {0}", rateText(rate)), () => rateMenu(), { keep: true, arrow: true });
+    menuItem(Icons.svg("output"), L("Устройство вывода"), () => outputMenu(), { keep: true, arrow: true });
+    if (!window.__TAURI__?.__host) menuItem(Icons.svg("mini"), L("Мини-плеер"), () => invoke("mini_toggle").catch((e) => toast(errMsg(e), "error")));
+  }
+  function rateMenu() {
+    menuReset();
+    menuHead(L("Скорость"), () => trackMenuMain(S.current));
+    for (const r of RATES) {
+      const b = menuItem(r === (S.rate || 1) ? Icons.svg("check") : "", rateText(r), () => setRate(r));
+      b.classList.toggle("on", r === (S.rate || 1));
+    }
+    placeMenu();
+  }
+  async function outputMenu() {
+    const seq = menuReset();
+    menuHead(L("Устройство вывода"), () => trackMenuMain(S.current));
+    const wait = menuNote(L("Загрузка…"));
+    placeMenu();
+    let d;
+    try {
+      d = await invoke("player_devices");
+    } catch (e) {
+      if (menuAlive(seq)) { wait.textContent = errMsg(e); placeMenu(); }
+      return;
+    }
+    if (!menuAlive(seq)) return;
+    wait.remove();
+    // основной список (player::shown_devices): «Системное» и настоящие устройства, по картам — заголовок группы
+    const list = d.list.length ? d.list : [{ name: "auto", label: "" }];
+    let grp = null;
+    for (const dev of list) {
+      const g = dev.group || null;
+      if (g !== grp) {
+        if (g) menuNote(g).classList.add("mgroup");
+        else menuSep();
+        grp = g;
+      }
+      deviceItem(dev, d.current);
+    }
+    // остальное из списка mpv — те же устройства через другие звуковые системы и служебные устройства ALSA
+    if (d.more?.length) {
+      menuSep();
+      menuItem("", L("Все устройства ({0})", d.more.length), () => outputMore(d), { keep: true, arrow: true });
+    }
+    placeMenu();
+  }
+  function outputMore(d) {
+    menuReset();
+    tmenu.classList.add("mlong");
+    menuHead(L("Все устройства"), () => outputMenu());
+    menuNote(L("Те же устройства через другие звуковые системы и служебные устройства. Обычно хватает основного списка."));
+    for (const dev of d.more) deviceItem(dev, d.current);
+    placeMenu();
+  }
+  function deviceItem(dev, current) {
+    const on = dev.name === current;
+    const label = dev.name === "auto" ? L("Системное (по умолчанию)") : dev.label || dev.name;
+    const b = menuItem(on ? Icons.svg("check") : "", label, () => {
+      invoke("player_device", { name: dev.name })
+        .then(() => toast(L("Звук: {0}", label)))
+        .catch((e) => toast(errMsg(e), "error"));
+    });
+    b.classList.toggle("on", on);
+    b.title = dev.group ? dev.group + " — " + label : dev.name;
   }
   /**
    * Меню выбора у кнопки (язык текста песни): items — [{ label, on, fn }]. То же .tmenu, что «⋯» трека — в оформлении

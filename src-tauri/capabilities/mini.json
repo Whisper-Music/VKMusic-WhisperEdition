@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mini",
+  "description": "Мини-плеер (tray.rs, mini.html): события от главного окна. Команды приложения — mini_state_get и mini_ctl.",
+  "windows": ["mini"],
+  "permissions": ["core:default"]
+}

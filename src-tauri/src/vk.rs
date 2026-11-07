@@ -1181,9 +1181,9 @@ impl Vk {
         self.keys.lock().unwrap().get(id).cloned()
     }
 
-    /// Текст трека от самого ВК (`audio.getLyrics`, как плеер сайта): строки, у синхронизированного — без меток
-    /// времени; кто предоставил. Нет текста (ошибка 104) — None. Первым шагом поиска текста «как в VK MP3 Mod».
-    pub async fn lyrics(&self, s: &Session, id: &str) -> Res<Option<(String, String)>> {
+    /// Текст трека от самого ВК (`audio.getLyrics`, как плеер сайта): строки, кто предоставил и — у
+    /// синхронизированного — начало каждой строки (мс). Нет текста (ошибка 104) — None. Первым шагом поиска текста.
+    pub async fn lyrics(&self, s: &Session, id: &str) -> Res<Option<VkLyrics>> {
         let key = self.keys.lock().unwrap().get(id).cloned();
         let audio = match key {
             Some(k) => format!("{id}_{k}"),
@@ -1194,18 +1194,7 @@ impl Vk {
             Err(e) if e.contains("Not found") => return Ok(None),
             Err(e) => return Err(e),
         };
-        let l = r.get("lyrics");
-        let lines: Vec<String> = match l.and_then(|l| l.get("timestamps")).and_then(Value::as_array) {
-            Some(ts) => ts.iter().map(|x| x.get("line").and_then(Value::as_str).unwrap_or("").to_string()).collect(),
-            None => l
-                .and_then(|l| l.get("text"))
-                .and_then(Value::as_array)
-                .map(|t| t.iter().filter_map(Value::as_str).map(str::to_string).collect())
-                .unwrap_or_default(),
-        };
-        let text = lines.join("\n").trim().to_string();
-        let credits = r.get("credits").and_then(Value::as_str).unwrap_or("").chars().take(200).collect();
-        Ok((!text.is_empty()).then_some((text, credits)))
+        Ok(parse_lyrics(&r))
     }
 
     /// Свежая ссылка на трек из API (старая истекла). saved_key — access_key из библиотеки, если в памяти нет.
@@ -1221,6 +1210,50 @@ impl Vk {
             .find_map(|(t, url)| (t.id == id).then_some(url).flatten())
             .ok_or_else(|| "ВКонтакте не дал ссылку на этот трек — возможно, он недоступен в вашей стране или удалён.".to_string())
     }
+}
+
+/// Текст ВК: строки, правообладатель, начало строк в мс (у синхронизированного; иначе пусто).
+#[derive(Debug, PartialEq)]
+pub struct VkLyrics {
+    pub text: String,
+    pub credits: String,
+    /// `times[i]` — начало i-й строки `text` (столько же, сколько строк)
+    pub times: Vec<u64>,
+}
+
+/// Ответ `audio.getLyrics`: `lyrics.timestamps[{begin, end, line}]` (мс) или `lyrics.text[]`.
+fn parse_lyrics(r: &Value) -> Option<VkLyrics> {
+    let l = r.get("lyrics");
+    let credits: String = r.get("credits").and_then(Value::as_str).unwrap_or("").chars().take(200).collect();
+    if let Some(ts) = l.and_then(|l| l.get("timestamps")).and_then(Value::as_array).filter(|t| !t.is_empty()) {
+        let mut lines = Vec::new();
+        let mut times = Vec::new();
+        for x in ts {
+            let line = x.get("line").and_then(Value::as_str).unwrap_or("").trim();
+            let begin = x.get("begin").and_then(Value::as_u64);
+            // пустые строки в начале — не нужны; строка без времени — синхронный текст не годится
+            if lines.is_empty() && line.is_empty() {
+                continue;
+            }
+            lines.push(line.replace('\n', " "));
+            times.push(begin.unwrap_or(u64::MAX));
+        }
+        while lines.last().is_some_and(|l| l.is_empty()) {
+            lines.pop();
+            times.pop();
+        }
+        // время должно идти по порядку — иначе показываем просто текстом
+        let ok = times.iter().all(|&t| t != u64::MAX) && times.windows(2).all(|w| w[0] <= w[1]);
+        let text = lines.join("\n");
+        return (!text.is_empty()).then(|| VkLyrics { text, credits, times: if ok { times } else { Vec::new() } });
+    }
+    let lines: Vec<&str> = l
+        .and_then(|l| l.get("text"))
+        .and_then(Value::as_array)
+        .map(|t| t.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let text = lines.join("\n").trim().to_string();
+    (!text.is_empty()).then_some(VkLyrics { text, credits, times: Vec::new() })
 }
 
 #[cfg(test)]
@@ -1585,6 +1618,29 @@ mod tests {
     }
 
 
+    #[test]
+    fn lyrics_with_timestamps() {
+        let r = serde_json::json!({ "credits": "Sony", "lyrics": { "timestamps": [
+            { "begin": 0, "end": 900, "line": "" },
+            { "begin": 11786, "end": 14935, "line": "Мне с тобой не по пути" },
+            { "begin": 15172, "end": 17839, "line": "" },
+            { "begin": 18053, "end": 20383, "line": "Нету сил" },
+            { "begin": 21000, "end": 22000, "line": "" }
+        ] } });
+        let l = parse_lyrics(&r).unwrap();
+        assert_eq!(l.text, "Мне с тобой не по пути\n\nНету сил");
+        assert_eq!(l.times, vec![11786, 15172, 18053]);
+        assert_eq!(l.credits, "Sony");
+        // время не по порядку — только текст
+        let bad = serde_json::json!({ "lyrics": { "timestamps": [
+            { "begin": 5000, "line": "б" }, { "begin": 1000, "line": "а" }
+        ] } });
+        assert!(parse_lyrics(&bad).unwrap().times.is_empty());
+        let plain = serde_json::json!({ "lyrics": { "text": ["раз", "два"] } });
+        assert_eq!(parse_lyrics(&plain).unwrap(), VkLyrics { text: "раз\nдва".into(), credits: String::new(), times: vec![] });
+        assert!(parse_lyrics(&serde_json::json!({ "lyrics": { "text": [] } })).is_none());
+    }
+
     /// Текст ВК для одного трека: VKM_COOKIES=… VKM_VK_ID=owner_id cargo test live_vk_lyrics -- --ignored --nocapture
     #[test]
     #[ignore]
@@ -1604,7 +1660,13 @@ mod tests {
         let vk = Vk::new();
         let id = std::env::var("VKM_VK_ID").unwrap();
         match tauri::async_runtime::block_on(vk.lyrics(&s, &id)).unwrap() {
-            Some((text, credits)) => println!("текст ВК: {} строк, credits={credits:?}, первая: {:?}", text.lines().count(), text.lines().next()),
+            Some(l) => println!(
+                "текст ВК: {} строк, синхронный: {}, credits={:?}, первая: {:?}",
+                l.text.lines().count(),
+                l.times.len(),
+                l.credits,
+                l.text.lines().next()
+            ),
             None => println!("у трека нет текста во ВК"),
         }
         // трек без текста — None, не ошибка

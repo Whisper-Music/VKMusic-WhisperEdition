@@ -35,8 +35,9 @@
     close: { name: "закрыть окно", el: "#wClose", th: ["close"], win: true },
     minimize: { name: "свернуть окно", el: "#wMin", th: ["minimize"], win: true },
     drag: { name: "перетащить окно", el: "#titlebar", th: ["drag"], win: true, area: true },
-    play: { name: "пауза", el: "#play", th: ["play"] },
-    settings: { name: "настройки", el: "#settingsBtn", th: ["page:settings"] },
+    // стиль-консоль (cli.js): пауза и стили — командами play / style / gui
+    play: { name: "пауза", el: "#play", th: ["play"], cli: true },
+    settings: { name: "настройки", el: "#settingsBtn", th: ["page:settings"], cli: true },
   };
   let bar = null, fails = 0, lastStyle = "", checkT = 0;
 
@@ -85,8 +86,9 @@
       .map((b) => b.dataset.act));
     const out = [];
     let unsure = false;
+    const cli = document.body.classList.contains("cli-on");
     for (const [k, a] of Object.entries(ACTS)) {
-      if ((a.win && hostMode()) || a.th.some((x) => thActs.has(x))) continue;
+      if ((a.win && hostMode()) || a.th.some((x) => thActs.has(x)) || (a.cli && cli)) continue;
       const v = reachable(a.el, a.area);
       if (v === null) unsure = true;
       else if (!v) out.push(k);

@@ -1,6 +1,14 @@
 /* Расположение интерфейса (src/layout.js) — layout.css Whisper Yandex без закреплённых (у VK Music их нет).
-   Атрибуты на <html>: data-ly-sb = full | mini, data-ly-pl = full | mini, data-ly-time = always | hover;
+   Атрибуты на <html>: data-ly-sb = full | mini, data-ly-pl = full | mini, data-ly-time = always | hover,
+   data-ly-dot = on | off (кружок на полосе трека — .seekdot в app.css);
    свой размер панелей — data-ly-sw / data-ly-ph (перетаскивание за край). */
+
+/* размеры панелей — ненаследуемые переменные: их меняет перетаскивание края на каждом шаге (layout.js), и наследуемая
+   переменная пересчитывала бы стили всех элементов внутри .app (тысячи строк библиотеки) — панель тянулась рывками.
+   --ly-sw / --ly-ph стоят в style у .app, --sw считается там же */
+@property --ly-sw { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --ly-ph { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --sw { syntax: "<length>"; inherits: false; initial-value: 232px; }
 
 /* ---------- ширина и сторона боковой панели ---------- */
 .app { --sw: 232px; }
@@ -55,10 +63,19 @@ html:root[data-ly-side="right"] .lyh-side { justify-self: start; margin-right: 0
 .lyh-pl::after { left: 50%; top: 4px; width: 64px; height: 4px; transform: translateX(-50%); }
 .lyhandle:hover::after { opacity: .55; }
 .lyhandle.drag::after { opacity: .9; }
+/* окошко громкости (.volpop) выше плеера и перекрывает его край: ручка (z-index 20) лежала поверх окошка — по пути
+   к ползунку курсор попадал на неё, полоска ручки светилась сквозь окошко, а громкость закрывалась (:hover уходил
+   с .volwrap). Пока громкость открыта, ручка не ловит указатель и не видна. */
+.app:has(.volwrap:hover, .volwrap:focus-within) > .lyh-pl:not(.drag) { pointer-events: none; }
+.app:has(.volwrap:hover, .volwrap:focus-within) > .lyh-pl:not(.drag)::after { opacity: 0; }
 /* во время перетаскивания: курсор не меняется над другими элементами, текст не выделяется */
 html.lyresizing, html.lyresizing * { user-select: none !important; }
 html.lyresizing-x, html.lyresizing-x * { cursor: col-resize !important; }
 html.lyresizing-y, html.lyresizing-y * { cursor: row-resize !important; }
+/* тянут боковую панель: строки вне экрана не раскладываются (layout.js, lyfast); высота пропущенной строки — её
+   прошлая (auto: браузер запоминает её всегда, contain-intrinsic-size стоит у строк постоянно) — список не прыгает */
+.list li { contain-intrinsic-size: auto 56px; }
+html.lyfast .list li { content-visibility: auto; }
 
 /* ---------- свёрнутая боковая панель ---------- */
 /* по вертикали отступы остаются от стиля (у «Королевского» и «Lolitta» там орнамент), по бокам — убираем */

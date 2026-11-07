@@ -17,11 +17,24 @@
         "minWidth": 860,
         "minHeight": 560,
         "dragDropEnabled": true,
-        "decorations": false
+        "decorations": false,
+        "visible": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'none'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline' blob:",
+        "img-src": "'self' data: blob: vkm: http://vkm.localhost wa: http://wa.localhost https://*.userapi.com https://*.vkuserphoto.ru https://*.vk.me https://*.vk.com https://*.vk.ru https://*.sndcdn.com https://raw.githubusercontent.com https://*.yandex.net https://cdn.discordapp.com",
+        "media-src": "'self' blob: vkm: http://vkm.localhost wa: http://wa.localhost",
+        "font-src": "'self' data: blob:",
+        "connect-src": "'self' ipc: http://ipc.localhost vkm: http://vkm.localhost wa: http://wa.localhost blob: data:",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'"
+      },
+      "dangerousDisableAssetCspModification": ["style-src"]
     }
   },
   "bundle": {
@@ -40,6 +53,7 @@
           "ffmpeg"
         ],
         "recommends": [
+          "libayatana-appindicator3-1",
           "yt-dlp",
           "python3-mutagen"
         ]

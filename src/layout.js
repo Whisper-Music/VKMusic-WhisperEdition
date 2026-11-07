@@ -1,13 +1,14 @@
 "use strict";
 // Расположение интерфейса (как layout.js у Whisper Yandex, без закреплённых — у VK Music их нет): сторона и вид
-// боковой панели, вид нижней панели, показ времени трека, размер панелей перетаскиванием за край.
+// боковой панели, вид нижней панели, показ времени трека и кружка на полосе трека, размер панелей перетаскиванием за край.
 // Подключён в <head> без defer: атрибуты ставятся на <html> до отрисовки — без «прыжка» при запуске.
 // Внешний вид режимов — в layout.css. Карточку в «Настройки → Общее» рисует Layout.card (из app.js).
 (() => {
   const KEY = "vkm_layout";
-  const OPTS = { side: ["left", "right"], sb: ["full", "mini"], pl: ["full", "mini"], time: ["always", "hover"] };
+  const OPTS = { side: ["left", "right"], sb: ["full", "mini"], pl: ["full", "mini"], time: ["always", "hover"], dot: ["on", "off"] };
   // sw — ширина боковой панели, ph — высота нижней (px, перетаскиванием за край); 0 — размер по умолчанию
-  const ly = { side: "left", sb: "full", pl: "full", time: "always", sw: 0, ph: 0 };
+  // dot — кружок на полосе трека (.seekdot в app.css / app.js)
+  const ly = { side: "left", sb: "full", pl: "full", time: "always", dot: "on", sw: 0, ph: 0 };
   const SW_MIN = 170, SW_MAX = 440, PH_GROW = 160;
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || "null");
@@ -16,25 +17,54 @@
     if (Number.isFinite(v?.ph) && v.ph > 0 && v.ph <= 600) ly.ph = Math.round(v.ph);
   } catch {}
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(ly)); } catch {} };
+  // тема задаёт расположение сама (settings whisper-music → "layout": "fixed", как у Whisper Yandex): действуют
+  // значения по умолчанию, свои — не теряются и вернутся с другим стилем
+  const DEF = { side: "left", sb: "full", pl: "full", time: "always", dot: "on" };
+  let locked = false;
+  const eff = (k) => (locked ? DEF[k] : ly[k]);
   const root = document.documentElement;
   const T = (s) => (typeof L === "function" ? L(s) : s);
   const Tc = (ctx, s) => (typeof Lc === "function" ? Lc(ctx, s) : s);
 
+  // Перетаскивание края зовёт apply() на каждом шаге, поэтому оно трогает только то, что изменилось: атрибуты <html>
+  // ставятся, только если значение другое, а размер (--ly-sw / --ly-ph) пишется на .app, не на <html>, и эти
+  // переменные ненаследуемые (@property в layout.css). Раньше переменная в style корня на каждом шаге пересчитывала
+  // стили всего документа — с большой библиотекой ~120 мс на шаг, панель тянулась рывками (2026-11-07).
+  const attr = (k, v) => {
+    if (v == null) { if (root.hasAttribute(k)) root.removeAttribute(k); }
+    else if (root.getAttribute(k) !== v) root.setAttribute(k, v);
+  };
+  const size = (app, k, v) => {
+    if (!app) return;
+    if (v == null) { if (app.style.getPropertyValue(k)) app.style.removeProperty(k); }
+    else if (app.style.getPropertyValue(k) !== v) app.style.setProperty(k, v);
+  };
   function apply() {
-    for (const k of Object.keys(OPTS)) root.setAttribute("data-ly-" + k, ly[k]);
-    const useSw = ly.sw > 0 && ly.sb !== "mini";
-    const usePh = ly.ph > 0 && ly.pl !== "mini";
-    if (useSw) { root.style.setProperty("--ly-sw", ly.sw + "px"); root.setAttribute("data-ly-sw", ""); }
-    else { root.style.removeProperty("--ly-sw"); root.removeAttribute("data-ly-sw"); }
-    if (usePh) { root.style.setProperty("--ly-ph", ly.ph + "px"); root.setAttribute("data-ly-ph", ""); }
-    else { root.style.removeProperty("--ly-ph"); root.removeAttribute("data-ly-ph"); }
+    for (const k of Object.keys(OPTS)) attr("data-ly-" + k, eff(k));
+    const useSw = !locked && ly.sw > 0 && ly.sb !== "mini";
+    const usePh = !locked && ly.ph > 0 && ly.pl !== "mini";
+    const app = document.querySelector(".app");
+    size(app, "--ly-sw", useSw ? ly.sw + "px" : null);
+    size(app, "--ly-ph", usePh ? ly.ph + "px" : null);
+    attr("data-ly-sw", useSw ? "" : null);
+    attr("data-ly-ph", usePh ? "" : null);
+    document.querySelectorAll(".lyhandle").forEach((h) => (h.hidden = locked));
+    const card = document.getElementById("layoutCard");
+    if (card) {
+      card.classList.toggle("lylock", locked);
+      const note = card.querySelector(".lylock-note");
+      if (note) note.hidden = !locked;
+    }
     const fold = document.getElementById("sideFold");
     if (fold) {
-      fold.textContent = Tc("панель", "Свернуть");
+      fold.hidden = locked;
+      const text = Tc("панель", "Свернуть");
+      if (fold.textContent !== text) fold.textContent = text;
       fold.setAttribute("aria-label", ly.sb === "mini" ? T("Развернуть панель") : T("Свернуть панель"));
       fold.setAttribute("aria-expanded", ly.sb === "mini" ? "false" : "true");
     }
-    measureSide();
+    // ширину боковой панели меряет ResizeObserver (init); без него — здесь
+    if (!("ResizeObserver" in window)) measureSide();
     document.querySelectorAll(".lyseg[data-k]").forEach((g) => {
       g.querySelectorAll(".chip").forEach((c) => {
         const on = c.dataset.v === ly[g.dataset.k];
@@ -70,14 +100,19 @@
       h.setPointerCapture(e.pointerId);
       const st = onStart(e);
       h.classList.add("drag");
-      root.classList.add("lyresizing", "lyresizing-" + axis);
+      // ширина боковой панели меняет ширину списка — браузер раскладывал бы заново все строки библиотеки (тысячи) на
+      // каждом шаге. На время перетаскивания строки вне экрана пропускаются (lyfast: content-visibility в layout.css).
+      // Не у списков со счётчиком (номера треков «Стимпанка»): content-visibility замыкает счётчик в строке — все «1»
+      const li = axis === "x" && document.querySelector(".list li");
+      const fast = li && getComputedStyle(li).counterIncrement === "none";
+      root.classList.add("lyresizing", "lyresizing-" + axis, ...(fast ? ["lyfast"] : []));
       const move = (ev) => onMove(st, ev);
       const up = () => {
         h.removeEventListener("pointermove", move);
         h.removeEventListener("pointerup", up);
         h.removeEventListener("pointercancel", up);
         h.classList.remove("drag");
-        root.classList.remove("lyresizing", "lyresizing-" + axis);
+        root.classList.remove("lyresizing", "lyresizing-" + axis, "lyfast");
         persist();
         window.dispatchEvent(new Event("resize"));
       };
@@ -144,7 +179,7 @@
     const side = document.querySelector(".side");
     if (!side) return;
     const w = side.getBoundingClientRect().width;
-    const lvl = ly.sb === "mini" || !w ? "" : w < 205 ? "xs" : w < 240 ? "s" : "";
+    const lvl = eff("sb") === "mini" || !w ? "" : w < 205 ? "xs" : w < 240 ? "s" : "";
     if (lvl) { if (root.getAttribute("data-ly-sbw") !== lvl) root.setAttribute("data-ly-sbw", lvl); }
     else root.removeAttribute("data-ly-sbw");
   }
@@ -177,11 +212,13 @@
 
   /** Карточка «Расположение» в настройках (app.js, renderGeneral). */
   function card(c) {
+    c.id = "layoutCard";
     const ROWS = [
       ["side", "Боковая панель", [["left", "Слева"], ["right", "Справа"]]],
       ["sb", "Вид боковой панели", [["full", "Обычный"], ["mini", "Свёрнутый"]]],
       ["pl", "Нижняя панель", [["full", "Обычная"], ["mini", "Свёрнутая"]]],
       ["time", "Время трека", [["always", "Всегда"], ["hover", "При наведении"]]],
+      ["dot", "Кружок на полосе трека", [["on", "Показывать"], ["off", "Скрывать"]]],
     ];
     for (const [k, label, opts] of ROWS) {
       const row = document.createElement("div");
@@ -206,8 +243,19 @@
     const p = document.createElement("p");
     p.className = "status";
     p.textContent = T("Размер панелей меняется перетаскиванием за край.");
-    c.append(p);
+    p.className = "status lyrow-note";
+    const lockNote = document.createElement("p");
+    lockNote.className = "status lylock-note";
+    lockNote.textContent = T("Расположение задаёт текущий стиль оформления.");
+    c.append(p, lockNote);
     apply();
   }
-  window.Layout = { card, refresh: apply };
+  /** Тема задаёт расположение сама (applyHooks в app.js). */
+  function lock(on) {
+    if (locked === !!on) return;
+    locked = !!on;
+    apply();
+    window.dispatchEvent(new Event("resize"));
+  }
+  window.Layout = { card, refresh: apply, lock };
 })();

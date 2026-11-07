@@ -84,4 +84,6 @@
 
 input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #509475, var(--accent) var(--p, 0%), var(--line) var(--p, 0%)); border-radius: 0; }
 input[type=range]::-webkit-slider-thumb { border-radius: 0; box-shadow: none; background: var(--heading); }
+/* кружок на полосе трека VK Music (свой элемент, не родной кружок ползунка) */
+.seekdot { border-radius: 0; box-shadow: none; background: var(--heading); }
 ::selection { background: var(--selection); color: var(--heading); }

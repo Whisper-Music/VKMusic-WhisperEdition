@@ -38,6 +38,18 @@ pub struct Config {
     pub download_dir: Option<String>,
     /// предел кэша треков, МБ; 0 — без ограничения (сверх — удаляются давно не игравшие)
     pub cache_limit_mb: u64,
+    /// размер, положение и развёрнутость окна (winstate.rs)
+    pub window: Option<crate::winstate::WinState>,
+    /// устройство вывода (имя из `audio-device-list` mpv); None — системное
+    pub audio_device: Option<String>,
+    /// значок в трее (tray.rs)
+    pub tray: bool,
+    /// крестик окна прячет его в трей (если значок есть), музыка играет дальше
+    pub close_to_tray: bool,
+    /// вид значка: "app" | "light" | "dark" | "accent" (tray::ICONS)
+    pub tray_icon: String,
+    /// цвет темы для вида "accent" (#rrggbb, последний присланный интерфейсом) — чтобы при запуске был сразу нужный
+    pub tray_accent: String,
 }
 
 impl Default for Config {
@@ -58,6 +70,12 @@ impl Default for Config {
             lyrics_compact: false,
             download_dir: None,
             cache_limit_mb: 0,
+            window: None,
+            audio_device: None,
+            tray: true,
+            close_to_tray: true,
+            tray_icon: "app".into(),
+            tray_accent: String::new(),
         }
     }
 }
@@ -72,6 +90,9 @@ pub fn home() -> PathBuf {
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"))
 }
 
+/// config.json при запуске оказался повреждён.
+pub static BROKEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn config_path() -> PathBuf {
     config_dir().join("config.json")
 }
@@ -84,9 +105,16 @@ pub fn has_legacy_secrets() -> bool {
 }
 
 impl Config {
+    /// Настройки с диска. Повреждённый файл не теряется: он остаётся рядом (`config.json.broken`), а интерфейс
+    /// узнаёт об этом (`BROKEN` → app_info) и предлагает автокопию (backup.rs).
     pub fn load() -> Config {
         match std::fs::read(config_path()) {
-            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|e| {
+                eprintln!("vkmusic: config.json повреждён ({e}) — настройки по умолчанию, файл сохранён как config.json.broken");
+                let _ = std::fs::write(config_dir().join("config.json.broken"), &bytes);
+                BROKEN.store(true, std::sync::atomic::Ordering::Relaxed);
+                Config::default()
+            }),
             Err(_) => Config::default(),
         }
     }

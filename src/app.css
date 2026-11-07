@@ -353,3 +353,77 @@ body.login-mode .toast { display: none; }
 .hknote.bad { color: #ff9b9b; }
 .hkhint { min-height: 18px; }
 @media (prefers-reduced-motion: reduce) { .hkkey.rec { animation: none; } }
+
+/* ── резервные копии (backup.js): список автокопий во вкладке «Хранилище» ── */
+.backup-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.backup-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--radius-sm); background: rgba(255, 255, 255, .03); }
+.backup-item .bk-date { font-weight: 600; }
+.backup-item .bk-meta { flex: 1; color: var(--muted); font-size: 12px; }
+
+/* ── навигация клавиатурой (keynav.js): рамка только пока работают с клавиатуры, после щелчка мышью пропадает ── */
+:root.kbnav .main li:focus, :root.kbnav .main .simgrid > :focus, :root.kbnav .main .stgrid > :focus, :root.kbnav .main .plcard:focus,
+:root.kbnav .main .nav:focus, :root.kbnav .main .chip:focus, :root.kbnav .main .round:focus, :root.kbnav .main .pill:focus,
+:root.kbnav .side .nav:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 85%, transparent); outline-offset: -2px;
+}
+:root.kbnav .main li:focus { background: rgba(255, 255, 255, .07); }
+:root.kbnav .tmenu button:focus { outline: none; background: rgba(255, 255, 255, .12); }
+.kbhelp .kbrow { grid-template-columns: minmax(0, 1fr) auto; }
+.kbhelp .hkkey { cursor: default; display: flex; align-items: center; justify-content: center; padding: 4px 10px; }
+.kbhelp .hklist { max-height: min(60vh, 520px); overflow: auto; }
+
+/* тема задаёт расположение сама («layout": "fixed"): надпись — своя, переводимая (у whisper.css — ::after по-русски) */
+#layoutCard.lylock::after { content: none; }
+#layoutCard.lylock .lyrow-note { display: none; }
+.lylock-note[hidden] { display: none; }
+.bk-row { flex-wrap: wrap; }
+.bk-row > .nav { flex: 0 1 auto; white-space: nowrap; }
+.backup-item > .nav { flex: none; }
+
+/* «Трей» → вид значка (tray.js): в кнопке — маленькая копия значка (tray.rs bars) на фоне, под который он задуман
+   (цветной и «Цвет темы» — на любой панели) */
+.settings .trayicons .chip.trayico { display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px 5px 6px; }
+.tib {
+  flex: none; display: flex; align-items: flex-end; justify-content: center; gap: 2px;
+  width: 24px; height: 24px; padding: 4px 4px 3px; box-sizing: border-box; border-radius: 6px; --tb: #f2f2f2;
+}
+.tib > i { display: block; width: 4px; border-radius: 2px; background: var(--tb); opacity: .62; }
+.tib > i:nth-child(1) { height: 60%; }
+.tib > i:nth-child(2) { height: 100%; opacity: 1; }
+.tib > i:nth-child(3) { height: 78%; }
+.tib-app { background: rgba(0, 0, 0, .35); }
+.tib-app > i { background: #50947a; opacity: 1; }
+.tib-app > i:nth-child(2) { background: #2dd5b7; }
+.tib-light { background: #1d1d22; }
+.tib-dark { background: #e9e9ee; --tb: #26262b; }
+.tib-accent { background: rgba(0, 0, 0, .35); --tb: var(--accent); }
+
+/* «⋯» → «Устройство вывода» (whisper-vk.js): заголовок карты над её устройствами; «Все устройства» — длинный список листается */
+.tmenu .mnote.mgroup { margin: 8px 12px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.tmenu.mlong { max-height: calc(100vh - 16px); overflow-y: auto; max-width: min(460px, calc(100vw - 16px)); }
+
+/* «мостик» под окошком громкости (whisper.css: .volpop::after на 16px ниже и на 16px шире окошка) ловил указатель
+   над соседними кнопками (#normBtn, #pMore) — окошко открывалось/не закрывалось там, где его не видно. Окошко стоит
+   вплотную к кнопке и гаснет с задержкой 0,3 с — короткий сход с кнопки и так не закрывает его */
+.volpop::after { content: none; }
+
+/* полоса трека — как у ВКонтакте (app.js, «перемотка»): родного кружка нет. Время считается по ширине полосы, как
+   заливка (--p); родной кружок браузер ставит с поправкой на свою ширину — он расходился с курсором и мешал повторному
+   нажатию. !important — правила кружка в whisper.css и темах сильнее по специфичности */
+#seek::-webkit-slider-thumb, #fSeek::-webkit-slider-thumb {
+  width: 0 !important; height: 0 !important; margin: 0 !important; border: 0 !important;
+  background: none !important; box-shadow: none !important; opacity: 0 !important;
+}
+/* подсказка со временем — и у полосы на весь экран */
+.fseek { position: relative; }
+.fseek.tipon .seektip { opacity: 1; }
+/* свой кружок (.seekdot, app.js placeSeekDot): ровно на конце заливки, указатель не ловит. Оформление — как у родного
+   кружка основ Whisper (whisper.css: input[type=range]::-webkit-slider-thumb и #seek…-thumb); темы оформляют .seekdot.
+   Положение — left/top из JS, центровка — translate (отдельно от transform: тема может его повернуть) */
+.seekdot {
+  position: absolute; left: 0; top: 50%; z-index: 1; width: 14px; height: 14px; translate: -50% -50%;
+  border-radius: 50%; background: #fff; box-shadow: 0 0 10px var(--accent2); pointer-events: none;
+}
+html:root[data-ly-dot="off"] .seekdot { display: none; }
+:root[data-style="steam"] .seekdot { width: 13px; height: 13px; background: radial-gradient(circle at 40% 35%, var(--a2-hi), var(--a2) 55%, var(--a2-lo)); box-shadow: 0 0 0 1px #050302, 0 1px 3px rgba(0,0,0,.8); }
+:root[data-style="lolitta"] .seekdot { width: 16px; height: 16px; background: radial-gradient(circle at 38% 32%, #fff 0 15%, var(--l2-light) 45%, var(--accent2) 100%); box-shadow: 0 0 0 1px var(--l2-lo), 0 0 0 3px color-mix(in srgb, var(--l-pearl) 55%, transparent), 0 1px 4px rgba(60, 15, 30, .5); }

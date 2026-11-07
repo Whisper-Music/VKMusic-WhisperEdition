@@ -32,7 +32,10 @@ const MAX_PAGE: usize = 4 * 1024 * 1024;
 /// «не нашли» перепроверяем не раньше чем через столько
 const MISS_TTL: u64 = 3 * 86400;
 /// версия записи кэша: старее — перезапрашиваем (v2 — переводы и пометки пояснений, v3 — язык оригинала)
-const CACHE_V: u32 = 3;
+const CACHE_V: u32 = 4;
+/// записи старше — не годятся; текст ВК до версии 4 сохранялся без времени строк — его спрашиваем заново
+const MIN_V: u32 = 3;
+const VK_V: u32 = 4;
 /// пометки фрагментов с пояснениями в тексте
 pub const ANN_START: char = '\u{E000}';
 pub const ANN_MID: char = '\u{E001}';
@@ -75,6 +78,9 @@ pub struct Lyrics {
     /// чей текст (ВК пишет правообладателя), если есть
     #[serde(default)]
     pub credits: String,
+    /// синхронный текст (только ВК): начало каждой строки `text`, мс
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub times: Vec<u64>,
     #[serde(default)]
     pub v: u32,
 }
@@ -107,6 +113,7 @@ impl Lyrics {
             meta: false,
             source: "genius".into(),
             credits: String::new(),
+            times: Vec::new(),
             v: CACHE_V,
         }
     }
@@ -590,7 +597,7 @@ impl Genius {
     /// Текст только из кэша на диске — без запросов (интерфейс показывает его сразу при включении трека).
     pub fn lyrics_cached(&self, artist: &str, title: &str) -> Option<Lyrics> {
         let mut l = self.cached(&self.cache_path(artist, title))?;
-        if l.v < CACHE_V || (l.status == "none" && now().saturating_sub(l.at) >= MISS_TTL) {
+        if l.v < MIN_V || (l.source == "vk" && l.v < VK_V) || (l.status == "none" && now().saturating_sub(l.at) >= MISS_TTL) {
             return None;
         }
         // записи до появления `meta` уже содержат переводы и язык — не перезапрашиваем
@@ -598,6 +605,11 @@ impl Genius {
             l.meta = true;
         }
         Some(l)
+    }
+
+    /// Прежний текст ВК (сохранён без времени строк): пока новый не получен — лучше он, чем поиск на Genius.
+    pub fn old_vk(&self, artist: &str, title: &str) -> Option<Lyrics> {
+        self.cached(&self.cache_path(artist, title)).filter(|l| l.source == "vk" && l.status == "found")
     }
 
     /// Текст песни (из кэша или с Genius).

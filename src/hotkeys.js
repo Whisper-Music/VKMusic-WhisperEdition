@@ -201,6 +201,13 @@
     btn.addEventListener("click", open);
     const r = el("div", "row");
     r.append(btn);
+    // клавиши внутри окна (keynav.js) — их список
+    if (window.kbHelp) {
+      const kb = el("button", "nav", L("Клавиши в окне (F1)"));
+      kb.type = "button";
+      kb.addEventListener("click", () => window.kbHelp());
+      r.append(kb);
+    }
     c.append(row, note, r);
     paintCard();
   }

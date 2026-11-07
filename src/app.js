@@ -2303,7 +2303,9 @@ function renderSettings() {
   renderThemes();
   renderGeneral();
   renderLyricsSettings();
+  if (window.renderTraySettings) renderTraySettings(); // tray.js
   renderStorage();
+  if (window.renderBackup) renderBackup(); // backup.js
   for (const m of mods) page.append(m);
 }
 
@@ -2721,6 +2723,11 @@ const volKnob = () => !!(S.themeSettings && S.themeSettings.controls && S.themeS
 let thKey = "";
 function applyHooks() {
   const de = document.documentElement, vb = $("#volBtn");
+  const ts = S.themeSettings || {};
+  // "layout": "fixed" — тема задаёт расположение сама (layout.js); "console" — стиль-консоль (cli.js)
+  if (window.Layout && window.Layout.lock) window.Layout.lock(ts.layout === "fixed");
+  const con = ts.console;
+  if (window.cliMount) window.cliMount(con === true || (con && typeof con === "object" && !Array.isArray(con)) ? con : null);
   de.toggleAttribute("data-vol-knob", volKnob());
   syncVolumeVar();
   if (volKnob()) {
@@ -3605,7 +3612,8 @@ async function playAt(i, fresh, opts) {
   } catch (e) {
     if (seq === S.playSeq) Object.assign(S, { loading: false, playError: true });
     settlePlay(seq);
-    toast(errMsg(e), "error");
+    if (seq === S.playSeq) ErrInfo.playErrorToast(t.title, errText(e));
+    else toast(errMsg(e), "error");
   }
 }
 
@@ -3731,6 +3739,8 @@ function openFull(mode) {
   $("#fLyrBtn").classList.toggle("active", f.dataset.mode === "lyrics");
   closeTrackMenuSafe();
   updateLyrics();
+  // синхронный текст был скрыт — прокрутить к текущей строке теперь, когда у него есть размер
+  requestAnimationFrame(() => syncLyricsLine(true));
 }
 function closeFull() {
   $("#full").hidden = true;
@@ -3744,7 +3754,7 @@ const closeTrackMenuSafe = () => window.Whisper && Whisper.ui.kit.closeMenu && W
  * Текст играющего трека: для какого трека, ответ Rust (null — ещё ищем), таймер задержки поиска,
  * выбранный перевод (null — оригинал) и загруженные тексты переводов.
  */
-const lyr = { key: null, data: null, error: null, timer: null, lang: null, trans: new Map(), transError: null };
+const lyr = { key: null, data: null, error: null, timer: null, lang: null, trans: new Map(), transError: null, lines: [], idx: -1, userScroll: 0 };
 /** Искать текст через столько после включения трека — пролистанные не ищем. */
 const LYRICS_DELAY = 1500;
 /** Пометки фрагментов с пояснениями в тексте от Rust: U+E000 id U+E001 фрагмент U+E002. */
@@ -3996,22 +4006,77 @@ function renderLyrics() {
   else if (lyr.lang && lyr.transError) body = L("Перевод недоступен: ") + lyr.transError;
   else if (lyr.lang && !lyr.trans.has(lyr.lang)) body = L("Загружаю перевод…");
   text.classList.toggle("note", body != null);
-  text.classList.add("plain");
+  // синхронный текст ВК — построчно (разметка Whisper Yandex: .flyrics.synced > .ln); перевод — простым текстом
+  const synced = body == null && !lyr.lang && d.times && d.times.length > 0;
+  text.classList.toggle("plain", !synced);
+  text.classList.toggle("synced", synced);
+  lyr.lines = [];
+  lyr.idx = -1;
+  if (synced) {
+    $("#fNotesBox").hidden = true;
+    renderSyncedLyrics(text, d);
+    finishLyricsView(text, false);
+    syncLyricsLine(true);
+    return;
+  }
   const shown = body == null ? tidyLyrics(lyr.lang ? lyr.trans.get(lyr.lang) : d.text) : "";
   // галочка пояснений — только если в показанном тексте они есть
   $("#fNotesBox").hidden = !/\uE000/.test(shown);
   $("#fNotes").checked = lyricsNotes;
   if (body != null) text.textContent = body;
   else lyricsNodes(shown, text);
-  const view = `${lyr.key}|${lyr.lang || ""}|${body != null}`;
+  finishLyricsView(text, body != null);
+}
+
+/** Новый текст (трек, перевод) — с начала и проявляется. */
+function finishLyricsView(text, isNote) {
+  const view = `${lyr.key}|${lyr.lang || ""}|${isNote}|${lyr.lines.length > 0}`;
   if (lyr.renderedView !== view) {
     text.scrollTop = 0;
     lyr.renderedView = view;
-    // новый текст (трек, перевод) — проявляется
     text.classList.remove("lyr-in");
     void text.offsetWidth;
     text.classList.add("lyr-in");
   }
+}
+
+/** Строки синхронного текста: нажатие — перемотка к строке; пустые строки (проигрыш) — «♪». */
+function renderSyncedLyrics(box, d) {
+  d.text.split("\n").forEach((line, i) => {
+    const t = d.times[i];
+    if (t == null || (!line.trim() && S.lyrCompact)) return;
+    const row = el("div", "ln", line.trim() ? line : "♪");
+    row.addEventListener("click", () => {
+      if (!S.current) return;
+      lyr.userScroll = 0;
+      seekTo(t / 1000);
+    });
+    box.append(row);
+    lyr.lines.push({ t: t / 1000, el: row });
+  });
+}
+
+/** Подсветить строку под текущей позицией и держать её посередине (если текст не листают руками). */
+function syncLyricsLine(jump) {
+  const lines = lyr.lines;
+  if (!lines || !lines.length) return;
+  // строка загорается чуть раньше — глазу так естественнее
+  const x = (S.pl.pos || 0) + 0.25;
+  let lo = 0, hi = lines.length - 1, idx = -1;
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1;
+    if (lines[m].t <= x) { idx = m; lo = m + 1; } else hi = m - 1;
+  }
+  if (idx === lyr.idx && !jump) return;
+  if (lyr.idx >= 0 && lines[lyr.idx]) lines[lyr.idx].el.classList.remove("on");
+  lyr.idx = idx;
+  if (idx < 0) return;
+  const row = lines[idx].el;
+  row.classList.add("on");
+  const box = $("#fLyrics");
+  if (Date.now() - (lyr.userScroll || 0) < 4000 || !box.clientHeight) return;
+  const smooth = !jump && document.documentElement.dataset.anim !== "off";
+  box.scrollTo({ top: row.offsetTop - box.clientHeight / 2 + row.offsetHeight / 2, behavior: smooth ? "smooth" : "auto" });
 }
 
 // ───────────────────────── пояснения Genius: всплывашка над фрагментом ─────────────────────────
@@ -4390,15 +4455,28 @@ function updateProgress() {
     $(du).textContent = fmt(d);
   }
   if (!S.seeking) setBar(d ? S.pl.pos / d : 0);
+  syncLyricsLine();
 }
 
-/** Полоса воспроизведения — ползунок Whisper: значение 0–1000, заливка — --p. */
+/** Полоса воспроизведения — ползунок Whisper: значение 0–1000, заливка — --p, кружок — .seekdot. */
 function setBar(f) {
   f = Math.min(1, Math.max(0, f));
   for (const b of [$("#seek"), $("#fSeek")]) {
     b.value = Math.round(f * 1000);
     b.style.setProperty("--p", f * 100 + "%");
+    b.seekF = f;
+    placeSeekDot(b);
   }
+}
+
+/** Кружок полосы трека — свой элемент, а не родной кружок ползунка (тот скрыт, app.css): стоит ровно на конце
+ *  заливки (доля ширины, как --p и как время при нажатии) и не ловит указатель — нажатию не мешает. Показ —
+ *  «Настройки → Общее → Расположение» (data-ly-dot, layout.js). */
+function placeSeekDot(b) {
+  const d = b.seekDot;
+  if (!d) return;
+  d.style.left = b.offsetLeft + (b.seekF || 0) * b.offsetWidth + "px";
+  d.style.top = b.offsetTop + b.offsetHeight / 2 + "px";
 }
 
 function initPlayer() {
@@ -4502,33 +4580,91 @@ function initPlayer() {
     window.addEventListener("pointerup", () => vw.matches(":hover") || volLeave(), { once: true });
   });
 
-  // перемотка: ползунки Whisper (#seek в плеере, #fSeek на весь экран), 0–1000; mpv перематывает на отпускании
-  // S.seeking — с нажатия, а не с первого сдвига: иначе зажатый на месте ползунок уезжал из-под пальца вместе с
-  // временем. Отпустили — снимаем после change (он перематывает); отпустили без сдвига — change нет, трек идёт дальше.
-  const seekRelease = () => {
-    if (S.seeking) setTimeout(() => ((S.seeking = false), updateProgress()), 0);
+  // перемотка: ползунки Whisper (#seek в плеере, #fSeek на весь экран), 0–1000. Мышью — как у ВКонтакте (просьба
+  // владельца, 2026-11-07): родного кружка нет (app.css; вместо него — .seekdot, только для вида), время — прямо из координаты по ширине полосы (как и заливка --p),
+  // перемотка — при отпускании, и каждое нажатие перематывает, даже в то же место. Родной ползунок этого не умел:
+  // нажатие на кружок значение не меняло (change нет — перемотки нет), а кружок браузер ставит с поправкой на свою
+  // ширину — он расходился с курсором и заливкой. Поэтому указатель обрабатываем сами (preventDefault), а родные
+  // input / change остаются клавиатуре (стрелки). S.seeking — с нажатия до отпускания: ход трека полосу не двигает.
+  const seekFrac = (bar, x) => {
+    const r = bar.getBoundingClientRect();
+    return r.width > 0 ? Math.min(1, Math.max(0, (x - r.left) / r.width)) : 0;
   };
-  window.addEventListener("pointerup", seekRelease);
-  window.addEventListener("pointercancel", seekRelease);
+  const seekDur = () => S.pl.duration || (S.current && S.current.duration) || 0;
+  const seekShow = (f) => {
+    setBar(f);
+    for (const c of ["#tCur", "#fTCur"]) $(c).textContent = fmt(f * seekDur());
+  };
+  const seekCommit = (f) => {
+    const pos = f * seekDur();
+    S.seeking = false;
+    S.pl.pos = pos;
+    seekTo(pos);
+    updateProgress();
+  };
+  // подсказка со временем под курсором (оформление — .seektip в layout.css)
+  const seekTip = (bar, x) => {
+    const row = bar.parentElement;
+    let tip = row.querySelector(":scope > .seektip");
+    if (!tip) {
+      tip = el("span", "seektip");
+      tip.setAttribute("aria-hidden", "true");
+      row.append(tip);
+    }
+    const d = seekDur();
+    if (!S.current || !d) return row.classList.remove("tipon");
+    tip.textContent = fmt(seekFrac(bar, x) * d);
+    tip.style.left = Math.min(Math.max(x, bar.getBoundingClientRect().left), bar.getBoundingClientRect().right) - row.getBoundingClientRect().left + "px";
+    row.classList.add("tipon");
+  };
+  let seekDrag = null;
+  const dotRo = "ResizeObserver" in window ? new ResizeObserver((es) => es.forEach((x) => placeSeekDot(x.target))) : null;
   for (const id of ["#seek", "#fSeek"]) {
     const bar = $(id);
+    bar.seekDot = el("span", "seekdot");
+    bar.seekDot.setAttribute("aria-hidden", "true");
+    bar.after(bar.seekDot);
+    placeSeekDot(bar);
+    dotRo?.observe(bar);
+    const end = (e, commit) => {
+      if (!seekDrag || seekDrag.bar !== bar || seekDrag.id !== e.pointerId) return;
+      seekDrag = null;
+      if (bar.hasPointerCapture(e.pointerId)) bar.releasePointerCapture(e.pointerId);
+      if (!bar.matches(":hover")) bar.parentElement.classList.remove("tipon");
+      if (commit && S.current) seekCommit(seekFrac(bar, e.clientX));
+      else {
+        S.seeking = false;
+        updateProgress();
+      }
+    };
     bar.addEventListener("pointerdown", (e) => {
-      if (e.button === 0 && S.current) S.seeking = true;
-    });
-    bar.addEventListener("input", () => {
+      if (e.button !== 0) return;
+      e.preventDefault(); // без родного поведения: ни прыжка кружка, ни его перетаскивания
       if (!S.current) return;
+      bar.setPointerCapture(e.pointerId);
+      seekDrag = { bar, id: e.pointerId };
       S.seeking = true;
-      const f = bar.value / 1000, d = S.pl.duration || S.current.duration || 0;
-      setBar(f);
-      for (const c of ["#tCur", "#fTCur"]) $(c).textContent = fmt(f * d);
+      seekShow(seekFrac(bar, e.clientX));
+      seekTip(bar, e.clientX);
+    });
+    bar.addEventListener("mousedown", (e) => e.button === 0 && e.preventDefault());
+    bar.addEventListener("pointermove", (e) => {
+      if (seekDrag && seekDrag.bar === bar && seekDrag.id === e.pointerId) seekShow(seekFrac(bar, e.clientX));
+      seekTip(bar, e.clientX);
+    });
+    bar.addEventListener("pointerleave", () => seekDrag?.bar === bar || bar.parentElement.classList.remove("tipon"));
+    bar.addEventListener("pointerup", (e) => end(e, true));
+    bar.addEventListener("pointercancel", (e) => end(e, false));
+    bar.addEventListener("lostpointercapture", (e) => end(e, false));
+    // клавиатура (стрелки, Home / End) — родной ползунок
+    bar.addEventListener("input", () => {
+      if (!S.current || seekDrag) return;
+      S.seeking = true;
+      seekShow(bar.value / 1000);
     });
     bar.addEventListener("change", () => {
-      if (!S.current) return;
-      S.seeking = false;
-      const d = S.pl.duration || S.current.duration || 0, pos = (bar.value / 1000) * d;
-      S.pl.pos = pos;
-      seekTo(pos);
-      updateProgress();
+      if (!S.current || seekDrag) return;
+      seekCommit(bar.value / 1000);
     });
   }
 
@@ -4619,7 +4755,7 @@ function onPlayError(message) {
   // ссылка из кэша могла протухнуть раньше срока — один раз пробуем свежую
   if (t && t.service && !S.retried) return playAt(S.qi, true);
   S.playError = true;
-  toast(L("Не удалось воспроизвести «{0}»: {1}", t ? t.title : "", L(message)), "error");
+  ErrInfo.playErrorToast(t ? t.title : "", message);
   // гость комнаты не перескакивает на свой трек: ядро увидит ошибку (media().error) и скажет ведущему, что трека нет
   if (++S.skips < 5 && !roomGuest()) setTimeout(() => next(true), 800);
 }
@@ -4672,9 +4808,10 @@ function volumeStep(d) {
   invoke("player_volume", { volume: S.volume }).catch(() => {});
   invoke("save_prefs", { volume: S.volume }).catch(() => {});
 }
-listen("hotkey", (ev) => {
+/** Действие плеера по имени: глобальные горячие клавиши (событие hotkey), значок в трее и мини-плеер (tray://ctl). */
+function playerAction(name) {
   const click = (sel) => { const b = $(sel); if (b && !b.hidden && !b.disabled) b.click(); };
-  switch (ev.payload) {
+  switch (name) {
     case "toggle": return togglePlay();
     case "next": return S.current && next(false);
     case "prev": return S.current && prev();
@@ -4687,7 +4824,9 @@ listen("hotkey", (ev) => {
     case "repeat": return click("#repeatBtn");
     case "shuffle": return click("#shuffleBtn");
   }
-});
+}
+listen("hotkey", (ev) => playerAction(ev.payload));
+listen("tray://ctl", (ev) => playerAction(ev.payload));
 
 // клавиатура
 document.addEventListener("keydown", (ev) => {
@@ -4755,6 +4894,10 @@ async function boot() {
     renderLyrics();
   });
   $("#fLyrics").addEventListener("scroll", closeNote);
+  // листают текст сами — не возвращать к текущей строке несколько секунд
+  for (const evName of ["wheel", "touchmove", "keydown"]) {
+    $("#fLyrics").addEventListener(evName, () => { lyr.userScroll = Date.now(); }, { passive: true });
+  }
   document.addEventListener("click", (ev) => {
     if (noteFor && !ev.target.closest("#lyrNote")) closeNote();
   });
@@ -4768,6 +4911,8 @@ async function boot() {
   }
   // язык интерфейса — до первой отрисовки
   setLang(info.lang || "ru");
+  if (window.backupBoot) backupBoot(info); // повреждённые настройки — предложить автокопию; иначе автокопия раз в день
+  if (window.trayBoot) trayBoot(info); // значок в трее и мини-плеер
   window.Layout?.refresh(); // подписи кнопки «Свернуть» — на языке интерфейса
   S.musicDir = info.music_dir || "~/Music/vk";
   S.downloadDir = info.download_dir || "~/Downloads";

@@ -42,8 +42,11 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   в настоящей `~/.config/vkmusic/themes`.
 * Интерфейс без Rust можно проверить в браузере (Playwright), подменив `window.__TAURI__` заглушкой с теми же
   командами и событиями — так проверялись все экраны.
-* Перед тем как считать работу готовой: `cargo build --release` без предупреждений, `cargo test`, и
-  `node --check src/app.js src/whisper-vk.js src/host.js`.
+* Перед тем как считать работу готовой: `cargo build --release` без предупреждений, `cargo test`,
+  `node --check` всех `src/*.js` и `node scripts/check-i18n.mjs` (все строки `L()` / `Lc()` / `plural()` и статичная
+  разметка — в `en.js`, без повторов ключей; строки-константы вроде помощи cli.js и правил errinfo.js скрипт не видит —
+  их переводы добавляются руками). То же проверяет CI — `.github/workflows/check.yml` (push / PR / раз в неделю:
+  тесты на Linux с `-D warnings`, `cargo check` на Windows, `node --check`, переводы, `cargo audit`).
 * Выпуски — `.github/workflows/release.yml` (как у Whisper Yandex): тег `vX.Y.Z` или запуск вручную → черновик в
   GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc) и
   Windows x64 (NSIS `-setup.exe`, просьба владельца 2026-11-05). Автообновление — только Windows (просьба владельца,
@@ -76,7 +79,17 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
 ## Устройство
 
 ```
-src-tauri/src/main.rs      AppState, все #[tauri::command], протокол vkm://, запуск mpv в setup, выход
+src-tauri/src/main.rs      AppState, общие команды (app_info, save_prefs, окно), протокол vkm://, setup (mpv, трей, окно), выход
+src-tauri/src/cmd/         команды интерфейса по разделам (до 2026-11-06 — всё в main.rs): player_cmd (плеер, устройство,
+                           трей), vk_cmd (ВК, VK Микс, плейлисты), login (вход, куки WebKit/WebView2), sc_cmd, saved_cmd
+                           (библиотека сервисов), local_cmd (файлы, yt-dlp), lyrics_cmd, storage_cmd (статистика, кэш,
+                           резервные копии), themes_cmd (темы, библиотека тем). Всё общее — через `use crate::*`
+src-tauri/src/winstate.rs  окно помнит размер, положение и развёрнутость (config.json → window); окно создаётся скрытым
+src-tauri/src/tray.rs      значок в трее (меню; Linux — только если есть libayatana-appindicator3 / libappindicator3,
+                           `tray::available`), «Закрывать в трей», мини-плеер — окно `mini` (mini.html); вид значка
+                           (`Config::tray_icon`: цветной / светлый / тёмный / цвет темы — полоски логотипа без подложки, `tray::bars`)
+src-tauri/src/backup.rs    резервные копии .vkmbak: настройки, library/order/playlists/stats, свои темы, localStorage;
+                           автокопии раз в день (~/.config/vkmusic/backups, 5 шт.), восстановление — при перезапуске
 src-tauri/src/config.rs    ~/.config/vkmusic/config.json (serde(default) — старые/лишние поля не ломают загрузку)
 src-tauri/src/player.rs    mpv в фоне: --idle, JSON IPC через unix-сокет в $XDG_RUNTIME_DIR, PR_SET_PDEATHSIG
 src-tauri/src/ytdlp.rs     загрузки yt-dlp: аргументы, разбор вывода по маркерам VKMPROG/VKMTITLE/VKMFILE, события
@@ -94,6 +107,8 @@ src-tauri/src/saved.rs     сохранённые треки сервисов: ~
 src-tauri/src/playlists.rs ваши плейлисты ВК на диске: ~/.config/vkmusic/playlists.json — список, треки открывавшихся, access_key
 src-tauri/src/lyrics.rs    тексты песен с Genius: чистка названий, поиск api/search/song, оценка похожести, текст со страницы,
                            кэш ~/.cache/vkmusic/lyrics
+src-tauri/src/loudness.rs  «Постоянный уровень громкости»: замер EBU R128 (ffmpeg ebur128) файлов на диске в фоне,
+                           ~/.cache/vkmusic/loudness.json; фильтр mpv — усиление до −14 LUFS, незамеренный — loudnorm
 src-tauri/src/streams.rs   кэш ссылок на потоки треков сервисов: в памяти, срок — из expires ссылки (до часа)
 src-tauri/src/cache.rs     кэш треков библиотеки ~/.cache/vkmusic/tracks: копия файла / поток через ffmpeg -c copy,
                            одна задача за раз: включённый трек, затем следующий в очереди; имена для папки загрузок
@@ -118,6 +133,13 @@ src/themeguard.js          защита от ломающих тем (как у 
                            должны оставаться доступны — иначе аварийная полоса; Ctrl+Shift+Backspace — «Неон» (vkm_tguard)
 src/colors.js              цвета темы: основной/второй и «Тонкая настройка…» по местам, для каждого стиля (vkm_colors), <style id="cc-css">
 src/hotkeys.js             горячие клавиши: карточка в «Общем», окно назначения, сочетания — localStorage vkm_hotkeys
+src/keynav.js              клавиатура внутри окна (как у Whisper Yandex): стрелки по спискам и меню, Enter, Menu, F1 — список
+src/errinfo.js             понятные ошибки воспроизведения: где проблема (сервис, сеть, устройство, файл) и что делать
+src/lsguard.js             до app.js: повреждённые JSON в localStorage → window.__lsBroken (backup.js предложит автокопию)
+src/backup.js              карточка «Резервная копия» (Хранилище), автокопия при запуске
+src/tray.js                что играет — трею и мини-плееру (mini_state / tray_state), карточка «Трей» в «Общем»
+src/cli.js                 стиль-консоль («console» в settings темы, тема «Терминал»): команды VK Music, разметка #cli Whisper
+src/mini.html, mini.js, mini.css  мини-плеер (окно `mini`): данные — только textContent, обложки — https и vkm /cover
 src/host.js                заглушка window.__TAURI__ для браузера (--host): сервер вставляет её первым скриптом index.html
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
@@ -135,13 +157,23 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `tauri::ipc::InvokeBody::Raw`).
 * События Rust → JS: `player://event` (`state` / `ended` / `error`), `dl://event`
   (`title` / `progress` / `saved` / `done` / `failed`), `svc://event` (`login` / `login_closed`, поле `service`: `vk` | `sc`) — после них интерфейс прячет полосу входа,
-`cache://event` (`cached` / `failed`, поле `key` — ключ трека в библиотеке) — после него кэшируется следующий трек. Плюс `tauri://drag-*` для перетаскивания `.wmt`.
-* Новая команда = функция в `main.rs` + строка в `generate_handler![…]` + вызов в `src/app.js`.
+`cache://event` (`cached` / `failed`, поле `key` — ключ трека в библиотеке) — после него кэшируется следующий трек,
+`tray://ctl` (действие из меню значка или мини-плеера → `playerAction`, как событие `hotkey`; в `--host` трея нет),
+`mini://state` (окну `mini`). Плюс `tauri://drag-*` для перетаскивания `.wmt`.
+* Новая команда = функция в `src-tauri/src/cmd/<раздел>.rs` (`pub(crate)`, общее — `use crate::*`) + строка
+  `cmd::<раздел>::<команда>` в `generate_handler![…]` (main.rs) + вызов в `src/app.js`. Помощник, который нужен
+  другому разделу, — `pub(crate)`, а его раздел — в `use cmd::{…}` в main.rs.
   Проверяйте, что каждая команда из JS есть в обработчике (и наоборот, лишних нет). `vk_status` / `sc_status`
   вызываются как `invoke(service + "_status")` — простым grep их не найти.
 * Файлы тем и обложки интерфейс получает по `vkm://localhost/…`: `/theme/<id>/<файл>`,
   `/themepreview/<id>`, `/cover?path=…`. Протокол отвечает только главному окну (`label == "main"`).
-* CSP выключен (`"csp": null`) — поэтому защита держится на правилах ниже, не нарушайте их.
+* CSP (с 2026-11-06, как у Whisper Yandex; до этого был выключен): `tauri.conf.json → app.security.csp` — скрипты только
+  свои (`script-src 'self'`: ни инлайн-скриптов, ни `eval`, ни обработчиков в атрибутах), картинки — свои, `data:`,
+  `blob:`, `vkm:` / `wa:` и CDN обложек (ВК, SoundCloud, Яндекс из комнат, превью whisper-themes, аватары Discord),
+  `connect-src` — только IPC, `vkm:` / `wa:`, `blob:`. Стили — с `'unsafe-inline'` (тема — `<style>`, модули — style-атрибуты),
+  поэтому `dangerousDisableAssetCspModification: ["style-src"]` (иначе Tauri добавил бы хэши и `'unsafe-inline'` перестал
+  бы действовать). `--host` отдаёт ту же политику заголовком (`host::CSP`, тест `csp_matches_window`). Новый внешний хост
+  картинок — в обе. CSP — второй рубеж: правила ниже по-прежнему обязательны.
 
 ### Интерфейс в браузере (`--host`, просьба владельца 2026-11-05)
 
@@ -166,7 +198,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 
 * Порядок в `index.html` важен: в `<head>` без defer — `boot.js` (как у Whisper Yandex: стиль прошлого запуска из
   `vkm_boot` и класс `booting` — интерфейс скрыт под цветом фона, пока `boot()` не применит тему и не позовёт
-  `bootDone`; снимок пишет `saveBoot` после `applyTheme`), затем `core/whisper-core.js` → i18n, `icons.js`, `app.js` → `whisper-vk.js` →
+  `bootDone`; снимок пишет `saveBoot` после `applyTheme`), `lsguard.js` (до всего, что пишет localStorage), затем
+  `core/whisper-core.js` → i18n, `icons.js`, `errinfo.js`, `app.js` → `backup.js`, `tray.js`, `keynav.js`, `cli.js`,
+  `hotkeys.js`, `colors.js`, `themeguard.js` → `whisper-vk.js` →
   `core/wmt.js`, `core/theme-css.js` → модули `archive`, `queue`, `discord`, `obs`, `together` (порядок модулей =
   порядок карточек в «Интеграциях»). CSS: `core/base.css` → `whisper.css` → `core/together.css` → `app.css` →
   `core/archive.css`, `queue.css`, `discord.css`, `obs.css` → `<style id="theme-css">`. `app.js` запускается по
@@ -258,7 +292,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   по ключу через `libraryByKey` (индекс `libIndex`), а не перебором: их зовут на каждую строку.
 * Своё в `localStorage` (не модули): `vkm_boot` (снимок стиля для boot.js), `vkm_dyn` (фон по обложке),
   `vkm_style_view` (компактный вид стилей), `vkm_search_hist` (история поиска, 30), `vkm_hotkeys`, `vkm_layout`,
-  `vkm_colors` (цвета пользователя по стилям: в CSS попадают только `#rrggbb(aa)`).
+  `vkm_colors` (цвета пользователя по стилям: в CSS попадают только `#rrggbb(aa)`), `vkm_cli_hist` (история команд
+  консоли), `vkm_cli_prev_style` (к какому стилю вернёт `gui`). В резервную копию входит весь localStorage, кроме
+  `vkm_boot` и `wa_index_v3` (`backup::storage_key_ok`).
 * Кэш треков: предел — `Config::cache_limit_mb` (0 — без ограничения, «Хранилище»); сверх него `TrackCache::prune`
   удаляет давно не игравшие (по времени изменения файла; включение из кэша — `touch`), кроме только что докачанного.
 * Фон по обложке (как у Whisper Yandex; CSS — `.dynbg` в whisper.css, разметка `#dynBg` внутри `#bg`): обложку
@@ -384,6 +420,11 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `VKM_ARTIST=… VKM_TITLE=… cargo test live_one -- --ignored --nocapture`.
   Текст ВК (просьба владельца, 2026-11-02): у трека ВК сначала текст самого ВК (`Vk::lyrics`, `audio.getLyrics`,
   `audio_id`, через очередь `GAP`; нет текста — ошибка 104 → Genius), кэшируется там же (`store_for`, `source: "vk"`).
+  Синхронный текст ВК (2026-11-06): `lyrics.timestamps[{begin, end, line}]` (мс) → `Lyrics.times` (начало каждой строки
+  `text`; `vk::parse_lyrics`), интерфейс рисует его разметкой Whisper Yandex (`.flyrics.synced > .ln`, текущая — `.ln.on`,
+  `syncLyricsLine`; нажатие на строку — перемотка; руками листают — 4 с не прокручиваем сами). Записи ВК до версии 4
+  (`VK_V`) сохранены без времени — `lyrics_cached` их не отдаёт, `lyrics_get` спрашивает ВК заново (не вышло — прежний
+  текст, `old_vk`, а не Genius). Перевод Genius показывается простым текстом.
   Подбор Genius «как в VK MP3 Mod» (один запрос, совпадение слов) пробовали 2026-11-02 и убрали по решению владельца:
   на 40 треках — 28 (3 не та версия) против 31 (1) у нашего. Мод ходит в мобильный `api.genius.com` с токеном
   официального приложения Genius — такой токен не используем (выдавать себя за чужое приложение нельзя). Текст ВК одного трека:
@@ -452,7 +493,10 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `#wavePage` (`.waveorbits`, `#waveBtn.wavebtn`), `#full`, `.titlebar`, `.tmenu`, `.toast`, `body.is-playing`.
   Свои элементы — дополнительными классами и внутри этих (`.lq`, `.lacts`, `.ldur` в строке). `whisper.css` не правится:
   своё — в `app.css`. Возможности тем сверх CSS (`settings whisper-music`): `features.animations`, `controls.volume:
-  "knob"` (`data-vol-knob`, `--vol`), `buttons` (`#thBtns .thbtn`, действия — только `TH_ACTIONS`).
+  "knob"` (`data-vol-knob`, `--vol`), `buttons` (`#thBtns .thbtn`, действия — только `TH_ACTIONS`), `layout: "fixed"`
+  (`Layout.lock`: действует расположение по умолчанию, своё не теряется; `#layoutCard.lylock`), `console` (`true` или
+  `{ prompt, banner }` — стиль-консоль `cli.js`: `body.cli-on`, `.app` скрыт; команды — только свои, тема задаёт вид;
+  themeguard не требует от неё кнопок пуска и настроек).
 
 **Темы**
 * Встроенная тема: правьте `themes/<id>/theme.wmt`, затем пересоберите архив
@@ -514,12 +558,40 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * mpv читает `mpv.conf` пользователя: если там включено сохранение позиции, трек продолжал бы играть с места,
   где его переключили. Поэтому mpv запускается с `--resume-playback=no --save-position-on-quit=no`.
   `af` плеер задаёт сам («постоянный уровень громкости»), перекрывая `af` из конфига пользователя.
+* «Постоянный уровень громкости» — по громкости EBU R128, как у Whisper Yandex (2026-11-06): `dynaudnorm` без
+  целевого уровня выравнивал по пикам, а они у современных треков почти всегда у 0 дБ — громкие (−6 LUFS) и тихие
+  (−11) звучали по-разному. Теперь файл на диске (папка музыки, кэш — `TrackCache::on_file`, архив) один раз
+  замеряется (`loudness::Loudness`, по одному, nice 15) и играет с постоянным усилением до `TARGET` (ограничитель —
+  только если пик выйдет за −1 dBTP); `af` ставится перед каждым `loadfile` (`Player::norm_filter`). Поток и ещё
+  не замеренный файл — `loudnorm` на лету (`LIVE_FILTER`); посреди трека фильтр не меняется.
+* Главное окно создаётся скрытым (`"visible": false`): показывает его `winstate::restore` в setup, уже с прежним размером.
+  Новый путь запуска окна (не через setup) — не забыть `show()`. С `--host` окно так и остаётся скрытым.
+* Трей на Linux: tray-icon сам грузит libayatana-appindicator3 / libappindicator3 (dlopen) и **падает**, если её нет, —
+  поэтому `tray::init` только после `tray::available()`. В `.deb` она — в recommends. Мини-плеер — окно фиксированного
+  размера (min = max): Hyprland и другие тайлинговые композиторы делают такое плавающим.
+* Устройство вывода: список и текущее mpv присылает сам (`observe_property audio-device-list / audio-device`,
+  `Player::devices`); выбранное — `Config::audio_device`, ставится, когда список пришёл (`restore_device`), и только
+  из списка (`set_device`). mpv перечисляет каждое устройство в каждой звуковой системе и плагины ALSA (у владельца —
+  ~35 строк), поэтому меню показывает `player::shown_devices`: «Системное», устройства первой системы mpv (pipewire /
+  wasapi) по картам и выбранное; остальное — «Все устройства». Скорость — «⋯» плеера (`setRate`, не сохраняется между запусками).
+* Полоса трека (`#seek`, `#fSeek`) — как у ВКонтакте (просьба владельца, 2026-11-07): родной кружок скрыт (`app.css`,
+  `::-webkit-slider-thumb` нулевой с `!important`), указатель обрабатывает `app.js` сам (`preventDefault`): время —
+  из координаты по ширине полосы, перемотка — при отпускании, каждое нажатие перематывает, над полосой — `.seektip`.
+  Кружок — свой `.seekdot` (`placeSeekDot`: на конце заливки, `pointer-events: none`; оформление основ — в `app.css`,
+  встроенных тем — в их `theme.wmt`), показ — «Расположение» (`vkm_layout.dot`, `data-ly-dot`).
+  Родной ползунок не годился: нажатие на кружок не давало `change`, а кружок стоял со сдвигом на свою ширину.
+  Родные `input` / `change` — только клавиатуре.
 * Громкость у mpv кубическая (усиление = (v/100)³): ползунок на 14% давал −51 дБ, линейная шкала оказалась слишком
   громкой. Шкала интерфейса — квадратичная (`player::GAIN_POW`, «обычная громкость — около 20%», просьба владельца
   2026-11-05); в mpv — через `player::to_mpv`, обратно — `from_mpv`. Не передавайте в mpv громкость ползунка напрямую.
 * Ползунок громкости (2026-11-06): интерфейс обновляется раз за кадр (`requestAnimationFrame`), в mpv — не чаще раза
   в 50 мс; `--vol` на `<html>` — только у темы с ручкой (`syncVolumeVar`): переменная на корне пересчитывала стили
   всего документа на каждый шаг. Изменение громкости в mpv не шлёт срочное состояние (`player.rs`).
+* Перетаскивание края панели (`layout.js`) меняет размер на каждом шаге. CSS-переменная в `style` у `<html>` пересчитывала
+  стили всего документа (~120 мс на шаг с 3000 строк, 2026-11-07), поэтому `--ly-sw` / `--ly-ph` стоят на `.app` и
+  вместе с `--sw` объявлены ненаследуемыми (`@property` в layout.css), а `apply()` трогает только изменившееся.
+  Пока тянут боковую панель, строки списка вне экрана не раскладываются (`html.lyfast .list li { content-visibility:
+  auto }`), кроме списков со счётчиком CSS (номера «Стимпанка»: `content-visibility` замкнул бы счётчик в строке).
 * Смена трека: после `loadfile` mpv ещё присылает позицию и длительность прошлого файла. Поэтому у состояния есть
   номер файла (`PlayerState.file`, растёт на `file-loaded`), а между `start-file` и `file-loaded` позиция — 0;
   интерфейс не верит состояниям с прежним номером (`S.fileAtPlay`) — иначе «Слушать вместе» отдавало гостям новый

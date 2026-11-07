@@ -76,4 +76,6 @@
 
 input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #ececec var(--p, 0%), var(--line) var(--p, 0%)); border-radius: 0; }
 input[type=range]::-webkit-slider-thumb { border-radius: 0; box-shadow: none; }
+/* кружок на полосе трека VK Music (свой элемент, не родной кружок ползунка) */
+.seekdot { border-radius: 0; box-shadow: none; }
 ::selection { background: var(--line); color: #fff; }

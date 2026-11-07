@@ -254,6 +254,15 @@ fn reason(code: u16) -> &'static str {
     tauri::http::StatusCode::from_u16(code).ok().and_then(|s| s.canonical_reason()).unwrap_or("")
 }
 
+/// Политика безопасности страницы в браузере — та же, что у окна (tauri.conf.json → security.csp), только
+/// vkm:// и wa:// здесь — свои адреса (/p/vkm, /p/wa, то есть 'self'), а команды — POST /invoke ('self').
+/// Внешние картинки — те же хосты (тест `csp_matches_window`).
+const CSP: &str = "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; \
+    img-src 'self' data: blob: https://*.userapi.com https://*.vkuserphoto.ru https://*.vk.me https://*.vk.com \
+    https://*.vk.ru https://*.sndcdn.com https://raw.githubusercontent.com https://*.yandex.net https://cdn.discordapp.com; \
+    media-src 'self' blob:; font-src 'self' data: blob:; connect-src 'self' blob: data:; object-src 'none'; \
+    base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+
 /// Ответ целиком; соединение закрывается.
 fn send(s: &mut TcpStream, code: u16, headers: &[(&str, &str)], body: &[u8]) -> std::io::Result<()> {
     let mut out = format!("HTTP/1.1 {code} {}\r\n", reason(code));
@@ -262,7 +271,7 @@ fn send(s: &mut TcpStream, code: u16, headers: &[(&str, &str)], body: &[u8]) -> 
     }
     out.push_str(&format!(
         "Content-Length: {}\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n\
-         Content-Security-Policy: frame-ancestors 'none'\r\nReferrer-Policy: no-referrer\r\n\r\n",
+         Content-Security-Policy: {CSP}\r\nReferrer-Policy: no-referrer\r\n\r\n",
         body.len()
     ));
     s.write_all(out.as_bytes())?;
@@ -453,6 +462,20 @@ fn invoke(app: &AppHandle, s: &mut TcpStream, req: &Req) -> std::io::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn csp_matches_window() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let csp = &conf["app"]["security"]["csp"];
+        let hosts = |s: &str| -> Vec<String> { s.split_whitespace().filter(|w| w.starts_with("https://")).map(String::from).collect() };
+        let ours = CSP.split(';').map(str::trim).find(|d| d.starts_with("img-src")).unwrap();
+        assert_eq!(hosts(ours), hosts(csp["img-src"].as_str().unwrap()), "внешние картинки окна и --host должны совпадать");
+        for d in ["script-src", "style-src", "object-src", "base-uri", "form-action"] {
+            let ours = CSP.split(';').map(str::trim).find(|x| x.starts_with(d)).unwrap();
+            assert_eq!(ours, format!("{d} {}", csp[d].as_str().unwrap()), "{d}");
+        }
+        assert!(CSP.contains("frame-ancestors 'none'"));
+    }
 
     fn args(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| s.to_string()).collect()

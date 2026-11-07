@@ -33,7 +33,16 @@ Whisper применяется целиком: цвета, шрифты, фон,
   решает CSS темы; `.on` — действие сейчас включено). Действия: `wave` (VK Микс), `play`, `next`, `prev`, `like`
   (в библиотеку), `mute`, `shuffle`, `repeat`, `full` (обложка и текст на весь экран), `more`, `page:wave`, `page:likes`
   (библиотека), `page:stats`, `page:settings`, `page:profile` (сервисы), `vol-up`, `vol-down`, `close`, `minimize`,
-  `maximize`, `drag`.
+  `maximize`, `drag`;
+* `layout: "fixed"` — расположение задаёт тема: настройки «Расположение» (сторона и вид панелей, их размер) не действуют,
+  пока выбрана тема (`#layoutCard.lylock`), — интерфейс в раскладке по умолчанию;
+* `console: true` или `{ "prompt": "user@vkmusic:~$", "banner": "текст" }` — стиль-консоль, как у Whisper Yandex
+  (тема «Терминал»): вместо окна — командная строка. Разметка та же: `body.cli-on`, `#cli.cli` > `.cli-out` > `.cl`
+  (`.cmd`, `.err`, `.dim`, `.ok`, `.hl`, `.hd`, `.banner`), `.cli-status`, `form.cli-in` > `.cli-ps` + `input`. Команды —
+  свои у VK Music (`help`: play, next, seek, vol, speed, search, lib, mix, playlists, lyrics, style, gui…); тема их не
+  меняет. Скрытых команд-пасхалок Whisper Yandex (visual, piano…) нет;
+* синхронный текст песни (треки ВК, у которых он есть) — разметка Whisper Yandex: `.flyrics.synced > .ln`, текущая
+  строка — `.ln.on`.
 
 ## Чем VK Music отличается от Whisper Yandex
 
@@ -55,6 +64,12 @@ Whisper применяется целиком: цвета, шрифты, фон,
   `.icon-btn`, видны при наведении), `.ldur` (длительность);
 * в шапке страницы `.head`: `.headbtns` — кнопки справа («Обновить»);
 * в плеере `.pright`: `#normBtn.modebtn` — «постоянный уровень громкости»;
+* на полосе трека (`.seekrow > #seek`, `.fseek > #fSeek`): кружок — **`.seekdot`**, не родной кружок ползунка.
+  Перемотка — как у ВКонтакте (время — прямо из места нажатия, каждое нажатие перематывает), поэтому
+  `#seek::-webkit-slider-thumb` и `#fSeek::-webkit-slider-thumb` скрыты, а `.seekdot` (указатель не ловит) стоит на конце
+  заливки. Оформляйте его вместо `::-webkit-slider-thumb`: размер, фон, тень, `transform` (центровка — через `translate`,
+  её не трогайте). Пользователь может спрятать кружок — `html[data-ly-dot="off"]`;
+* подсказка со временем под курсором над полосой трека — `.seektip`;
 * окошки подтверждения и выбора плейлиста — `.popup.tmenu.confirm-pop` (оформлены как меню `.tmenu`);
 * `.login-bar` — полоса над страницей входа сервиса, `.drop-hint` — «отпустите файл .wmt».
 
