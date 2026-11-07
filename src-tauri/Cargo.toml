@@ -49,6 +49,9 @@ soup3 = "0.5"
 # ключ Whisper Archive — в системной «связке ключей» (Secret Service: GNOME Keyring, KWallet, KeePassXC);
 # vendored — libdbus собирается вместе с приложением
 keyring = { version = "3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
+# --host, а приложение уже открыто (в окне или в трее): попросить его выйти по D-Bus single-instance и запуститься
+# самим (host::take_over); тот же zbus, что у tauri-plugin-single-instance
+zbus = "5"
 
 [target.'cfg(windows)'.dependencies]
 # автообновление (только Windows: на Linux — пакеты/AUR): latest.json из GitHub Releases, подпись minisign
@@ -61,4 +64,4 @@ windows = "0.62"
 # mpv: именованный канал (асинхронный — чтение и запись одновременно)
 tokio = { version = "1", features = ["time", "sync", "net", "io-util", "rt"] }
 # mpv закрывается вместе с приложением (Job Object)
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }

@@ -387,13 +387,28 @@ fn context(host: bool) -> tauri::Context<tauri::Wry> {
     ctx
 }
 
+/// Аргументы, с которыми перезапуститься при выходе: `--host` пришёл в уже открытое окно (single-instance).
+static RELAUNCH: Mutex<Option<Vec<String>>> = Mutex::new(None);
+/// Переменная окружения перезапущенного экземпляра: pid прежнего — дождаться его выхода.
+const WAIT_PID: &str = "VKM_WAIT_PID";
+
 fn main() {
+    // перезапуск из окна в --host: прежний экземпляр ещё выходит — без ожидания single-instance отдал бы запуск ему
+    if let Some(pid) = std::env::var(WAIT_PID).ok().and_then(|v| v.parse::<u32>().ok()) {
+        std::env::remove_var(WAIT_PID);
+        os::wait_exit(pid, std::time::Duration::from_secs(15));
+    }
     // --host [ПОРТ]: интерфейс в браузере на http://127.0.0.1:ПОРТ вместо окна (host.rs)
     let args: Vec<String> = std::env::args().skip(1).collect();
     let host_port = host::port_from_args(&args).unwrap_or_else(|e| {
         eprintln!("vkmusic: {e}");
         std::process::exit(2);
     });
+    // приложение уже открыто в окне — пусть выйдет, браузерным экземпляром станет этот процесс
+    #[cfg(target_os = "linux")]
+    if host_port.is_some() {
+        host::take_over();
+    }
     migrate_ident();
     // восстановление из резервной копии — до того, как что-либо загрузит настройки
     backup::apply_pending();
@@ -448,11 +463,22 @@ fn main() {
     let app = tauri::Builder::default()
         // второй запуск — окно уже открытого; ссылку whisper:// из его аргументов плагин отдаёт deep-link
         // (с --host — вкладка браузера, если запустили не по ссылке whisper://: ссылку получит открытая вкладка)
+        // --host во второй раз, а открыто окно (оно и в трее остаётся запущенным — «Закрывать в трей»): окно
+        // закрывается, как по «Выход»; на Linux браузерным экземпляром станет сам новый процесс (host::take_over),
+        // на Windows приложение перезапускается отсюда с теми же аргументами (RunEvent::Exit)
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            let rest = args.get(1..).unwrap_or_default();
             if host::active() {
                 if !args.iter().any(|a| a.starts_with("whisper:")) {
                     host::open_browser();
                 }
+            } else if matches!(host::port_from_args(rest), Ok(Some(_))) {
+                // Linux: новый процесс ждёт нашего выхода и запустится сам (host::take_over, метка HANDOVER);
+                // иначе (Windows) — перезапуск отсюда
+                if !rest.iter().any(|a| a == host::HANDOVER) {
+                    *RELAUNCH.lock().unwrap() = Some(rest.to_vec());
+                }
+                app.exit(0);
             } else {
                 show_main(app);
             }
@@ -712,6 +738,17 @@ fn main() {
             let player = st.player.lock().unwrap().take();
             if let Some(p) = player {
                 p.quit();
+            }
+            let relaunch = RELAUNCH.lock().unwrap().take();
+            if let Some(args) = relaunch {
+                match std::env::current_exe() {
+                    Ok(exe) => {
+                        if let Err(e) = std::process::Command::new(exe).args(args).env(WAIT_PID, std::process::id().to_string()).spawn() {
+                            eprintln!("vkmusic: перезапуск с --host: {e}");
+                        }
+                    }
+                    Err(e) => eprintln!("vkmusic: перезапуск с --host: {e}"),
+                }
             }
         }
     });

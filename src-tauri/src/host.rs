@@ -83,6 +83,51 @@ pub fn port_from_args(args: &[String]) -> Result<Option<u16>, String> {
     Ok(None)
 }
 
+/// Метка в аргументах, которые `take_over` передаёт открытому окну: «выйди, браузерный экземпляр запускаюсь я сам».
+pub const HANDOVER: &str = "--vkm-handover";
+
+/// `--host`, а VK Music уже открыт в окне (или свёрнут в трей — «Закрывать в трей»): single-instance отдал бы запуск
+/// ему, и вместо браузера показалось бы окно. Поэтому до запуска Tauri просим открытый экземпляр выйти (его обработчик
+/// single-instance видит `--host` и `HANDOVER`, main.rs) и ждём, пока он освободит имя на D-Bus и завершится, — дальше
+/// этот процесс запускается сам, в том же терминале (адрес, Ctrl+C). Не вышел — сообщить и выйти.
+/// Только Linux; на Windows открытое окно перезапускает себя само (`RELAUNCH` в main.rs).
+#[cfg(target_os = "linux")]
+pub fn take_over() {
+    use std::time::{Duration, Instant};
+    use zbus::blocking::{fdo::DBusProxy, Connection};
+    // имя и путь — как у tauri-plugin-single-instance: identifier + ".SingleInstance"
+    let name = format!("{}.SingleInstance", crate::IDENT);
+    let path = format!("/{}", name.replace('.', "/").replace('-', "_"));
+    let Ok(conn) = Connection::session() else { return };
+    let Ok(dbus) = DBusProxy::new(&conn) else { return };
+    let Ok(bus_name) = zbus::names::BusName::try_from(name.as_str()) else { return };
+    let owned = || dbus.name_has_owner(bus_name.clone()).unwrap_or(false);
+    if !owned() {
+        return;
+    }
+    let pid = dbus.get_connection_unix_process_id(bus_name.clone()).ok();
+    eprintln!("VK Music уже открыт в окне — закрываю его и запускаю в браузере…");
+    let mut argv: Vec<String> = std::env::args().collect();
+    argv.push(HANDOVER.into());
+    let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
+    if let Err(e) = conn.call_method(Some(name.as_str()), path.as_str(), Some("org.SingleInstance.DBus"), "ExecuteCallback", &(argv, cwd)) {
+        eprintln!("vkmusic: не удалось связаться с открытым VK Music: {e}");
+        return;
+    }
+    let t = Instant::now();
+    while owned() && t.elapsed() < Duration::from_secs(15) {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if owned() {
+        eprintln!("vkmusic: открытый VK Music не закрылся (старая версия?) — выйдите из него («Выход» в меню значка) и запустите снова");
+        std::process::exit(2);
+    }
+    // имя освобождается раньше, чем процесс доделает выход (mpv, настройки, WebKit) — дождаться и его
+    if let Some(pid) = pid {
+        crate::os::wait_exit(pid, Duration::from_secs(10));
+    }
+}
+
 /// Поднять сервер (в setup, до запуска mpv). Возвращает адрес с ключом — его открыть в браузере.
 pub fn start(app: &AppHandle, port: u16) -> Result<String, String> {
     let listener = TcpListener::bind(("127.0.0.1", port))

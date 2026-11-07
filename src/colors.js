@@ -135,7 +135,7 @@
   ];
 
   // «Тонкая настройка» из файла темы (settings whisper-music → colorOverrides, как у Whisper Yandex; так её
-  // сохраняет «Сохранить стиль в файл…»): только для её собственного стиля и только цвета. Свои настройки главнее.
+  // сохраняет «Экспорт стиля»): только для её собственного стиля и только цвета. Свои настройки главнее.
   function themeCc(st) {
     const th = typeof S !== "undefined" ? S : null;
     const co = th && th.theme && th.theme.file && th.theme.id === st && th.themeSettings && th.themeSettings.colorOverrides;
@@ -356,7 +356,7 @@
     c.append(row);
   }
 
-  /** Тонкая настройка стиля целиком (из файла темы и своя) — для «Сохранить стиль в файл…». */
+  /** Тонкая настройка стиля целиком (из файла темы и своя) — для «Экспорт стиля». */
   const ccOf = (st = style()) => ({ ...themeCc(st), ...of(st).cc });
   window.Colors = { main, card, apply, ccOf };
 })();

@@ -67,3 +67,29 @@ pub fn open(target: impl AsRef<OsStr>) -> Result<(), String> {
     let (prog, mut cmd) = ("xdg-open", Command::new("xdg-open"));
     cmd.arg(target).spawn().map(|_| ()).map_err(|e| format!("{prog}: {e}"))
 }
+
+/// Подождать, пока процесс `pid` завершится (не дольше `max`). Нужно перезапуску (`--host` в уже открытое окно,
+/// main.rs): новый экземпляр должен стартовать, когда прежний уже вышел, — иначе single-instance отдал бы запуск ему.
+#[cfg(unix)]
+pub fn wait_exit(pid: u32, max: std::time::Duration) {
+    let t = std::time::Instant::now();
+    let proc_dir = PathBuf::from(format!("/proc/{pid}"));
+    while proc_dir.exists() && t.elapsed() < max {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+#[cfg(windows)]
+pub fn wait_exit(pid: u32, max: std::time::Duration) {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE};
+    // SAFETY: дескриптор только на ожидание; закрывается здесь же
+    unsafe {
+        let h = OpenProcess(PROCESS_SYNCHRONIZE, 0, pid);
+        if h.is_null() {
+            return; // процесса уже нет
+        }
+        WaitForSingleObject(h, max.as_millis().min(u32::MAX as u128) as u32);
+        CloseHandle(h);
+    }
+}

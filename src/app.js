@@ -1955,15 +1955,21 @@ function syncWave() {
   const on = S.queueMix === "common" && !!S.current;
   const playing = on && !S.pl.paused && !S.pl.idle;
   const b = $("#waveBtn");
-  b.innerHTML = playing ? WAVE_PAUSE : WAVE_ICON;      // свои постоянные значки, данных в разметке нет
+  // как значок #play (updatePlayButton): зовётся на каждое состояние mpv — меняем только изменившееся, иначе нажатие
+  // «пауза» на кнопке микса терялось
+  if (b.dataset.shown !== String(playing)) {
+    b.dataset.shown = String(playing);
+    b.innerHTML = playing ? WAVE_PAUSE : WAVE_ICON;      // свои постоянные значки, данных в разметке нет
+  }
   b.classList.toggle("playing", playing);
   b.title = playing ? L("Пауза") : L("VK Микс");
+  const text = (node, s) => { if (node.textContent !== s) node.textContent = s; };
   $("#waveHint").hidden = on;
-  $("#waveHint").textContent = S.svc.vk && S.svc.vk.logged_in === false ? L("Войдите во ВКонтакте, чтобы слушать VK Микс") : L("Нажми, чтобы включить VK Микс");
+  text($("#waveHint"), S.svc.vk && S.svc.vk.logged_in === false ? L("Войдите во ВКонтакте, чтобы слушать VK Микс") : L("Нажми, чтобы включить VK Микс"));
   $("#nowplay").hidden = !on;
   if (on) {
-    $("#waveTitle").textContent = S.current.title;
-    $("#waveArtist").textContent = S.current.artist;
+    text($("#waveTitle"), S.current.title);
+    text($("#waveArtist"), S.current.artist);
   }
 }
 
@@ -2967,7 +2973,7 @@ async function installThemePath(path) {
   }
 }
 
-// ───────────────────────── «Сохранить стиль в файл…» (как у Whisper Yandex) ─────────────────────────
+// ───────────────────────── «Экспорт стиля» (как у Whisper Yandex) ─────────────────────────
 // Текущий стиль со всем, что пользователь в нём поменял (основной/второй цвет, «Тонкая настройка», свечение,
 // прозрачность панелей, затемнение и размытие фона, свой шрифт), — файлом .wmt. Его можно поправить в редакторе
 // и загрузить обратно («Загрузить .wmt»: тот же id обновляет стиль) или отдать другу.
@@ -3039,7 +3045,7 @@ async function buildStyleFile() {
   };
   const obsSettings = (orig && orig.settings("whisper-obs")) || {};
   const comment = [
-    "Whisper Music Theme — файл темы оформления (сохранён VK Music: «Сохранить стиль в файл…»).",
+    "Whisper Music Theme — файл темы оформления (сохранён VK Music: «Экспорт стиля»).",
     "Поправьте цвета в tokens и правила в «@@ css whisper-music» и загрузите обратно: Настройки → Оформление →",
     "«Загрузить .wmt» — тема с тем же manifest.id обновится. Другой id — будет отдельной темой.",
     "Если стиль сломал вид окна: Ctrl+Shift+Backspace вернёт встроенный «Неон».",
@@ -3146,8 +3152,8 @@ function renderThemes() {
     if (f) await installThemeBytes(new Uint8Array(await f.arrayBuffer()));
     input.value = "";
   });
-  const row = el("div", "row");
-  const saveBtn = button("download", L("Сохранить стиль в файл…"), "", () => saveStyleFile(saveBtn));
+  const row = el("div", "row styleacts");
+  const saveBtn = button("download", L("Экспорт стиля"), "", () => saveStyleFile(saveBtn));
   saveBtn.title = L("Текущий стиль с вашими цветами и эффектами — файлом .wmt в папку загрузок: поправьте и загрузите обратно");
   row.append(button("download", L("Магазин тем"), "primary", () => go("store")), button("upload", L("Загрузить .wmt"), "", () => input.click()), saveBtn, input);
   c.append(row, el("p", "status stylecap", L("Файл темы .wmt можно перетащить прямо в окно. Сломался вид окна — Ctrl+Shift+Backspace вернёт «Неон».")));
@@ -4440,8 +4446,14 @@ function updatePlayButton() {
   // как у Whisper: темы показывают «играет / пауза» по классу body (54 правила в библиотеке тем)
   document.body.classList.toggle("is-playing", playing);
   thSync();
+  // значок — только когда он правда меняется: функцию зовёт каждое состояние mpv (во время игры — 4 раза в секунду),
+  // и замена значка между mousedown и mouseup уносила из документа элемент, на который нажали, — WebKit тогда не
+  // присылает click, и пауза срабатывала не с первого раза (2026-11-07)
+  const icon = playing ? "pause" : "play";
   for (const b of [$("#play"), $("#fPlay")]) {
-    b.replaceChildren(Icons.icon(playing ? "pause" : "play"));
+    if (b.dataset.shown === icon) continue;
+    b.dataset.shown = icon;
+    b.replaceChildren(Icons.icon(icon));
   }
   syncWave();
 }

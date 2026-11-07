@@ -316,7 +316,7 @@ window.I18N_DICTS.en = {
   "Стиль сохранён: {0}": "Style saved: {0}",
   "Открыть папку": "Open folder",
   "Не удалось сохранить стиль: {0}": "Couldn't save the style: {0}",
-  "Сохранить стиль в файл…": "Save style to file…",
+  "Экспорт стиля": "Export style",
   "Текущий стиль с вашими цветами и эффектами — файлом .wmt в папку загрузок: поправьте и загрузите обратно": "The current style with your colors and effects as a .wmt file in your downloads folder: edit it and load it back",
   "Файл темы .wmt можно перетащить прямо в окно. Сломался вид окна — Ctrl+Shift+Backspace вернёт «Неон».": "You can drop a .wmt theme file right into the window. If a theme breaks the window, Ctrl+Shift+Backspace brings back “Neon”.",
   "Аварийная панель": "Emergency bar",

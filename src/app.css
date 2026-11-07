@@ -427,3 +427,8 @@ body.login-mode .toast { display: none; }
 html:root[data-ly-dot="off"] .seekdot { display: none; }
 :root[data-style="steam"] .seekdot { width: 13px; height: 13px; background: radial-gradient(circle at 40% 35%, var(--a2-hi), var(--a2) 55%, var(--a2-lo)); box-shadow: 0 0 0 1px #050302, 0 1px 3px rgba(0,0,0,.8); }
 :root[data-style="lolitta"] .seekdot { width: 16px; height: 16px; background: radial-gradient(circle at 38% 32%, #fff 0 15%, var(--l2-light) 45%, var(--accent2) 100%); box-shadow: 0 0 0 1px var(--l2-lo), 0 0 0 3px color-mix(in srgb, var(--l-pearl) 55%, transparent), 0 1px 4px rgba(60, 15, 30, .5); }
+
+/* «Оформление»: «Магазин тем», «Загрузить .wmt», «Экспорт стиля» — в одну строку каждая (в .row кнопки делят ширину
+   поровну, и длинные подписи переносились — кнопки становились высокими); не помещаются — переходит кнопка целиком */
+.settings .row.styleacts { flex-wrap: wrap; }
+.settings .row.styleacts .nav { flex: 1 1 auto; white-space: nowrap; }
