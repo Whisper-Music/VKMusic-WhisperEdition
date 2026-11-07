@@ -63,8 +63,15 @@ jobs:
       - name: Переводы интерфейса
         run: node scripts/check-i18n.mjs
 
+  # известные предупреждения (зависимости Tauri, исправить у себя нельзя) — в .cargo/audit.toml
   audit:
     runs-on: ubuntu-22.04
+    # audit-check пишет итог отчётом (check run), а в запусках по расписанию — задачей (issue): без этих прав
+    # шаг падал «Resource not accessible by integration» даже без уязвимостей
+    permissions:
+      contents: read
+      checks: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2

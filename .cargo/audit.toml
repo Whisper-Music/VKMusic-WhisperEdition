@@ -1,0 +1,18 @@
+# cargo audit (CI: .github/workflows/check.yml): известные предупреждения RustSec, которые у себя не исправить —
+# библиотеки приходят из зависимостей Tauri и его плагинов. Уязвимостей среди них нет (2026-11-07).
+# Новые советы по-прежнему будут ругаться; при обновлении Tauri — проверить, нужен ли ещё каждый пункт.
+[advisories]
+ignore = [
+    # glib 0.18: unsound VariantStrIter. Весь GTK-стек Tauri 2 на gtk-rs 0.18, исправлено в glib 0.20;
+    # VariantStrIter мы не используем (свой вызов glib — только куки WebKit в cmd/login.rs)
+    "RUSTSEC-2024-0429",
+    # paste — unmaintained; макрос времени сборки (через lofty), в бинарник не попадает
+    "RUSTSEC-2024-0436",
+    # proc-macro-error — unmaintained; макрос времени сборки (через gtk-rs 0.18 стека Tauri)
+    "RUSTSEC-2024-0370",
+    # zvariant / zbus_names / zvariant_derive — unmaintained (zbus issue #2043); через zbus из
+    # tauri-plugin-single-instance (D-Bus на Linux) и secret-service (только в Cargo.lock)
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0372",
+]

@@ -46,7 +46,8 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   `node --check` всех `src/*.js` и `node scripts/check-i18n.mjs` (все строки `L()` / `Lc()` / `plural()` и статичная
   разметка — в `en.js`, без повторов ключей; строки-константы вроде помощи cli.js и правил errinfo.js скрипт не видит —
   их переводы добавляются руками). То же проверяет CI — `.github/workflows/check.yml` (push / PR / раз в неделю:
-  тесты на Linux с `-D warnings`, `cargo check` на Windows, `node --check`, переводы, `cargo audit`).
+  тесты на Linux с `-D warnings`, `cargo check` на Windows, `node --check`, переводы, `cargo audit`; известные
+  предупреждения RustSec из зависимостей Tauri — в `.cargo/audit.toml` с причиной, новое туда — только так же).
 * Выпуски — `.github/workflows/release.yml` (как у Whisper Yandex): тег `vX.Y.Z` или запуск вручную → черновик в
   GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc) и
   Windows x64 (NSIS `-setup.exe`, просьба владельца 2026-11-05). Автообновление — только Windows (просьба владельца,
