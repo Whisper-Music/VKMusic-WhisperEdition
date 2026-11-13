@@ -46,7 +46,8 @@
 }
 
 @@ css whisper-music
-/* Разметка — Whisper (VK Music повторяет её): плитки как в Hyprland, рамки lighter_background, акцент — нефрит. */
+/* Разметка — Whisper (VK Music повторяет её): плитки как в Hyprland со скруглёнными углами, рамки lighter_background,
+   акцент — нефрит. */
 :root {
   --heading: #f7e8b2;          /* bright_foreground */
   --selection: #32473b;
@@ -55,35 +56,40 @@
   --hover: rgba(80, 148, 117, 0.16);
   --danger: #ff5345;
 }
-.panel { border-radius: 0; border: 2px solid var(--line); box-shadow: none; background: rgba(12, 21, 18, var(--panel-a)); }
+.panel { border-radius: 14px; border: 2px solid var(--line); box-shadow: none; background: rgba(12, 21, 18, var(--panel-a)); }
 .player.panel { border-color: #509475; }
 .titlebar { background: rgba(9, 15, 13, .88); border-bottom: 1px solid var(--line); }
-.tbdot { border-radius: 0; background: var(--accent); box-shadow: none; }
+.tbdot { border-radius: 3px; background: var(--accent); box-shadow: none; }
 .tbbrand { color: var(--accent); letter-spacing: .14em; text-transform: lowercase; }
 
 .head h2 { color: var(--heading); text-shadow: none; letter-spacing: .03em; }
-.side .nav { border-radius: 0; background: transparent; }
+.side .nav { border-radius: 10px; background: transparent; }
 .side .nav:hover:not(.active) { background: var(--hover); }
 .side .nav.active { background: var(--selection); color: var(--heading); text-shadow: none; box-shadow: inset 3px 0 0 var(--accent); }
 
-.search, .field { border-radius: 0; background: rgba(9, 15, 13, .78); border: 1px solid var(--line); }
+.search, .field { border-radius: 10px; background: rgba(9, 15, 13, .78); border: 1px solid var(--line); }
 .search:focus, .field:focus { border-color: #509475; box-shadow: 0 0 0 1px #509475; }
 
-.list li { border-radius: 0; }
+.list li { border-radius: 10px; }
 .list li:hover { background: var(--hover); }
 .list li.playing { background: rgba(50, 71, 59, .55); }
 .list li.playing .t { color: var(--accent); text-shadow: none; }
-.list img, .cover, .simcard img, .lastAlbum img, .fcover { border-radius: 0; }
+.list img, .cover, .simcard img, .lastAlbum img, .fcover { border-radius: 8px; }
 
-.card, .lastAlbum, .simcard, .stylecard, .chip, .nav, .tmenu, .toast, .login-box, .qpanel, .volpop { border-radius: 0; }
+.card, .lastAlbum, .simcard, .stylecard, .chip, .nav, .tmenu, .toast, .login-box, .qpanel, .volpop { border-radius: 12px; }
 .nav.active, .chip.active, .player .playbtn, .wavebtn, .fbtns .playbtn { background: #509475; color: #090f0d; box-shadow: none; text-shadow: none; }
 .player .playbtn:hover, .nav.active:hover { background: var(--accent); filter: none; }
-.player button { border-radius: 0; }
-.wavebtn { border-radius: 0; }
-.modebtn.on, .likebtn.on { color: var(--accent); filter: none; }
+.player button { border-radius: 10px; }
+.player .playbtn { border-radius: 50%; }
+.wavebtn { border-radius: 16px; }
+/* кнопки режимов — как кнопка очереди (.qtoggle ядра): выключенная — цвета текста, включённая — акцент со свечением;
+   с --muted основы выключенная почти не отличалась от включённой */
+.modebtn { color: inherit; }
+.modebtn.on { color: var(--accent); }
+.likebtn.on { color: var(--accent); filter: none; }
 
-input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #509475, var(--accent) var(--p, 0%), var(--line) var(--p, 0%)); border-radius: 0; }
-input[type=range]::-webkit-slider-thumb { border-radius: 0; box-shadow: none; background: var(--heading); }
+input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #509475, var(--accent) var(--p, 0%), var(--line) var(--p, 0%)); border-radius: 999px; }
+input[type=range]::-webkit-slider-thumb { border-radius: 4px; box-shadow: none; background: var(--heading); }
 /* кружок на полосе трека VK Music (свой элемент, не родной кружок ползунка) */
-.seekdot { border-radius: 0; box-shadow: none; background: var(--heading); }
+.seekdot { border-radius: 4px; box-shadow: none; background: var(--heading); }
 ::selection { background: var(--selection); color: var(--heading); }

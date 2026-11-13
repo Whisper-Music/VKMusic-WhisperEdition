@@ -244,6 +244,9 @@ body.drag-sorting, body.drag-sorting * { cursor: grabbing !important; -webkit-us
 .sp-steam { background: linear-gradient(135deg, #140e09, #5a3a1c 55%, #c58a4b); }
 .sp-lolitta { background: linear-gradient(135deg, #f7dfe3, #e2aab4 55%, #8c4a5c); }
 .stylecap { margin: 0; }
+/* «Тема системы (Omarchy)» под стилями: выключатель и подпись с именем текущей темы */
+.omrow { display: flex; flex-direction: column; gap: 4px; }
+.omrow[hidden] { display: none !important; }
 .slide span { color: var(--muted); }
 .svcpage { columns: 1; }
 @media (min-width: 1100px) { .svcpage { columns: 2; } }
@@ -432,3 +435,121 @@ html:root[data-ly-dot="off"] .seekdot { display: none; }
    поровну, и длинные подписи переносились — кнопки становились высокими); не помещаются — переходит кнопка целиком */
 .settings .row.styleacts { flex-wrap: wrap; }
 .settings .row.styleacts .nav { flex: 1 1 auto; white-space: nowrap; }
+
+/* ---------- ползунки в Firefox (--host в браузере на Firefox: Zen, LibreWolf…) ----------
+   whisper.css рисует ползунки только для WebKit/Chromium (::-webkit-slider-*): в Firefox был родной вид — у полосы
+   трека два кружка (родной и .seekdot) и нет заливки прослушанного. Здесь — те же правила через ::-moz-range-*
+   (отдельными правилами: незнакомый псевдоэлемент выбросил бы всё правило). margin-top не нужен — Firefox центрирует
+   кружок сам; заливка — тем же градиентом по --p, свой ::-moz-range-progress прозрачный */
+input[type=range]::-moz-range-track {
+  height: 6px; border-radius: 6px; border: 0;
+  background: linear-gradient(90deg, var(--accent) var(--p, 0%), rgba(255,255,255,.16) var(--p, 0%));
+}
+input[type=range]::-moz-range-progress { background: transparent; }
+input[type=range]::-moz-range-thumb {
+  width: 14px; height: 14px; border: 0; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 10px var(--glow-c);
+}
+:root[data-style="royal"] #seek::-moz-range-track,
+:root[data-style="royal"] #fSeek::-moz-range-track { background: linear-gradient(90deg, var(--accent2) var(--p, 0%), rgba(255,255,255,.16) var(--p, 0%)); }
+:root[data-style="steam"] input[type=range]::-moz-range-track { height: 3px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0,0,0,.5); background: linear-gradient(90deg, var(--accent) var(--p, 0%), rgba(255,255,255,.12) var(--p, 0%)); }
+:root[data-style="steam"] .player input[type=range]::-moz-range-track,
+:root[data-style="steam"] .fseek input[type=range]::-moz-range-track { background: linear-gradient(90deg, var(--accent2) var(--p, 0%), rgba(255,255,255,.12) var(--p, 0%)); }
+:root[data-style="steam"] input[type=range]::-moz-range-thumb { width: 13px; height: 13px; background: radial-gradient(circle at 40% 35%, var(--m-hi), var(--m) 55%, var(--m-lo)); box-shadow: 0 0 0 1px #050302, 0 1px 3px rgba(0,0,0,.8); }
+:root[data-style="lolitta"] .player input[type=range]::-moz-range-track {
+  height: 4px; border-radius: 4px; box-shadow: inset 0 1px 1px rgba(80, 20, 35, .25), 0 1px 0 rgba(255,255,255,.6);
+  background: linear-gradient(90deg, var(--l-lo) var(--p, 0%), color-mix(in srgb, var(--accent) 30%, transparent) var(--p, 0%));
+}
+:root[data-style="lolitta"] input[type=range]::-moz-range-thumb {
+  width: 16px; height: 16px;
+  background: radial-gradient(circle at 38% 32%, #fff 0 15%, var(--l-pearl) 45%, var(--l-mid) 100%);
+  box-shadow: 0 0 0 1px var(--l-lo), 0 0 0 3px color-mix(in srgb, var(--l-pearl) 55%, transparent), 0 1px 4px rgba(60, 15, 30, .5);
+}
+:root[data-style="lolitta"] input[type=range]::-moz-range-track { height: 4px; background: linear-gradient(90deg, var(--l-mid) var(--p, 0%), rgba(255,255,255,.18) var(--p, 0%)); }
+/* полоса трека — вторичным цветом во всех стилях (как whisper.css «единая схема цветов») */
+#seek::-moz-range-track, #fSeek::-moz-range-track { background: linear-gradient(90deg, var(--accent2) var(--p, 0%), rgba(255,255,255,.16) var(--p, 0%)); }
+:root[data-style="steam"] #seek::-moz-range-track, :root[data-style="steam"] #fSeek::-moz-range-track { background: linear-gradient(90deg, var(--accent2) var(--p, 0%), rgba(255,255,255,.12) var(--p, 0%)); }
+:root[data-style="lolitta"] #seek::-moz-range-track { background: linear-gradient(90deg, var(--accent2) var(--p, 0%), color-mix(in srgb, var(--accent2) 22%, transparent) var(--p, 0%)); }
+:root[data-style="lolitta"] #fSeek::-moz-range-track { background: linear-gradient(90deg, var(--accent2) var(--p, 0%), rgba(255,255,255,.18) var(--p, 0%)); }
+/* у полосы трека родного кружка нет — вместо него .seekdot (как ::-webkit-slider-thumb выше) */
+#seek::-moz-range-thumb, #fSeek::-moz-range-thumb {
+  width: 0 !important; height: 0 !important; border: 0 !important;
+  background: none !important; box-shadow: none !important; opacity: 0 !important;
+}
+
+/* «Окно и браузер» (Общее): кнопка по содержимому, не на всю ширину (.row .nav в whisper.css — flex: 1) */
+.settings .row.mode-row .nav { flex: none; }
+
+/* ── эквалайзер (eq.js; как eq.css у Whisper Yandex): окно с полосами ── */
+.eqwrap { z-index: 85; }
+.eqbox { width: min(660px, calc(100vw - 32px)); gap: 14px; }
+.eqhead { display: flex; align-items: center; gap: 16px; }
+.eqhead h2 { margin: 0; flex: 1; }
+.eqsw { gap: 10px; font-size: 14px; }
+.eqclose { flex: none; }
+.eqpresets { display: flex; flex-wrap: wrap; gap: 6px; }
+.eqpresets .chip { padding: 6px 12px; font-size: 12.5px; }
+.eqpresets .chip:disabled { cursor: default; opacity: .45; }
+.eqpresets .chip.active:disabled { opacity: 1; }
+.eqgrid { display: flex; align-items: stretch; justify-content: space-between; gap: 4px; padding: 12px 10px 8px; border-radius: 12px; background: rgba(0,0,0,.2); }
+.eqband { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.eqv { font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--text); min-height: 14px; white-space: nowrap; }
+.eqband small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* вертикальный ползунок — обычный горизонтальный, повёрнутый на 90°: выглядит как остальные в выбранном стиле */
+.eqslot { position: relative; width: 28px; height: 168px; }
+.eqslot input { position: absolute; left: 50%; top: 50%; width: 168px; margin: 0; transform: translate(-50%, -50%) rotate(-90deg); }
+/* нулевая линия */
+.eqslot::before { content: ""; position: absolute; left: 2px; right: 2px; top: 50%; height: 1px; background: color-mix(in srgb, var(--muted) 45%, transparent); pointer-events: none; }
+.eqpre small { color: var(--accent); }
+.eqsep { flex: none; width: 1px; margin: 6px 6px 20px; background: color-mix(in srgb, var(--muted) 35%, transparent); }
+.eqfoot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 14px; }
+.eqfoot .nav { flex: none; }
+/* не .status: в .modalbox он красный (ошибка) */
+.eqhint { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.eqnote { margin: 0; font-size: 13px; color: var(--muted); }
+.eqnote:empty { display: none; }
+/* выключен — полосы видны, но приглушены */
+.eqbox.off .eqgrid { opacity: .45; }
+:root[data-style="royal"] .eqgrid, :root[data-style="steam"] .eqgrid { border-radius: 4px; }
+@media (max-width: 560px) {
+  .eqslot { height: 130px; }
+  .eqslot input { width: 130px; }
+  .eqband small, .eqv { font-size: 10px; }
+}
+/* заливка от нулевой линии (вверх — подъём, вниз — срез), а не от края; Firefox (--host) — отдельным правилом */
+:root .eqbox .eqslot input[type=range]::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, rgba(255,255,255,.16) var(--a, 50%), var(--accent) var(--a, 50%), var(--accent) var(--b, 50%), rgba(255,255,255,.16) var(--b, 50%));
+}
+:root .eqbox .eqslot input[type=range]::-moz-range-track {
+  background: linear-gradient(90deg, rgba(255,255,255,.16) var(--a, 50%), var(--accent) var(--a, 50%), var(--accent) var(--b, 50%), rgba(255,255,255,.16) var(--b, 50%));
+}
+
+/* ── режим сна (sleep.js; как sleep.css у Whisper Yandex): луна в нижней панели и карточка в «Общем» ── */
+.player .sleepbtn { position: relative; color: var(--muted); opacity: .8; transition: opacity .15s, color .15s, background .15s; }
+.sleepbtn svg { width: 20px; height: 20px; }
+.player .sleepbtn:hover { opacity: 1; color: var(--text); }
+.player .sleepbtn.on { opacity: 1; color: var(--accent); filter: drop-shadow(0 0 5px color-mix(in srgb, var(--btn-glow, var(--accent)) 60%, transparent)); }
+.sleepleft {
+  position: absolute; right: 1px; bottom: 2px; min-width: 16px; height: 14px; padding: 0 3px; border-radius: 7px;
+  font-size: 9.5px; line-height: 14px; font-weight: 700; text-align: center; pointer-events: none;
+  color: var(--on-accent, #0b0618); background: var(--accent);
+}
+.sleepleft[hidden] { display: none; }
+:root[data-style="royal"] .sleepleft, :root[data-style="steam"] .sleepleft { border-radius: 2px; }
+:root[data-style="steam"] .player .sleepbtn.on { color: var(--a2-hi, var(--accent)); filter: none; }
+:root[data-style="lolitta"] .player .sleepbtn { color: var(--l-lo, var(--muted)); }
+:root[data-style="lolitta"] .player .sleepbtn.on { color: var(--accent2); filter: drop-shadow(0 0 4px rgba(255,255,255,.7)); }
+:root[data-anim="off"] .player .sleepbtn { transition: none; }
+.sleepcard { display: flex; flex-direction: column; gap: 12px; }
+.sleepcard .row .nav { flex: none; }
+.sleepnote:empty { display: none; }
+
+/* ── интро тем (Оформление; как theme.css у Whisper Yandex): стили, у которых есть заставка ── */
+.inlist { display: flex; flex-direction: column; gap: 6px; }
+.inrow { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,.04); }
+.inrow.cur { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.inrow .switch { flex: 1; min-width: 0; }
+.inrow .switch > span { display: flex; flex-direction: column; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inrow .switch small { font-size: 11.5px; color: var(--muted); }
+.inrow .nav { flex: none; padding: 5px 12px; font-size: 12px; }
+:root[data-style="royal"] .inrow, :root[data-style="steam"] .inrow { border-radius: 3px; }

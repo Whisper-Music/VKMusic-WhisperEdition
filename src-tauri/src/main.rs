@@ -21,6 +21,7 @@ mod loudness;
 mod lyrics;
 #[path = "../../src/core/rust/obs.rs"]
 mod obs;
+mod omarchy;
 mod order;
 mod os;
 mod player;
@@ -29,6 +30,7 @@ mod relay;
 mod saved;
 mod sc;
 mod secret;
+mod sleep;
 mod stats;
 mod streams;
 mod themelib;
@@ -43,6 +45,14 @@ mod whisper_vk;
 mod winstate;
 mod wmt;
 mod ytdlp;
+
+// Команды ядра, которые VK Music намеренно не регистрирует: ссылка на свой альбом архива и открытие чужого альбома
+// по приглашению нужны только «Студии» Whisper Yandex (поделиться своей версией трека). Ссылка здесь — чтобы они
+// не давали dead_code (CI — с -D warnings), а не `allow` на весь модуль ядра.
+const _: () = {
+    let _ = whisper::wa_album_share;
+    let _ = whisper::wa_invite_open;
+};
 
 use config::Config;
 // общие помощники разделов (vk_session, local_job, …) — видны всем модулям через `use crate::*`
@@ -139,11 +149,13 @@ struct Info {
     player_error: Option<String>,
     /// config.json при запуске не разобрался (повреждён) — интерфейс предложит автокопию
     config_broken: bool,
-    /// значок в трее возможен (Linux: есть AppIndicator; не --host) / включён / закрывать в трей
+    /// значок в трее возможен (Linux: есть AppIndicator) / включён (с --host — всегда) / закрывать в трей
     tray_available: bool,
     tray: bool,
     close_to_tray: bool,
     tray_icon: String,
+    /// эквалайзер (player::Eq)
+    eq: player::Eq,
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -154,10 +166,11 @@ fn app_info(st: State<'_, AppState>) -> Res<Info> {
         download_dir: c.download_dir().display().to_string(),
         cache_limit_mb: c.cache_limit_mb,
         config_broken: config::BROKEN.load(std::sync::atomic::Ordering::Relaxed),
-        tray_available: !host::active() && tray::available(),
-        tray: c.tray,
+        tray_available: tray::available(),
+        tray: c.tray || host::active(),
         close_to_tray: c.close_to_tray,
         tray_icon: c.tray_icon,
+        eq: c.eq,
         theme: c.theme,
         volume: c.volume,
         overrides: c.overrides,
@@ -387,12 +400,42 @@ fn context(host: bool) -> tauri::Context<tauri::Wry> {
     ctx
 }
 
-/// Аргументы, с которыми перезапуститься при выходе: `--host` пришёл в уже открытое окно (single-instance).
+/// Переключиться между окном и браузером («Настройки → Общее → Окно и браузер»): приложение выходит, как по «Выход»
+/// (настройки, mpv), и запускается заново — с `--host` (интерфейс в браузере) или без него (окно). Выход — через
+/// полсекунды: ответ на команду должен успеть уйти (в браузере он идёт по HTTP через host.rs).
+#[tauri::command(rename_all = "snake_case")]
+fn app_switch(app: AppHandle, browser: bool) -> Res<()> {
+    if browser == host::active() {
+        return Ok(());
+    }
+    let args = if browser {
+        // порт по умолчанию (от адреса зависит localStorage браузера); занят — сказать сразу, а не выйти впустую
+        let port = host::DEFAULT_PORT;
+        std::net::TcpListener::bind(("127.0.0.1", port))
+            .map_err(|e| format!("Порт {port} занят ({e}) — интерфейс в браузере не запустится. Запустите вручную: vkmusic --host ДРУГОЙ_ПОРТ"))?;
+        vec!["--host".to_string(), port.to_string()]
+    } else {
+        Vec::new()
+    };
+    *RELAUNCH.lock().unwrap() = Some(args);
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        app.exit(0);
+    });
+    Ok(())
+}
+
+/// Аргументы, с которыми перезапуститься при выходе: `--host` пришёл в уже открытое окно (single-instance)
+/// или переключение «окно ↔ браузер» (app_switch).
 static RELAUNCH: Mutex<Option<Vec<String>>> = Mutex::new(None);
 /// Переменная окружения перезапущенного экземпляра: pid прежнего — дождаться его выхода.
 const WAIT_PID: &str = "VKM_WAIT_PID";
 
 fn main() {
+    // имя приложения для GLib: значок в трее (AppIndicator) подсказки не поддерживает, а панели при наведении
+    // показывают его Title — без заголовка libappindicator берёт g_get_application_name(), то есть «vkmusic»
+    #[cfg(target_os = "linux")]
+    gtk::glib::set_application_name("VK Music");
     // перезапуск из окна в --host: прежний экземпляр ещё выходит — без ожидания single-instance отдал бы запуск ему
     if let Some(pid) = std::env::var(WAIT_PID).ok().and_then(|v| v.parse::<u32>().ok()) {
         std::env::remove_var(WAIT_PID);
@@ -404,6 +447,8 @@ fn main() {
         eprintln!("vkmusic: {e}");
         std::process::exit(2);
     });
+    // --host --no-browser: вкладку при запуске не открывать (автозапуск); адрес — в консоли, вкладку — повторным --host
+    let no_browser = host::no_browser(&args);
     // приложение уже открыто в окне — пусть выйдет, браузерным экземпляром станет этот процесс
     #[cfg(target_os = "linux")]
     if host_port.is_some() {
@@ -469,7 +514,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             let rest = args.get(1..).unwrap_or_default();
             if host::active() {
-                if !args.iter().any(|a| a.starts_with("whisper:")) {
+                if !args.iter().any(|a| a.starts_with("whisper:")) && !host::no_browser(rest) {
                     host::open_browser();
                 }
             } else if matches!(host::port_from_args(rest), Ok(Some(_))) {
@@ -517,9 +562,11 @@ fn main() {
             if let Some(port) = host_port {
                 match host::start(app.handle(), port) {
                     Ok(url) => {
-                        eprintln!("VK Music: интерфейс — {url}\nVK Music: выход — Ctrl+C");
+                        eprintln!("VK Music: интерфейс — {url}\nVK Music: выход — «Выход» в меню значка в трее или Ctrl+C");
                         host::exit_on_signal(app.handle());
-                        host::open_browser();
+                        if !no_browser {
+                            host::open_browser();
+                        }
                     }
                     Err(e) => {
                         eprintln!("vkmusic: {e}");
@@ -528,12 +575,14 @@ fn main() {
                 }
             }
             deeplink::init(app.handle()); // ссылки whisper://room/КОД — приглашения в комнату
+            omarchy::watch(app.handle().clone()); // стиль «Omarchy» следует за темой Omarchy
             let handle = app.handle().clone();
             let st = app.state::<AppState>();
             // окно — прежнего размера и там же, где было (с --host окно скрыто и не запоминается)
             app.manage(tray::Mini::default());
             let c = st.cfg.lock().unwrap().clone();
-            if host_port.is_none() && c.tray {
+            // --host: значок всегда — окна нет, «Выход» в его меню — штатный способ закрыть приложение
+            if host_port.is_some() || c.tray {
                 if let Err(e) = tray::init(app.handle(), &c.tray_icon, &c.tray_accent) {
                     eprintln!("vkmusic: значок в трее: {e}");
                 }
@@ -566,12 +615,12 @@ fn main() {
                 let kind = if ok { "cached" } else { "failed" };
                 let _ = h.emit("cache://event", serde_json::json!({ "type": kind, "key": key }));
             });
-            let (volume, normalize, device) = {
+            let (volume, normalize, device, eq) = {
                 let c = st.cfg.lock().unwrap();
-                (c.volume, c.normalize, c.audio_device.clone().unwrap_or_default())
+                (c.volume, c.normalize, c.audio_device.clone().unwrap_or_default(), c.eq.clone())
             };
             // mpv запускается из главного потока — PR_SET_PDEATHSIG привязан к нему
-            match player::Player::start(volume, st.loud.clone(), move |ev| {
+            match player::Player::start(volume, eq, st.loud.clone(), move |ev| {
                 let _ = handle.emit("player://event", &ev);
             }) {
                 Ok(p) => {
@@ -595,6 +644,7 @@ fn main() {
             cmd::local_cmd::cover_bytes,
             update::update_install,
             app_info,
+            app_switch,
             save_prefs,
             fonts_list,
             win_minimize,
@@ -609,6 +659,10 @@ fn main() {
             cmd::player_cmd::player_volume,
             cmd::player_cmd::player_stop,
             cmd::player_cmd::player_normalize,
+            cmd::player_cmd::player_eq,
+            cmd::player_cmd::sleep_start,
+            cmd::player_cmd::sleep_cancel,
+            cmd::player_cmd::sleep_status,
             cmd::player_cmd::player_devices,
             cmd::player_cmd::player_device,
             cmd::player_cmd::tray_prefs,
@@ -632,6 +686,7 @@ fn main() {
             cmd::themes_cmd::themes_list,
             cmd::themes_cmd::theme_render,
             cmd::themes_cmd::theme_select,
+            cmd::themes_cmd::omarchy_status,
             cmd::themes_cmd::theme_install,
             cmd::storage_cmd::theme_install_path,
             cmd::themes_cmd::theme_save,
@@ -709,6 +764,7 @@ fn main() {
             whisper::rooms::wa_room_transfer,
             whisper::rooms::wa_room_ping,
             whisper::rooms::wa_room_missing,
+            whisper::rooms::wa_room_wink,
             whisper::rooms::wa_room_friends,
             whisper::rooms::wa_room_friend_forget,
             whisper::rooms::wa_room_invite,
@@ -743,11 +799,27 @@ fn main() {
             if let Some(args) = relaunch {
                 match std::env::current_exe() {
                     Ok(exe) => {
-                        if let Err(e) = std::process::Command::new(exe).args(args).env(WAIT_PID, std::process::id().to_string()).spawn() {
-                            eprintln!("vkmusic: перезапуск с --host: {e}");
+                        let mut cmd = std::process::Command::new(exe);
+                        cmd.args(args).env(WAIT_PID, std::process::id().to_string());
+                        // новый экземпляр — сам по себе: прежний мог быть запущен из терминала, и с его закрытием
+                        // (SIGHUP группе процессов) закрылся бы и новый
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::process::CommandExt;
+                            cmd.stdin(std::process::Stdio::null());
+                            // SAFETY: в дочернем процессе до exec — только setsid (async-signal-safe)
+                            unsafe {
+                                cmd.pre_exec(|| {
+                                    libc::setsid();
+                                    Ok(())
+                                });
+                            }
+                        }
+                        if let Err(e) = cmd.spawn() {
+                            eprintln!("vkmusic: перезапуск: {e}");
                         }
                     }
-                    Err(e) => eprintln!("vkmusic: перезапуск с --host: {e}"),
+                    Err(e) => eprintln!("vkmusic: перезапуск: {e}"),
                 }
             }
         }

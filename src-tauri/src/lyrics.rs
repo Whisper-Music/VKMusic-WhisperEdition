@@ -31,11 +31,15 @@ const API: &str = "https://genius.com/api/search/song";
 const MAX_PAGE: usize = 4 * 1024 * 1024;
 /// «не нашли» перепроверяем не раньше чем через столько
 const MISS_TTL: u64 = 3 * 86400;
-/// версия записи кэша: старее — перезапрашиваем (v2 — переводы и пометки пояснений, v3 — язык оригинала)
-const CACHE_V: u32 = 4;
+/// версия записи кэша: старее — перезапрашиваем (v2 — переводы и пометки пояснений, v3 — язык оригинала,
+/// v5 — выбор версии по соисполнителям)
+const CACHE_V: u32 = 5;
 /// записи старше — не годятся; текст ВК до версии 4 сохранялся без времени строк — его спрашиваем заново
 const MIN_V: u32 = 3;
 const VK_V: u32 = 4;
+/// записи Genius старше для трека с соисполнителями — ищем заново: до v5 «Tame Impala, JENNIE — Dracula»
+/// находила сольную версию
+const CO_V: u32 = 5;
 /// пометки фрагментов с пояснениями в тексте
 pub const ANN_START: char = '\u{E000}';
 pub const ANN_MID: char = '\u{E001}';
@@ -187,11 +191,41 @@ pub fn clean_title(t: &str) -> String {
 
 /// Исполнитель → основной исполнитель: без «feat.», имени в скобках («IVE (아이브)»), меток сайтов.
 pub fn clean_artist(a: &str) -> String {
+    let s = artist_names(a);
+    s.into_iter().next().unwrap_or_default()
+}
+
+/// Разделители исполнителей: «A feat. B», «A x B», «A & B», «A, B»…
+const ARTIST_SEP: &str = r"(?i)\s*(\bfeat\.?|\bft\.|\bx\b|&|,|;|/|\bпри уч\.?|\bи\b|\bvs\.?|\bwith\b)\s*";
+
+/// Исполнители из строки по порядку: без имени в скобках («IVE (아이브)») и меток сайтов.
+fn artist_names(a: &str) -> Vec<String> {
     static BR: OnceLock<Regex> = OnceLock::new();
-    static FEAT: OnceLock<Regex> = OnceLock::new();
+    static SEP: OnceLock<Regex> = OnceLock::new();
     let s = re(&BR, r"\[[^\]]*\]|\([^()]*\)").replace_all(a, " ");
-    let s = re(&FEAT, r"(?i)\s*(\bfeat\.?|\bft\.|\bx\b|&|,|;|/|\bпри уч\.?|\bи\b|\bvs\.?|\bwith\b).*$").replace(&s, "");
-    tidy(&s)
+    let mut parts = re(&SEP, ARTIST_SEP).split(&s).map(tidy);
+    // первый — всегда (пустой, если строка начинается с «feat.»), остальные — непустые
+    let first = parts.next().unwrap_or_default();
+    std::iter::once(first).chain(parts.filter(|x| !x.is_empty())).collect()
+}
+
+/// Соисполнители трека: кроме первого исполнителя — остальные из строки исполнителя и из названия
+/// («(feat. B)», «(with B)», «… ft. B»). По ним выбирается версия песни с ними («Dracula (with JENNIE)»).
+pub fn co_artists(artist: &str, title: &str) -> Vec<String> {
+    static PAR: OnceLock<Regex> = OnceLock::new();
+    static TAIL: OnceLock<Regex> = OnceLock::new();
+    let mut out: Vec<String> = artist_names(artist).into_iter().skip(1).collect();
+    let par = re(&PAR, r"(?i)[(\[]\s*(?:feat\.?|ft\.?|with|при уч\.?)\s+([^()\[\]]+)[)\]]");
+    for c in par.captures_iter(title) {
+        out.extend(artist_names(&format!("x {}", &c[1])).into_iter().skip(1));
+    }
+    let rest = par.replace_all(title, " ");
+    if let Some(c) = re(&TAIL, r"(?i)\s(?:feat\.?|ft\.|при уч\.?)\s+(.+)$").captures(&rest) {
+        out.extend(artist_names(&format!("x {}", &c[1])).into_iter().skip(1));
+    }
+    let mut seen = std::collections::HashSet::new();
+    out.retain(|x| !norm(x).is_empty() && seen.insert(norm(x)));
+    out
 }
 
 fn tidy(s: &str) -> String {
@@ -307,7 +341,8 @@ pub struct Hit {
 }
 
 /// Оценка результата поиска: (похожесть названия, похожесть исполнителя). None — не подходит.
-pub fn score(title: &str, artist: &str, raw_title: &str, h: &Hit) -> Option<(f64, f64)> {
+/// `co` — соисполнители нашего трека (`co_artists`).
+pub fn score(title: &str, artist: &str, raw_title: &str, co: &[String], h: &Hit) -> Option<(f64, f64)> {
     // переводы и романизации Genius — не те страницы
     if h.artist.starts_with("Genius ") || h.artist.eq_ignore_ascii_case("Genius") {
         return None;
@@ -333,6 +368,24 @@ pub fn score(title: &str, artist: &str, raw_title: &str, h: &Hit) -> Option<(f64
     }
     // прочие лишние скобки (но не перевод названия: он есть у всех версий русских и корейских песен)
     t -= 0.01 * theirs.matches('(').count() as f64;
+    // версия с нашими соисполнителями — выше сольной («Dracula» и «Dracula (with JENNIE)» у Genius — разные
+    // страницы с одинаковым названием); исполнители, которых у нас нет, — чуть ниже (сольный трек — сольная версия)
+    let close = |a: &str, b: &str| sim(a, b) >= 0.8;
+    let mut names: Vec<&String> = Vec::new();
+    for n in h.artists.iter().chain(&h.featured) {
+        if !names.iter().any(|m| norm(m) == norm(n)) {
+            names.push(n);
+        }
+    }
+    for c in co {
+        if names.iter().any(|n| close(c, n)) {
+            t += 0.05;
+        }
+    }
+    if !artist.is_empty() {
+        let extra = names.iter().filter(|n| !close(artist, n) && !co.iter().any(|c| close(c, n))).count();
+        t -= 0.01 * extra as f64;
+    }
     (ts >= MIN_TITLE && as_ >= MIN_ARTIST).then_some((t, as_))
 }
 
@@ -556,6 +609,7 @@ impl Genius {
     /// Найти песню: лучший результат по похожести из нескольких поисков.
     pub async fn search(&self, artist: &str, title: &str) -> Res<Option<Hit>> {
         let (t, a) = (clean_title(title), clean_artist(artist));
+        let co = co_artists(artist, title);
         let mut tries: Vec<(String, String, String)> = Vec::new();
         // «Hikaru Station - Bishounen (… Remix)» в названии: исполнитель — слева
         if let Some((l, r)) = t.split_once(" - ") {
@@ -575,7 +629,7 @@ impl Genius {
             // при равной оценке — тот, что Genius поставил выше
             let mut best: Option<(f64, Hit)> = None;
             for h in hits(&v) {
-                if let Some((ts, as_)) = score(&qt, &qa, title, &h) {
+                if let Some((ts, as_)) = score(&qt, &qa, title, &co, &h) {
                     let sc = ts * 0.6 + as_ * 0.4;
                     if best.as_ref().is_none_or(|b| sc > b.0 + 1e-9) {
                         best = Some((sc, h));
@@ -597,7 +651,10 @@ impl Genius {
     /// Текст только из кэша на диске — без запросов (интерфейс показывает его сразу при включении трека).
     pub fn lyrics_cached(&self, artist: &str, title: &str) -> Option<Lyrics> {
         let mut l = self.cached(&self.cache_path(artist, title))?;
-        if l.v < MIN_V || (l.source == "vk" && l.v < VK_V) || (l.status == "none" && now().saturating_sub(l.at) >= MISS_TTL) {
+        if l.v < MIN_V
+            || (l.source == "vk" && l.v < VK_V)
+            || (l.source != "vk" && l.v < CO_V && !co_artists(artist, title).is_empty())
+            || (l.status == "none" && now().saturating_sub(l.at) >= MISS_TTL) {
             return None;
         }
         // записи до появления `meta` уже содержат переводы и язык — не перезапрашиваем
@@ -744,6 +801,10 @@ mod tests {
         assert_eq!(clean_artist("Bob Sinclar (Roma)"), "Bob Sinclar");
     }
 
+    fn score_t(title: &str, artist: &str, raw_title: &str, h: &Hit) -> Option<(f64, f64)> {
+        score(title, artist, raw_title, &[], h)
+    }
+
     fn hit(artist: &str, title: &str) -> Hit {
         Hit { title: title.into(), artist: artist.into(), artists: vec![artist.into()], featured: vec![], url: "https://genius.com/x".into(), instrumental: false, id: 1 }
     }
@@ -751,21 +812,33 @@ mod tests {
     #[test]
     fn scoring() {
         // перевод в скобках у Genius
-        assert!(score("Группа крови", "Кино", "Группа крови", &hit("КИНО (KINO)", "Группа крови (Blood Type)")).is_some());
+        assert!(score_t("Группа крови", "Кино", "Группа крови", &hit("КИНО (KINO)", "Группа крови (Blood Type)")).is_some());
         // романизация — мимо
-        assert!(score("Группа крови", "Кино", "Группа крови", &hit("Genius Romanizations", "Кино (Kino) – Группа крови (Blood type) (Romanized)")).is_none());
+        assert!(score_t("Группа крови", "Кино", "Группа крови", &hit("Genius Romanizations", "Кино (Kino) – Группа крови (Blood type) (Romanized)")).is_none());
         // чужая песня с похожим названием
-        assert!(score("Табуретка", "Кино", "Табуретка", &hit("killamyself", "Табуретка (Stool)")).is_none());
-        assert!(score("Spotlight", "Marshmello", "Spotlight", &hit("Marshmello", "Spotlight")).is_some());
+        assert!(score_t("Табуретка", "Кино", "Табуретка", &hit("killamyself", "Табуретка (Stool)")).is_none());
+        assert!(score_t("Spotlight", "Marshmello", "Spotlight", &hit("Marshmello", "Spotlight")).is_some());
         // оригинал выше ремикса
-        let o = score("Spotlight", "Marshmello", "Spotlight", &hit("Marshmello", "Spotlight")).unwrap();
-        let r = score("Spotlight", "Marshmello", "Spotlight", &hit("Marshmello", "Spotlight (Remix)")).unwrap();
+        let o = score_t("Spotlight", "Marshmello", "Spotlight", &hit("Marshmello", "Spotlight")).unwrap();
+        let r = score_t("Spotlight", "Marshmello", "Spotlight", &hit("Marshmello", "Spotlight (Remix)")).unwrap();
         assert!(o.0 > r.0);
         assert_eq!(norm("VØJ"), "voj");
         // наш исполнитель — только приглашённый: чужая песня
         let mut f = hit("NEOGEN SENSEI", "Stay With Me (Feat. Miki Matsubara)");
         f.featured = vec!["Miki Matsubara".into()];
-        assert!(score("Stay With Me", "Miki Matsubara", "Stay With Me", &f).is_none());
+        assert!(score_t("Stay With Me", "Miki Matsubara", "Stay With Me", &f).is_none());
+        // версия с соисполнителем трека — выше сольной, сольный трек — наоборот
+        let solo = hit("Tame Impala", "Dracula");
+        let mut duo = hit("Tame Impala", "Dracula");
+        duo.artists.push("JENNIE".into());
+        let co = co_artists("Tame Impala, JENNIE", "Dracula");
+        assert_eq!(co, ["JENNIE"]);
+        let s = |h: &Hit, co: &[String]| score("Dracula", "Tame Impala", "Dracula", co, h).unwrap().0;
+        assert!(s(&duo, &co) > s(&solo, &co));
+        assert!(s(&solo, &[]) > s(&duo, &[]));
+        assert_eq!(co_artists("Mark Ronson", "Uptown Funk (feat. Bruno Mars)"), ["Bruno Mars"]);
+        assert_eq!(co_artists("A", "Song ft. B & C"), ["B", "C"]);
+        assert_eq!(co_artists("A", "Song (Remix)"), Vec::<String>::new());
     }
 
     /// Проверка на настоящем Genius по библиотеке: VKM_LYRICS_SAMPLE=40 cargo test live_library -- --ignored --nocapture

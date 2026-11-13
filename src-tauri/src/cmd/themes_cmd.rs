@@ -24,9 +24,32 @@ pub(crate) fn theme_render(st: State<'_, AppState>, id: Option<String>) -> Res<t
 #[tauri::command(rename_all = "snake_case")]
 pub(crate) fn theme_select(st: State<'_, AppState>, id: String) -> Res<themes::ThemeRender> {
     let r = st.themes.render(&id)?;
-    st.cfg.lock().unwrap().theme = id;
+    {
+        let mut c = st.cfg.lock().unwrap();
+        if id == omarchy::ID && c.theme != omarchy::ID {
+            c.theme_before_omarchy = std::mem::take(&mut c.theme);
+        }
+        c.theme = id;
+    }
     st.save()?;
     Ok(r)
+}
+
+#[derive(Serialize)]
+pub(crate) struct OmarchyStatus {
+    /// имя текущей темы Omarchy («Tokyo Night»); None — Omarchy нет (выключателя в «Оформлении» тоже)
+    name: Option<String>,
+    /// стиль, к которому вернёт выключатель
+    before: String,
+}
+
+/// «Как в Omarchy» (Настройки → Оформление): есть ли Omarchy и к какому стилю вернуться, если выключить.
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) async fn omarchy_status(st: State<'_, AppState>) -> Res<OmarchyStatus> {
+    let before = st.cfg.lock().unwrap().theme_before_omarchy.clone();
+    let before = if before.is_empty() || before == omarchy::ID { themes::DEFAULT_THEME.to_string() } else { before };
+    let name = tauri::async_runtime::spawn_blocking(omarchy::current_name).await.map_err(|e| e.to_string())?;
+    Ok(OmarchyStatus { name, before })
 }
 
 /// Тема приходит одним двоичным куском (invoke('theme_install', Uint8Array)).

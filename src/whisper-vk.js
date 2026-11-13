@@ -493,7 +493,7 @@
     placeMenu();
   }
 
-  // ---------- «⋯» плеера: скорость и устройство вывода (как у Whisper Yandex — подменю того же .tmenu) ----------
+  // ---------- «⋯» плеера: скорость, устройство вывода, эквалайзер (как у Whisper Yandex — подменю того же .tmenu) ----------
   const RATES = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 2];
   const rateText = (r) => r.toLocaleString(document.documentElement.lang || "ru") + "×";
   function playerMenuItems() {
@@ -501,6 +501,7 @@
     const rate = S.rate || 1;
     menuItem(Icons.svg("speed"), L("Скорость: {0}", rateText(rate)), () => rateMenu(), { keep: true, arrow: true });
     menuItem(Icons.svg("output"), L("Устройство вывода"), () => outputMenu(), { keep: true, arrow: true });
+    menuItem(Icons.svg("eq"), window.Eq && window.Eq.on() ? L("Эквалайзер · включён") : L("Эквалайзер"), () => window.Eq && window.Eq.open());
     if (!window.__TAURI__?.__host) menuItem(Icons.svg("mini"), L("Мини-плеер"), () => invoke("mini_toggle").catch((e) => toast(errMsg(e), "error")));
   }
   function rateMenu() {
@@ -702,6 +703,8 @@
     accentColors,
     obsTheme: () => obsTheme(),
     // ключ архива лёг не в связку ключей, а в файл открытым текстом — предупредить
+    // режим сна (sleep.js) — Discord пишет «Засыпает · исполнитель»
+    sleeping: () => !!(window.Sleep && window.Sleep.active()),
     secretSaved: () => invoke("secret_backend").then((b) => {
       if (b === "file") toast(L("Связки ключей в системе нет — ключ Whisper Archive сохранён в файле ~/.config/vkmusic (только для вас)"), "error");
     }).catch(() => {}),

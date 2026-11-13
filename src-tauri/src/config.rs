@@ -9,8 +9,10 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    /// выбранная тема (manifest.id)
+    /// выбранная тема (manifest.id); "omarchy" — стиль следует за темой Omarchy (omarchy.rs)
     pub theme: String,
+    /// стиль до включения «Как в Omarchy» — к нему возвращает выключатель
+    pub theme_before_omarchy: String,
     /// громкость 0…100
     pub volume: f64,
     /// куда yt-dlp складывает треки; по умолчанию ~/Music/vk
@@ -42,6 +44,8 @@ pub struct Config {
     pub window: Option<crate::winstate::WinState>,
     /// устройство вывода (имя из `audio-device-list` mpv); None — системное
     pub audio_device: Option<String>,
+    /// эквалайзер (player::Eq): фильтр mpv нужен уже при запуске, до интерфейса
+    pub eq: crate::player::Eq,
     /// значок в трее (tray.rs)
     pub tray: bool,
     /// крестик окна прячет его в трей (если значок есть), музыка играет дальше
@@ -56,6 +60,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             theme: crate::themes::DEFAULT_THEME.to_string(),
+            theme_before_omarchy: String::new(),
             volume: 70.0,
             music_dir: None,
             overrides: HashMap::new(),
@@ -72,6 +77,7 @@ impl Default for Config {
             cache_limit_mb: 0,
             window: None,
             audio_device: None,
+            eq: crate::player::Eq::default(),
             tray: true,
             close_to_tray: true,
             tray_icon: "app".into(),

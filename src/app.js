@@ -2300,16 +2300,19 @@ function switchRow(text, on, onChange) {
 function renderSettings() {
   const page = $("#settingsPage");
   // «Текст песен» теперь — карточка вкладки «Общее» (прежняя вкладка "play" — туда же)
-  const tab = !S.setTab || S.setTab === "play" ? (S.setTab ? "ui" : "look") : S.setTab;
+  const tab = !S.setTab || S.setTab === "play" ? "ui" : S.setTab;
   page.dataset.tab = tab;
   page.querySelectorAll("#setTabs .chip").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   page.querySelectorAll(":scope > .card.own").forEach((x) => x.remove());
   // карточки модулей ядра — после своих (они вставлены раньше): свои — перед первой карточкой модуля
   const mods = [...page.querySelectorAll(":scope > .card:not(.own)")];
   renderThemes();
+  renderIntroCard();
   renderGeneral();
   renderLyricsSettings();
   if (window.renderTraySettings) renderTraySettings(); // tray.js
+  if (window.renderSleepCard) renderSleepCard(); // sleep.js
+  renderModeCard();
   renderStorage();
   if (window.renderBackup) renderBackup(); // backup.js
   for (const m of mods) page.append(m);
@@ -2351,6 +2354,36 @@ function renderGeneral() {
   c.append(row);
   if (window.Layout) window.Layout.card(setCard("ui", L("Расположение")));
   if (window.Hotkeys) window.Hotkeys.card(setCard("ui", L("Горячие клавиши")));
+}
+
+/** «Окно и браузер» (Общее): тот же VK Music — окном или вкладкой браузера (--host, host.rs). Переключение
+ *  перезапускает приложение (app_switch): окно закрывается и открывается вкладка — или наоборот. */
+function renderModeCard() {
+  const host = !!window.__TAURI__?.__host;
+  const c = setCard("ui", L("Окно и браузер"));
+  c.append(el("p", "status", host
+    ? L("Сейчас VK Music открыт во вкладке браузера. В приложении — отдельным окном, со значком в трее и мини-плеером.")
+    : L("VK Music можно открыть во вкладке браузера — та же библиотека, плеер и настройки, а окно закроется.")));
+  const label = host ? L("Открыть в приложении") : L("Открыть в браузере");
+  const row = el("div", "row mode-row");
+  const b = button(host ? "mini" : "globe", label, "", (btn) =>
+    confirmClick(btn, () => switchMode(!host), L("VK Music перезапустится, музыка остановится."), label));
+  row.append(b);
+  c.append(row);
+}
+
+async function switchMode(browser) {
+  try {
+    await invoke("app_switch", { browser });
+  } catch (e) {
+    return toast(errMsg(e), "error");
+  }
+  // из вкладки — в окно: сервер вкладки сейчас закроется, вместо интерфейса — заглушка (как host.js «в другой вкладке»)
+  if (!browser) {
+    const box = el("div", "host-taken");
+    box.append(el("div", null, L("VK Music открыт в приложении — эту вкладку можно закрыть")));
+    document.body.append(box);
+  }
 }
 
 /** Сменить язык на лету: статичная разметка, текущая страница, плеер, панели. */
@@ -2610,15 +2643,33 @@ function onAccent(a, b) {
 }
 const num = (v, lo, hi) => (typeof v === "number" && isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null);
 
+/** Стиль, собранный из текущей темы Omarchy (omarchy.rs): меняется сам, когда меняется тема системы. */
+const OMARCHY = "omarchy";
+listen("theme://omarchy", async () => {
+  if (!S.theme || S.theme.id !== OMARCHY) return;
+  try {
+    await applyTheme(await invoke("theme_render", { id: OMARCHY }));
+  } catch {
+    return; // тема посреди смены — следующее событие придёт, когда она появится
+  }
+  // карточка стиля: новое превью и подпись с именем темы
+  invoke("themes_list").then((list) => {
+    S.themes = list;
+    if (S.page === "settings") renderSettings();
+  }).catch(() => {});
+});
+
 let themeSeq = 0;
-/** r — ответ theme_render / theme_select: { id, name, base, file, background, obs }. */
-async function applyTheme(r) {
+/** r — ответ theme_render / theme_select: { id, name, base, file, background, obs }.
+ *  intro — показать интро темы, если оно есть и не выключено (запуск, только что установленная тема). */
+async function applyTheme(r, { intro = false } = {}) {
   const seq = ++themeSeq;
+  introStop();
   const base = BASES.includes(r.base) ? r.base : "neon";
-  let css = "", urls = [], tokens = {}, settings = {};
+  let css = "", urls = [], tokens = {}, settings = {}, th = null;
   if (r.file) {
     try {
-      const th = await WMT.open(new Uint8Array(await invoke("theme_file", { id: r.id })));
+      th = await WMT.open(new Uint8Array(await invoke("theme_file", { id: r.id })));
       const out = WhisperThemeCss.themeCss(th, r.id, "whisper-music", { core: "whisper-core", mutedIn: MUTED_IN, extra: "\n" + (th.css("whisper-vk") || "") });
       ({ css, urls } = out);
       tokens = th.tokens || {};
@@ -2652,6 +2703,117 @@ async function applyTheme(r) {
   }
   applyStyleVars();
   saveBoot();
+  if (intro && th) playIntro(r.id, { th });
+}
+
+// ───────────────────────── интро тем (как у Whisper Yandex) ─────────────────────────
+// Заставка при запуске: «@@ css whisper-intro» (+ «@@ settings whisper-intro» { name, duration }). CSS собирает движок
+// тем ядра (WhisperThemeCss.introCss: привязка к стилю, ресурсы темы — blob:) и подключается только на время интро
+// (<style id="intro-css">), потом убирается. Выключается совсем или у отдельного стиля (Оформление → «Интро тем»,
+// localStorage vkm_intro); при выключенных анимациях (тема или система: prefers-reduced-motion) не показывается.
+// Щелчок или клавиша — пропустить. Какие стили с интро, интерфейс знает из themes_list (ThemeInfo.intro, themes.rs).
+
+const INTRO_KEY = "vkm_intro";
+const introCfg = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(INTRO_KEY) || "{}") || {};
+    return { on: v.on !== false, off: Array.isArray(v.off) ? v.off.filter((x) => typeof x === "string").slice(0, 200) : [] };
+  } catch {
+    return { on: true, off: [] };
+  }
+})();
+const introSave = () => { try { localStorage.setItem(INTRO_KEY, JSON.stringify(introCfg)); } catch {} };
+const motionOff = () => document.documentElement.dataset.anim === "off" || !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+let introNow = null; // идёт интро: { style, urls, stop, timer }
+
+function introStop() {
+  if (!introNow) return;
+  clearTimeout(introNow.timer);
+  removeEventListener("pointerdown", introNow.stop, true);
+  removeEventListener("keydown", introNow.stop, true);
+  introNow.style.remove();
+  introNow.urls.forEach(URL.revokeObjectURL);
+  document.documentElement.classList.remove("intro-on");
+  introNow = null;
+}
+
+// шторка запуска (boot.js, html.booting) ещё закрывает окно — интро ждёт её, иначе начало пройдёт под шторкой
+const afterBoot = () => new Promise((res) => {
+  const t0 = Date.now();
+  const tick = () => (!document.documentElement.classList.contains("booting") || Date.now() - t0 > 4000 ? res() : requestAnimationFrame(tick));
+  tick();
+});
+
+/** force — «Показать» в настройках: и когда интро выключены. th — уже открытый файл темы (иначе — theme_file). */
+async function playIntro(id, { force = false, th = null } = {}) {
+  const TC = window.WhisperThemeCss;
+  if (!TC || !TC.introCss) return false;
+  if (!force && (!introCfg.on || introCfg.off.includes(id) || motionOff())) return false;
+  try {
+    th = th || (await WMT.open(new Uint8Array(await invoke("theme_file", { id }))));
+  } catch {
+    return false;
+  }
+  if (!force) await afterBoot();
+  if (!S.theme || S.theme.id !== id) return false; // пока грузилось, переключили стиль
+  const r = TC.introCss(th, id, { core: "whisper-core", mutedIn: MUTED_IN });
+  if (!r) return false;
+  introStop();
+  const style = el("style");
+  style.id = "intro-css";
+  style.textContent = r.css;
+  const stop = (e) => {
+    if (e && e.type === "keydown" && ["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+    introStop();
+  };
+  introNow = { style, urls: r.urls, stop, timer: setTimeout(introStop, r.duration * 1000 + 300) };
+  document.documentElement.classList.add("intro-on");
+  document.head.append(style);
+  // пропуск — со следующего действия (нажатие «Показать» само интро не обрывает)
+  setTimeout(() => {
+    if (introNow && introNow.stop === stop) {
+      addEventListener("pointerdown", stop, true);
+      addEventListener("keydown", stop, true);
+    }
+  }, 200);
+  return true;
+}
+
+/** «Оформление → Интро тем»: общий выключатель и стили, у которых есть интро. Ни у одного нет — карточки нет. */
+function renderIntroCard() {
+  const withIntro = (S.themes || []).filter((t) => t.intro);
+  if (!withIntro.length) return;
+  const c = setCard("look", L("Интро тем"));
+  c.append(switchRow(L("Показывать интро при запуске"), introCfg.on, (on) => {
+    introCfg.on = on;
+    introSave();
+    renderSettings();
+  }));
+  const list = el("div", "inlist");
+  for (const t of withIntro) {
+    const cur = S.theme && S.theme.id === t.id;
+    const row = el("div", "inrow" + (cur ? " cur" : ""));
+    const lb = switchRow("", !introCfg.off.includes(t.id), (on) => {
+      introCfg.off = introCfg.off.filter((x) => x !== t.id);
+      if (!on) introCfg.off.push(t.id);
+      introSave();
+    });
+    lb.querySelector("input").disabled = !introCfg.on;
+    const tx = lb.querySelector("span");
+    tx.textContent = (t.author ? t.author + " · " : "") + t.name;
+    tx.append(el("small", null, [t.intro.name, L("{0} с", t.intro.duration.toLocaleString(document.documentElement.lang || "ru"))].filter(Boolean).join(" · ")));
+    row.append(lb);
+    if (cur) {
+      const b = el("button", "nav", L("Показать"));
+      b.type = "button";
+      b.addEventListener("click", () => playIntro(t.id, { force: true }));
+      row.append(b);
+    }
+    list.append(row);
+  }
+  c.append(list, el("p", "status", motionOff()
+    ? L("Анимации выключены (в теме или в системе) — интро не показывается.")
+    : L("Интро — короткая заставка темы при запуске. Щелчок или любая клавиша пропускают его.")));
 }
 
 /** Снимок для boot.js: стиль, основа, цвет фона и акцент — следующий запуск сразу рисуется в них. */
@@ -2940,12 +3102,12 @@ function renderFontPicker(card) {
   paint();
 }
 
-async function selectTheme(id) {
+async function selectTheme(id, { intro = false } = {}) {
   // выбранная карточка подсвечивается сразу (тему из файла ещё разбирать), настройки — после применения:
   // раньше они перерисовывались до того, как applyTheme сменит S.theme, и подсветка оставалась на прошлом стиле
   for (const c of document.querySelectorAll(".stylecard")) c.classList.toggle("on", c.dataset.style === id);
   try {
-    await applyTheme(await invoke("theme_select", { id }));
+    await applyTheme(await invoke("theme_select", { id }), { intro });
     if (S.lib) for (const t of S.lib) t.active = t.id === id;
     if (S.page === "settings") renderSettings();
   } catch (e) {
@@ -2957,7 +3119,7 @@ async function installThemeBytes(bytes) {
   try {
     const info = await invoke("theme_install", bytes);
     toast(L("Тема «{0}» установлена", info.name));
-    await selectTheme(info.id);
+    await selectTheme(info.id, { intro: true });
   } catch (e) {
     toast(errMsg(e), "error");
   }
@@ -2967,7 +3129,7 @@ async function installThemePath(path) {
   try {
     const info = await invoke("theme_install_path", { path });
     toast(L("Тема «{0}» установлена", info.name));
-    await selectTheme(info.id);
+    await selectTheme(info.id, { intro: true });
   } catch (e) {
     toast(errMsg(e), "error");
   }
@@ -3127,6 +3289,19 @@ function renderThemes() {
     pick.append(styleCard(t.id, t.name, t.description || "", t.author || "", t.preview, [t.accent, t.accent2].filter(Boolean), !t.builtin));
   }
   c.append(pick);
+  // «Тема системы»: стиль omarchy следует за темой Omarchy (omarchy.rs) — выключатель есть, только когда она нашлась
+  const om = el("div", "omrow");
+  om.hidden = true;
+  c.append(om);
+  invoke("omarchy_status").then((st) => {
+    if (!st.name || !om.isConnected) return;
+    const on = !!(S.theme && S.theme.id === OMARCHY);
+    om.append(
+      switchRow(L("Тема системы (Omarchy)"), on, (v) => selectTheme(v ? OMARCHY : st.before)),
+      el("p", "status stylecap", L("Сейчас: {0}. Цвета и обои меняются вместе с темой системы", st.name)),
+    );
+    om.hidden = false;
+  }).catch(() => {});
   const applyView = () => {
     let saved = null;
     try { saved = localStorage.getItem("vkm_style_view"); } catch {}
@@ -3425,7 +3600,7 @@ async function libInstall(t) {
   S.libBusy.add(t.id);
   renderLibGrid();
   try {
-    applyTheme(await invoke("themelib_install", { id: t.id }));
+    applyTheme(await invoke("themelib_install", { id: t.id }), { intro: true });
     toast(t.installed ? L("Тема «{0}» обновлена", t.name) : L("Тема «{0}» установлена", t.name));
   } catch (e) {
     toast(errMsg(e), "error");
@@ -4939,8 +5114,9 @@ async function boot() {
   S.lyrHideParts = !!info.lyrics_hide_parts;
   S.lyrCompact = !!info.lyrics_compact;
   S.normalize = !!info.normalize;
+  S.eq = info.eq || null;
   try {
-    await applyTheme(await invoke("theme_render", { id: null }));
+    await applyTheme(await invoke("theme_render", { id: null }), { intro: true });
   } catch (e) {
     toast(L("Тема не загрузилась: ") + errMsg(e), "error");
   }

@@ -125,9 +125,10 @@ pub(crate) fn tray_prefs(
     }
     if let Some(on) = tray {
         c.tray = on;
-        if on && !host::active() {
+        if on {
             tray::show(&app, &c.tray_icon, &c.tray_accent).map_err(|e| format!("Значок в трее не создался: {e}"))?;
-        } else if !on {
+        } else if !host::active() {
+            // с --host значок не убирается: без окна «Выход» в его меню — штатный способ закрыть приложение
             tray::remove(&app);
         }
     }
@@ -148,4 +149,35 @@ pub(crate) fn player_normalize(st: State<'_, AppState>, on: bool) -> Res<()> {
 #[tauri::command(rename_all = "snake_case")]
 pub(crate) fn player_stop(st: State<'_, AppState>) -> Res<()> {
     st.player()?.stop()
+}
+
+/// Эквалайзер (player::Eq). `save` — записать в настройки: пока тянут ползунок, звук меняется на каждом шаге,
+/// а на диск — только когда его отпустили.
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) fn player_eq(st: State<'_, AppState>, eq: player::Eq, save: bool) -> Res<()> {
+    let eq = eq.clean();
+    st.player()?.set_eq(eq.clone())?;
+    st.cfg.lock().unwrap().eq = eq;
+    if save {
+        st.save()?;
+    }
+    Ok(())
+}
+
+// ───────────────────────── режим сна (sleep.rs) ─────────────────────────
+
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) fn sleep_start(app: AppHandle, minutes: u32, shutdown: bool) -> Res<sleep::SleepState> {
+    sleep::start(app, minutes, shutdown)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) fn sleep_cancel(app: AppHandle) {
+    sleep::cancel(&app)
+}
+
+/// Включён ли режим сна (страницу перезагрузили, а таймер в Rust идёт).
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) fn sleep_status() -> Option<sleep::SleepState> {
+    sleep::status()
 }

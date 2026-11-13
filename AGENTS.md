@@ -38,6 +38,9 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   Корневой `Cargo.toml` — рабочее пространство (`members = ["src-tauri"]`, там же `[profile.release]`), поэтому
   `cargo build` / `cargo test` — из корня, бинарник — в `target/`.
 * Сборка и тесты требуют `webkit2gtk-4.1` — крейт один (бинарный), тесты собирают и Tauri.
+* `install.sh` собирает под `x86-64-v3` (`RUSTFLAGS=-C target-cpu=x86-64-v3`), если процессор его поддерживает
+  (`ld-linux-x86-64.so.2 --help`); просьба владельца, 2026-11-10. Выпуски (`release.yml`) и CI — обычный x86_64:
+  они должны работать у всех, `target-cpu` туда (и в `.cargo/config.toml` — его прочли бы и они) не добавлять.
 * `themes::tests::library_preview_saved_and_removed` создаёт и сразу удаляет тему `zz-preview-test`
   в настоящей `~/.config/vkmusic/themes`.
 * Интерфейс без Rust можно проверить в браузере (Playwright), подменив `window.__TAURI__` заглушкой с теми же
@@ -92,7 +95,9 @@ src-tauri/src/tray.rs      значок в трее (меню; Linux — тол�
 src-tauri/src/backup.rs    резервные копии .vkmbak: настройки, library/order/playlists/stats, свои темы, localStorage;
                            автокопии раз в день (~/.config/vkmusic/backups, 5 шт.), восстановление — при перезапуске
 src-tauri/src/config.rs    ~/.config/vkmusic/config.json (serde(default) — старые/лишние поля не ломают загрузку)
-src-tauri/src/player.rs    mpv в фоне: --idle, JSON IPC через unix-сокет в $XDG_RUNTIME_DIR, PR_SET_PDEATHSIG
+src-tauri/src/player.rs    mpv в фоне: --idle, JSON IPC через unix-сокет в $XDG_RUNTIME_DIR, PR_SET_PDEATHSIG;
+                           цепочка `af` (выравнивание + эквалайзер `Eq`), затухание режима сна (`set_fade`)
+src-tauri/src/sleep.rs     режим сна: таймер, затухание последних 3 минут, пауза, выключение компьютера (минута на отмену)
 src-tauri/src/ytdlp.rs     загрузки yt-dlp: аргументы, разбор вывода по маркерам VKMPROG/VKMTITLE/VKMFILE, события
 src-tauri/src/library.rs   сканирование ~/Music/vk (глубина 3), теги/формат/битрейт/обложки — lofty; теги неизменённых файлов
                            (путь, размер, время изменения) при повторном сканировании берутся из памяти (`TAGS`)
@@ -100,6 +105,7 @@ src-tauri/src/fonts.rs     системные шрифты: `fc-list --format "%
 src-tauri/src/wmt.rs       чтение .wmt: текст (#WMT 1, секции @@) и zip (свой ридер: stored/deflate, без zip64)
 src-tauri/src/themes.rs    встроенные темы (include_bytes!), ~/.config/vkmusic/themes, tokens → CSS-переменные,
                            основы Whisper (neon/royal/steam/lolitta) как стили без файла, theme_file (сам файл для ядра), превью
+src-tauri/src/omarchy.rs   стиль «Omarchy» (тема системы): тема .wmt из текущей темы Omarchy (colors.toml, обои, превью), слежение
 src-tauri/src/themelib.rs  библиотека тем: whisper-themes на raw.githubusercontent.com (reqwest)
 src-tauri/src/vk.rs        ВКонтакте: al_audio.php с куками сессии, разбор ответов, ссылка на поток одного трека;
                            API с web-токеном сайта (VK Микс, плейлисты): web_token, api, home, my_playlists, playlist, mix
@@ -139,9 +145,12 @@ src/errinfo.js             понятные ошибки воспроизвед�
 src/lsguard.js             до app.js: повреждённые JSON в localStorage → window.__lsBroken (backup.js предложит автокопию)
 src/backup.js              карточка «Резервная копия» (Хранилище), автокопия при запуске
 src/tray.js                что играет — трею и мини-плееру (mini_state / tray_state), карточка «Трей» в «Общем»
+src/eq.js                  эквалайзер (как у Whisper Yandex): окно из «⋯» плеера, 10 полос, предусиление, настройки → player_eq
+src/sleep.js               режим сна: луна #sleepBtn в .pright, карточка «Режим сна» в «Общем» (vkm_sleep), sleep://event
 src/cli.js                 стиль-консоль («console» в settings темы, тема «Терминал»): команды VK Music, разметка #cli Whisper
 src/mini.html, mini.js, mini.css  мини-плеер (окно `mini`): данные — только textContent, обложки — https и vkm /cover
 src/host.js                заглушка window.__TAURI__ для браузера (--host): сервер вставляет её первым скриптом index.html
+src/favicon.svg            значок вкладки браузера (--host) — тот же, что src-tauri/icons/icon.png; меняется вместе с ним
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
 src/core/                  ядро Whisper — git-подмодуль whisper-core (здесь не правится, см. «Ядро Whisper»)
@@ -159,8 +168,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * События Rust → JS: `player://event` (`state` / `ended` / `error`), `dl://event`
   (`title` / `progress` / `saved` / `done` / `failed`), `svc://event` (`login` / `login_closed`, поле `service`: `vk` | `sc`) — после них интерфейс прячет полосу входа,
 `cache://event` (`cached` / `failed`, поле `key` — ключ трека в библиотеке) — после него кэшируется следующий трек,
-`tray://ctl` (действие из меню значка или мини-плеера → `playerAction`, как событие `hotkey`; в `--host` трея нет),
-`mini://state` (окну `mini`). Плюс `tauri://drag-*` для перетаскивания `.wmt`.
+`tray://ctl` (действие из меню значка или мини-плеера → `playerAction`, как событие `hotkey`; в `--host` — во вкладку через `host::EVENTS`),
+`mini://state` (окну `mini`), `theme://omarchy` (тема системы сменилась — `omarchy.rs`), `sleep://event` (`end`: время режима сна вышло,
+`shutdown` / `error` — `sleep.rs`). Плюс `tauri://drag-*` для перетаскивания `.wmt`.
 * Новая команда = функция в `src-tauri/src/cmd/<раздел>.rs` (`pub(crate)`, общее — `use crate::*`) + строка
   `cmd::<раздел>::<команда>` в `generate_handler![…]` (main.rs) + вызов в `src/app.js`. Помощник, который нужен
   другому разделу, — `pub(crate)`, а его раздел — в `use cmd::{…}` в main.rs.
@@ -191,20 +201,28 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   отклоняется; `frame-ancestors 'none'`. Не ослаблять: через сервер доступны все команды приложения.
 * Отличия от окна: `win_*` ничего не делают (кнопки окна скрыты — `.host-mode .tbctl`); вход в сервис — отдельным окном
   `svc-login` (`login_layout` не нужен); перетаскивание `.wmt` — событиями браузера (`installThemeBytes`); работает
-  одна вкладка — новый поток событий шлёт прежним `host://taken`; повторный запуск открывает вкладку (`open_browser`).
+  одна вкладка — новый поток событий шлёт прежним `host://taken`; повторный запуск открывает вкладку (`open_browser`); `--no-browser` (`host::no_browser`) — не открывать её при
+  запуске (автозапуск с сеансом).
   `--host`, когда VK Music уже открыт в окне (или в трее — «Закрывать в трей»), — не окно, а браузер: на Linux новый
   процесс до запуска Tauri просит открытый выйти по D-Bus single-instance (`host::take_over`, метка `HANDOVER`), ждёт
   его выхода и запускается сам (в том же терминале); на Windows открытый выходит и перезапускает себя с теми же
   аргументами (`RELAUNCH` → `RunEvent::Exit`, новый ждёт выхода прежнего — `VKM_WAIT_PID`, `os::wait_exit`);
-  ссылка whisper:// — событием `room-link` во вкладку; выход — SIGINT/SIGTERM → `app.exit(0)` (mpv и настройки — как
-  при закрытии окна). Графический сеанс нужен и с `--host`: скрытое окно GTK, окно входа в сервисы.
+  «Настройки → Общее → Окно и браузер» (просьба владельца, 2026-11-08): `app_switch { browser }` — тот же перезапуск
+  (`RELAUNCH`, с `--host 7380` или без; порт занят — ошибка сразу), выход через 0,5 с (ответ должен уйти по HTTP),
+  новый процесс — в своей сессии (`setsid`: не умирает с терминалом прежнего); вкладка после «Открыть в приложении» —
+  заглушка `.host-taken`. Проверять, не задевая открытый у владельца экземпляр: `dbus-run-session` + свои
+  `XDG_CONFIG_HOME` / `XDG_DATA_HOME` / `XDG_CACHE_HOME`;
+  ссылка whisper:// — событием `room-link` во вкладку; выход — «Выход» в меню значка в трее или SIGINT/SIGTERM →
+  `app.exit(0)` (mpv и настройки — как при закрытии окна). Значок в трее с `--host` — всегда, независимо от настройки
+  (просьба владельца, 2026-11-08: из лаунчера иначе не закрыть): «Открыть VK Music» — `open_browser`, кнопки меню и
+  мини-плеера — `tray://ctl` во вкладку; в карточке «Трей» нет выключателя и «Закрывать в трей» (`tray.js`, `HOST`). Графический сеанс нужен и с `--host`: скрытое окно GTK, окно входа в сервисы.
 
 ### Ядро Whisper (`src/core`)
 
 * Порядок в `index.html` важен: в `<head>` без defer — `boot.js` (как у Whisper Yandex: стиль прошлого запуска из
   `vkm_boot` и класс `booting` — интерфейс скрыт под цветом фона, пока `boot()` не применит тему и не позовёт
   `bootDone`; снимок пишет `saveBoot` после `applyTheme`), `lsguard.js` (до всего, что пишет localStorage), затем
-  `core/whisper-core.js` → i18n, `icons.js`, `errinfo.js`, `app.js` → `backup.js`, `tray.js`, `keynav.js`, `cli.js`,
+  `core/whisper-core.js` → i18n, `icons.js`, `errinfo.js`, `app.js` → `backup.js`, `tray.js`, `eq.js`, `sleep.js`, `keynav.js`, `cli.js`,
   `hotkeys.js`, `colors.js`, `themeguard.js` → `whisper-vk.js` →
   `core/wmt.js`, `core/theme-css.js` → модули `archive`, `queue`, `discord`, `obs`, `together` (порядок модулей =
   порядок карточек в «Интеграциях»). CSS: `core/base.css` → `whisper.css` → `core/together.css` → `app.css` →
@@ -257,6 +275,12 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   Друзья и приглашения — команды ядра `wa_room_friends / friend_forget / invite / invites / invite_dismiss`
   (приглашения ждутся long-poll, пока есть друзья), мигание на панели задач — `requestUserAttention`
   (`core:window:allow-request-user-attention` в capabilities).
+  «Подмигнуть» (ядро, 2026-11-13): «😉» у участника в окне комнаты → ряд знаков (дальше, тише, пауза…) →
+  `wa_room_wink`; получателю — подсказка, ведущему с кнопкой «Переключить» / «Громче»… (через наш `player.bind`:
+  `next` / `prev` / `pause` / `play` / `setVolume` — громкость ползунка, 0…1). Пинг — только в окне комнаты. Discord
+  сам пишет «Слушает вместе · исполнитель», в режиме сна — «Засыпает · исполнитель» (`kit.sleeping` → `Sleep.active`
+  из sleep.js). Необязательный хук набора, которого у нас пока нет: `kit.notify` (системное уведомление о приглашении
+  и подмигивании; без него — только подсказка в окне).
 * Кнопки плеера у гостя: ядро глушит «вперёд/назад» и `.modebtn` (роль `player.mode`) у любого гостя — даже
   отошедшего. `whisper-vk.js` (`GUEST_OWN`) ловит эти нажатия раньше, на window в фазе захвата, и выполняет сам:
   «Текст песни» и «Постоянный уровень громкости» (у нас тоже `.modebtn`) — всегда, «вперёд/назад», перемешивание
@@ -278,7 +302,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   (только `whisper_host::cover_ok`), из тегов файла или нарисованная модулем. Треки вне библиотеки — нет.
 * Rust ядра: команды — в `generate_handler!` (`whisper::…`, `whisper::auth::…`, `whisper::stream::…`,
   `whisper::rooms::…`, `discord::…`, `obs::…`); `build.rs` и `capabilities` у нас без списка команд приложения, поэтому
-  отдельно разрешать их не нужно. Протокол `wa` — только главному окну. Зависимости ядра: `tauri-plugin-http` (только
+  отдельно разрешать их не нужно. Команды ядра, которые нам не нужны, не регистрируются, а упоминаются в
+  `const _` в начале main.rs (иначе dead_code): `wa_album_share`, `wa_invite_open` — для «Студии» Whisper Yandex.
+  После обновления ядра — сверить новые `#[tauri::command]` в `src/core/rust` с обработчиком. Протокол `wa` — только главному окну. Зависимости ядра: `tauri-plugin-http` (только
   реэкспорт reqwest, плагин не подключается), `getrandom`, `libc`, `tokio`; для ключа — `keyring` (Secret Service,
   vendored dbus); ссылки — `tauri-plugin-deep-link` (`plugins.deep-link.desktop.schemes` в `tauri.conf.json`) и
   `tauri-plugin-single-instance` (второй запуск отдаёт ссылку первому). Схему регистрирует `install.sh` (`xdg-mime`,
@@ -298,7 +324,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Своё в `localStorage` (не модули): `vkm_boot` (снимок стиля для boot.js), `vkm_dyn` (фон по обложке),
   `vkm_style_view` (компактный вид стилей), `vkm_search_hist` (история поиска, 30), `vkm_hotkeys`, `vkm_layout`,
   `vkm_colors` (цвета пользователя по стилям: в CSS попадают только `#rrggbb(aa)`), `vkm_cli_hist` (история команд
-  консоли), `vkm_cli_prev_style` (к какому стилю вернёт `gui`). В резервную копию входит весь localStorage, кроме
+  консоли), `vkm_cli_prev_style` (к какому стилю вернёт `gui`), `vkm_sleep` (режим сна: `{ min, off }` — минуты и
+  «выключить компьютер»), `vkm_intro` (интро тем: `{ on, off: [id стилей] }`). Эквалайзер — не здесь, а в config.json
+  (`Config::eq`): фильтр mpv нужен при запуске, до интерфейса. В резервную копию входит весь localStorage, кроме
   `vkm_boot` и `wa_index_v3` (`backup::storage_key_ok`).
 * Кэш треков: предел — `Config::cache_limit_mb` (0 — без ограничения, «Хранилище»); сверх него `TrackCache::prune`
   удаляет давно не игравшие (по времени изменения файла; включение из кэша — `touch`), кроме только что докачанного.
@@ -493,7 +521,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Разметка — контракт с темами Whisper: классы и id те же, что у Whisper Yandex (по ним написана библиотека тем).
   Не переименовывать и не перестраивать `.app`, `.side`, `.main`, `.head` (`#title`, `#sub`, `#headImg`, `#back`),
   `ul.list > li` (`img`, `div > .t/.a`, `.likebtn`, `.morebtn`), `.player` (`.pinfo` `#cover` `.meta` `#pTitle` `#pArtist`
-  `#likeBtn`, `.pcenter` `.seekrow` `#seek` `.ctrls` `#play` `#prev` `#next` `.modebtn`, `.pright` `#lyrBtn` (своя кнопка «Текст песни») `#volWrap` `#volBtn`
+  `#likeBtn`, `.pcenter` `.seekrow` `#seek` `.ctrls` `#play` `#prev` `#next` `.modebtn`, `.pright` `#lyrBtn` (своя кнопка «Текст песни») `#sleepBtn` (`.sleepbtn`, `#sleepLeft`) `#volWrap` `#volBtn`
   `.volpop` `#vol` `#pMore`), `#settingsPage.settings` (`.settabs .chip`, `.card[data-tab]`), `.simcard`, `.lastAlbum`,
   `#wavePage` (`.waveorbits`, `#waveBtn.wavebtn`), `#full`, `.titlebar`, `.tmenu`, `.toast`, `body.is-playing`.
   Свои элементы — дополнительными классами и внутри этих (`.lq`, `.lacts`, `.ldur` в строке). `whisper.css` не правится:
@@ -514,6 +542,25 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Секции, как у Whisper Yandex: `@@ css whisper-core` (по ролям) → `@@ css whisper-music` (разметка Whisper — она же
   наша) → `@@ css whisper-vk` (своё для VK Music, необязательно) → `tokens`; `@@ settings whisper-music` — возможности
   темы. Встроенные темы пишутся в `whisper-music`. Старые секции `vkmusic` (прежняя разметка) не читаются.
+* Стиль «Omarchy» — тема системы (просьба владельца, 2026-11-09; «Настройки → Оформление → Тема системы (Omarchy)»):
+  id `omarchy` (занят, как встроенные: `ThemeStore::is_builtin`), `Config::theme = "omarchy"`; выключатель возвращает
+  к `Config::theme_before_omarchy` (его запоминает `theme_select`), `omarchy_status` — имя текущей темы (нет — нет и
+  выключателя, и карточки стиля). Тему собирает `omarchy.rs` — текст .wmt (разметка как у Osaka Jade, цвета из палитры:
+  `colors.toml` → `alacritty.toml` → `quickshell.json`, порядок замен — как в `omarchy-theme-color`; светлая — по `mode`,
+  `light.mode` или яркости фона) плюс файлы `background-<хэш>` / `preview-<хэш>` в `Theme.files` (имя меняется вместе
+  с темой — WebView не покажет старые обои из кэша; фон — через `tokens.background.image`). Где текущая тема: Omarchy
+  (`~/.local/state/omarchy/current/{theme,theme.name,background}`, старые — `~/.config/omarchy/current`), иначе
+  переключатель владельца `~/.config/themes/theme` (`~/.local/state/themes/current` — имя, папка — `~/.config/themes/<имя>`
+  или `~/.config/themes/omarchy/themes/<имя>`, обои — путь в `~/.cache/current_wallpaper`). Только читаем. Смена
+  темы — `omarchy::watch` (раз в секунду отпечаток без чтения файлов, пока выбран стиль; событие `theme://omarchy` после
+  двух одинаковых отпечатков подряд) → `applyTheme` в app.js. Проверка на этой машине:
+  `cargo test live_omarchy -- --ignored --nocapture`.
+* Интро тем (как у Whisper Yandex, 2026-11-13; раздел 5б WMT-FORMAT.md ядра): `@@ css whisper-intro` +
+  `@@ settings whisper-intro { name, duration }`. Какие стили с интро — `ThemeInfo.intro` (`themes::intro_of`, те же
+  правила, что `introInfo` ядра); CSS — `WhisperThemeCss.introCss` (через движок тем, как остальной CSS темы) в
+  `<style id="intro-css">` только на время интро, класс `intro-on` на `<html>`. Показывается при запуске
+  (`applyTheme(r, { intro: true })` в `boot`) и после установки темы; не показывается при выключенных анимациях
+  (`data-anim="off"`, `prefers-reduced-motion`) и если выключено («Оформление → Интро тем», `vkm_intro`).
 * «Экспорт стиля» (как у Whisper Yandex, 2026-11-06): `buildStyleFile` в app.js собирает текущий стиль
   со всем, что пользователь поменял (основной/второй цвет и «Тонкая настройка» → `settings.colorOverrides`,
   свечение, прозрачность, затемнение и размытие → `tokens.effects`, свой шрифт → `tokens.font`), `theme_save`
@@ -535,8 +582,8 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Не расширять ВКонтакте за рамки правила выше: никаких токенов Kate Mobile и других приложений, чтения кук из
   браузеров, ввода пароля в приложении. Единственный токен API — web-токен самого сайта для микса и плейлистов
   (решение владельца 2026-11-01), только в памяти.
-* Не добавлять Omarchy-специфичных функций (у владельца не Omarchy): темы «как в Omarchy» — да,
-  чтение `~/.local/state/omarchy` — нет.
+* Не добавлять Omarchy-специфичных функций сверх стиля «Тема системы» (`omarchy.rs`, ниже): у владельца не Omarchy,
+  а свой переключатель тем с темами Omarchy.
 * Не переписывать файлы, которые владелец мог править в редакторе, «вслепую»: если файл мог измениться,
   сначала сравните его с последней известной версией.
 * Не трогать `~/Music/vk`, `~/.config/vkmusic` и `~/.cache/vkmusic` пользователя за пределами того, что делает само приложение.
@@ -562,17 +609,36 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   библиотеки и хранится как `~/.config/vkmusic/themes/<id>.preview.<ext>`.
 * mpv читает `mpv.conf` пользователя: если там включено сохранение позиции, трек продолжал бы играть с места,
   где его переключили. Поэтому mpv запускается с `--resume-playback=no --save-position-on-quit=no`.
-  `af` плеер задаёт сам («постоянный уровень громкости»), перекрывая `af` из конфига пользователя.
+  `af` плеер задаёт сам перед каждым `loadfile` (`Player::af_chain`: «постоянный уровень громкости», затем эквалайзер),
+  перекрывая `af` из конфига пользователя.
 * «Постоянный уровень громкости» — по громкости EBU R128, как у Whisper Yandex (2026-11-06): `dynaudnorm` без
   целевого уровня выравнивал по пикам, а они у современных треков почти всегда у 0 дБ — громкие (−6 LUFS) и тихие
   (−11) звучали по-разному. Теперь файл на диске (папка музыки, кэш — `TrackCache::on_file`, архив) один раз
   замеряется (`loudness::Loudness`, по одному, nice 15) и играет с постоянным усилением до `TARGET` (ограничитель —
-  только если пик выйдет за −1 dBTP); `af` ставится перед каждым `loadfile` (`Player::norm_filter`). Поток и ещё
+  только если пик выйдет за −1 dBTP); `af` ставится перед каждым `loadfile` (`Player::af_chain` → `norm_filter`). Поток и ещё
   не замеренный файл — `loudnorm` на лету (`LIVE_FILTER`); посреди трека фильтр не меняется.
+* Эквалайзер (как у Whisper Yandex, 2026-11-13; `player::Eq`, `Config::eq`, окно — `eq.js` из «⋯» плеера): фильтр
+  `@vkeq:lavfi=[volume@pre=…,lowshelf@b0=f=32:g=…,equalizer@b1…b8=f=…:t=q:w=1.41:g=…,highshelf@b9=f=16000:g=…]` — в
+  цепочке после выравнивания, только пока включён. Включили/выключили — `af` собирается заново (короткая заминка);
+  полосы и предусиление — `af-command vkeq <g|volume> <значение> <фильтр@имя>` только изменившимся (`Eq::commands_to`,
+  без перезапуска звука; новое значение слышно, когда mpv доиграет уже обработанный буфер, ~1 с — проверено на mpv 0.41).
+  Интерфейс шлёт `player_eq` не чаще раза в 60 мс, `save: true` — когда ползунок отпустили. «Без искажений» (`guard`) —
+  предусиление минус самый большой подъём. Полоса выше половины частоты дискретизации (16 кГц у файла 22 кГц) ffmpeg
+  не применяет и пишет «Invalid frequency» — звук играет; `log_reason` эту строку пропускает.
+* Режим сна (как у Whisper Yandex, 2026-11-13; `sleep.rs`, `sleep.js`): таймер — в Rust (сверка с часами каждую
+  секунду), последние 3 минуты — `Player::set_fade` (множитель громкости mpv: ползунок не двигается, громкость можно
+  менять, после паузы она возвращается), конец — пауза и `sleep://event`. «Выключить компьютер» — подтверждение окошком
+  у кнопки (`confirmClick`), затем `shutdown -h +1` (logind пускает пользователя активного сеанса) / `shutdown /s /t 60`;
+  «Не выключать» — `sleep_cancel` → `shutdown -c` / `/a`. «Мою волну» под настроение, как Whisper Yandex, режим не включает.
 * Главное окно создаётся скрытым (`"visible": false`): показывает его `winstate::restore` в setup, уже с прежним размером.
   Новый путь запуска окна (не через setup) — не забыть `show()`. С `--host` окно так и остаётся скрытым.
+* Hyprland сообщает окну-плитке «развёрнуто» (GTK: `MAXIMIZED` вместе с `TILED`, проверено 2026-11-10, Hyprland 0.57).
+  Запомни `winstate` это как `max`, при следующем запуске `restore` развернул бы окно на весь экран вместо плитки
+  (так же было у Steam). Поэтому окно-плитку `snapshot` развёрнутым не считает и его размер не запоминает (`tiled`).
 * Трей на Linux: tray-icon сам грузит libayatana-appindicator3 / libappindicator3 (dlopen) и **падает**, если её нет, —
-  поэтому `tray::init` только после `tray::available()`. В `.deb` она — в recommends. Мини-плеер — окно фиксированного
+  поэтому `tray::init` только после `tray::available()`. В `.deb` она — в recommends. Подсказку (tooltip) AppIndicator не поддерживает:
+  при наведении панели показывают его Title, а он без заголовка — `g_get_application_name()`, поэтому `main()` первым
+  делом ставит `glib::set_application_name("VK Music")` (иначе — «vkmusic»). Мини-плеер — окно фиксированного
   размера (min = max): Hyprland и другие тайлинговые композиторы делают такое плавающим.
 * Устройство вывода: список и текущее mpv присылает сам (`observe_property audio-device-list / audio-device`,
   `Player::devices`); выбранное — `Config::audio_device`, ставится, когда список пришёл (`restore_device`), и только
@@ -586,6 +652,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   встроенных тем — в их `theme.wmt`), показ — «Расположение» (`vkm_layout.dot`, `data-ly-dot`).
   Родной ползунок не годился: нажатие на кружок не давало `change`, а кружок стоял со сдвигом на свою ширину.
   Родные `input` / `change` — только клавиатуре.
+* Ползунки в Firefox (`--host` в Zen и т. п.): whisper.css рисует их только через `::-webkit-slider-*`, поэтому
+  в `app.css` те же правила повторены через `::-moz-range-track` / `-thumb` (отдельными правилами, без `margin-top`).
+  Меняете вид ползунка или скрытие кружка полосы трека — меняйте обе версии.
 * Громкость у mpv кубическая (усиление = (v/100)³): ползунок на 14% давал −51 дБ, линейная шкала оказалась слишком
   громкой. Шкала интерфейса — квадратичная (`player::GAIN_POW`, «обычная громкость — около 20%», просьба владельца
   2026-11-05); в mpv — через `player::to_mpv`, обратно — `from_mpv`. Не передавайте в mpv громкость ползунка напрямую.

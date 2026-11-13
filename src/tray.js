@@ -7,7 +7,8 @@
 "use strict";
 
 (function () {
-  if (window.__TAURI__?.__host) return; // в браузере (--host) ни значка, ни мини-плеера
+  // в браузере (--host) значок есть всегда (tray.rs): выключателя и «Закрывать в трей» нет — вид значка и мини-плеер есть
+  const HOST = !!window.__TAURI__?.__host;
   let timer = 0;
   let trayInfo = { available: false, tray: false, close_to_tray: false, icon: "app" };
   let sentAccent = "";
@@ -94,7 +95,7 @@
   window.renderTraySettings = function renderTraySettings() {
     if (!trayInfo.available) return;
     const c = setCard("ui", L("Трей"));
-    c.append(switchRow(L("Значок в трее"), trayInfo.tray, async (on) => {
+    if (!HOST) c.append(switchRow(L("Значок в трее"), trayInfo.tray, async (on) => {
       try {
         await invoke("tray_prefs", { tray: on });
         trayInfo.tray = on;
@@ -137,7 +138,7 @@
       }
       row.append(el("span", "", L("Вид значка")), seg);
       c.append(row);
-      c.append(switchRow(L("Закрывать в трей — музыка играет дальше"), trayInfo.close_to_tray, (on) => {
+      if (!HOST) c.append(switchRow(L("Закрывать в трей — музыка играет дальше"), trayInfo.close_to_tray, (on) => {
         trayInfo.close_to_tray = on;
         invoke("tray_prefs", { close_to_tray: on }).catch((e) => toast(errMsg(e), "error"));
       }));

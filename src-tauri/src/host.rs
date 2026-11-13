@@ -29,7 +29,18 @@ use tauri::{AppHandle, Listener, Manager};
 pub const DEFAULT_PORT: u16 = 7380;
 
 /// События Rust, которые уходят в браузер.
-const EVENTS: [&str; 7] = ["player://event", "dl://event", "svc://event", "cache://event", "discord-status", "room-link", "hotkey"];
+const EVENTS: [&str; 10] = [
+    "player://event",
+    "dl://event",
+    "svc://event",
+    "cache://event",
+    "discord-status",
+    "room-link",
+    "hotkey",
+    "tray://ctl",
+    crate::omarchy::EVENT,
+    crate::sleep::EVENT,
+];
 
 /// Заголовки запроса — не больше; тело — тема до 64 МБ сырым куском (`theme_install`) с запасом.
 const MAX_HEAD: usize = 16 * 1024;
@@ -81,6 +92,14 @@ pub fn port_from_args(args: &[String]) -> Result<Option<u16>, String> {
         }
     }
     Ok(None)
+}
+
+/// `--no-browser` вместе с `--host`: не открывать вкладку при запуске (автозапуск вместе с сеансом). Повторный
+/// `vkmusic --host` без него откроет вкладку как обычно (`open_browser` в обработчике single-instance, main.rs).
+pub const NO_BROWSER: &str = "--no-browser";
+
+pub fn no_browser(args: &[String]) -> bool {
+    args.iter().any(|a| a == NO_BROWSER)
 }
 
 /// Метка в аргументах, которые `take_over` передаёт открытому окну: «выйди, браузерный экземпляр запускаюсь я сам».
@@ -166,7 +185,7 @@ extern "C" fn on_signal(_: libc::c_int) {
     STOP.store(true, Ordering::SeqCst);
 }
 
-/// Окна нет — выход по Ctrl+C / SIGTERM, штатно (RunEvent::Exit: сохранить настройки, закрыть mpv).
+/// Окна нет — выход по «Выход» в меню значка в трее (tray.rs), Ctrl+C / SIGTERM, штатно (RunEvent::Exit: сохранить настройки, закрыть mpv).
 pub fn exit_on_signal(app: &AppHandle) {
     let handler = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
     unsafe {
@@ -537,6 +556,9 @@ mod tests {
         assert!(port_from_args(&args(&["--host", "0"])).is_err());
         assert!(port_from_args(&args(&["--host", "abc"])).is_err());
         assert!(port_from_args(&args(&["--host=70000"])).is_err());
+        assert_eq!(port_from_args(&args(&["--host", "--no-browser"])), Ok(Some(DEFAULT_PORT)));
+        assert!(no_browser(&args(&["--host", "--no-browser"])));
+        assert!(!no_browser(&args(&["--host", "8080"])));
     }
 
     #[test]

@@ -91,7 +91,6 @@ impl Theme {
     }
 
     /// JSON-настройки приложения `app` или пустой объект.
-    #[allow(dead_code)]
     pub fn settings(&self, app: &str) -> Value {
         self.settings
             .get(app)

@@ -7,6 +7,9 @@
 //!   падает — поэтому сначала `available` проверяет, что она есть; нет — значка нет, остальное работает.
 //!   В GNOME значки трея — только с расширением AppIndicator.
 //! * Windows: левый щелчок — окно, правый — меню.
+//! * `--host` (просьба владельца, 2026-11-08): значок есть всегда, независимо от настройки — окна нет, и «Выход» в меню
+//!   — штатный способ закрыть приложение (иначе только сигнал). «Открыть VK Music» — вкладка браузера
+//!   (`host::open_browser`), кнопки меню и мини-плеера — событием `tray://ctl` во вкладку (`host::EVENTS`).
 //! * «Закрывать в трей» (настройка): крестик прячет окно, музыка играет дальше; вернуть — «Открыть» в меню или
 //!   повторный запуск приложения (single-instance показывает окно).
 //! * Вид значка (`Config::tray_icon`, «Настройки → Общее → Трей»): всегда полоски логотипа без подложки, как значки
@@ -105,7 +108,7 @@ pub fn init(app: &AppHandle, look: &str, accent: &str) -> tauri::Result<()> {
         .on_menu_event(|app, e| on_action(app, e.id.as_ref()))
         .on_tray_icon_event(|tray, e| {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
-                crate::show_main(tray.app_handle());
+                open(tray.app_handle());
             }
         });
     if let Some(icon) = image(app, look, accent) {
@@ -216,11 +219,20 @@ fn inside_pill(px: f32, py: f32, left: f32, top: f32, w: f32, bottom: f32) -> bo
     (px - cx).powi(2) + (py - cy).powi(2) <= r * r
 }
 
+/// «Открыть VK Music»: окно — или вкладка браузера с `--host` (окна там нет).
+fn open(app: &AppHandle) {
+    if crate::host::active() {
+        crate::host::open_browser();
+    } else {
+        crate::show_main(app);
+    }
+}
+
 fn on_action(app: &AppHandle, id: &str) {
     match id {
         "show" => {
             hide_mini(app);
-            crate::show_main(app);
+            open(app);
         }
         "mini" => toggle_mini(app),
         "hide" => hide_mini(app),

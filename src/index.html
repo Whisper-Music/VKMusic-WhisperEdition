@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>VK Music</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
   <!-- Разметка — как у Whisper Yandex (те же классы и id): темы Whisper (@@ css whisper-music) ложатся на неё целиком.
        whisper.css — основа оформления Whisper (Неон, Королевский, Стимпанк, Lolitta); app.css — то, чего у Whisper нет. -->
   <!-- до первой отрисовки: стиль прошлого запуска, интерфейс скрыт, пока тема не применится (без «мигания» Неона) -->
@@ -99,10 +100,10 @@
       <div id="content" class="content"></div>
 
       <!-- настройки: вкладки-чипы и карточки (карточки модулей ядра — постоянные, вставляются при запуске) -->
-      <section id="settingsPage" class="settings" data-tab="look" hidden>
+      <section id="settingsPage" class="settings" data-tab="ui" hidden>
         <nav class="settabs" id="setTabs" role="tablist">
-          <button type="button" class="chip" data-tab="look" role="tab">Оформление</button>
           <button type="button" class="chip" data-tab="ui" role="tab">Общее</button>
+          <button type="button" class="chip" data-tab="look" role="tab">Оформление</button>
           <button type="button" class="chip" data-tab="out" role="tab">Хранилище</button>
           <button type="button" class="chip" data-tab="int" role="tab">Интеграции</button>
         </nav>
@@ -135,6 +136,8 @@
       <div class="pright">
         <button id="lyrBtn" class="modebtn lyrbtn" title="Текст песни"></button>
         <button id="normBtn" class="modebtn" title="Постоянный уровень громкости"></button>
+        <!-- режим сна (sleep.js): луна, на ней — сколько минут осталось -->
+        <button id="sleepBtn" class="sleepbtn" title="Режим сна"><span id="sleepLeft" class="sleepleft" hidden></span></button>
         <div class="volwrap" id="volWrap">
           <button id="volBtn" title="Громкость (клик — выключить звук)"></button>
           <div class="volpop">
@@ -205,6 +208,8 @@
   <script src="app.js"></script>
   <script src="backup.js"></script>
   <script src="tray.js"></script>
+  <script src="eq.js"></script>
+  <script src="sleep.js"></script>
   <script src="keynav.js"></script>
   <script src="cli.js"></script>
   <script src="hotkeys.js"></script>

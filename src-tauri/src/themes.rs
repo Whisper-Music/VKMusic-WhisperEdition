@@ -4,9 +4,11 @@
 //! * свои темы лежат в ~/.config/vkmusic/themes/<id>.wmt;
 //! * файлы темы раздаются интерфейсу по адресу vkm://localhost/theme/<id>/<имя> (с --host — /p/vkm/theme/…, host.rs);
 //! * основы Whisper (neon, royal, steam, lolitta) — стили без файла: их CSS — в src/whisper.css;
+//! * стиль `omarchy` — тема, собранная из текущей темы Omarchy (omarchy.rs); есть, только пока есть Omarchy;
 //! * CSS темы собирает и очищает движок тем ядра в интерфейсе, как у Whisper Yandex (`WMT.open` + `themeCss`
 //!   из src/core): сюда за ним интерфейс приходит только за самим файлом (`raw`).
 
+use crate::omarchy;
 use crate::wmt::{self, Theme};
 use serde::Serialize;
 use serde_json::Value;
@@ -19,6 +21,8 @@ pub const WHISPER_ID: &str = "whisper-music";
 // своё для VK Music поверх неё — секция `@@ css whisper-vk` (необязательно; её подключает интерфейс)
 /// секция виджета OBS — не для окна приложения
 const OBS_ID: &str = "whisper-obs";
+/// заставка при запуске (как у Whisper Yandex): `@@ css whisper-intro` + `@@ settings whisper-intro` { name, duration }
+const INTRO_ID: &str = "whisper-intro";
 pub const DEFAULT_THEME: &str = "osaka-jade";
 /// Основы оформления Whisper — стили без файла (CSS — в src/whisper.css). id заняты, как у встроенных тем.
 pub const BASES: [(&str, &str); 4] = [("neon", "Неон"), ("royal", "Королевский"), ("steam", "Стимпанк"), ("lolitta", "Lolitta")];
@@ -43,6 +47,27 @@ pub struct ThemeInfo {
     pub accent: Option<String>,
     pub accent2: Option<String>,
     pub background_color: Option<String>,
+    /// у стиля есть интро (секция `whisper-intro`): его название и длительность — для «Оформление → Интро тем»
+    pub intro: Option<Intro>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Intro {
+    pub name: String,
+    /// секунды, 0,3…10 (по умолчанию 3) — как `introInfo` в core/theme-css.js
+    pub duration: f64,
+}
+
+/// Интро темы — те же правила, что у `WhisperThemeCss.introInfo` ядра: пустая секция — интро нет.
+fn intro_of(t: &Theme) -> Option<Intro> {
+    if t.css(INTRO_ID).is_none_or(|c| c.trim().is_empty()) {
+        return None;
+    }
+    let s = t.settings(INTRO_ID);
+    let duration = s.get("duration").and_then(Value::as_f64).filter(|d| d.is_finite()).map_or(3.0, |d| d.clamp(0.3, 10.0));
+    let name = s.get("name").and_then(Value::as_str).unwrap_or("");
+    let name: String = name.chars().filter(|c| !c.is_control()).collect::<String>().trim().chars().take(40).collect();
+    Some(Intro { name, duration })
 }
 
 /// Что интерфейсу нужно, чтобы включить стиль. CSS и tokens темы он берёт из самого файла (`theme_file`).
@@ -83,7 +108,7 @@ impl ThemeStore {
 
     /// id занят: встроенная тема или основа Whisper — своя тема с ним не ставится.
     pub fn is_builtin(id: &str) -> bool {
-        BUILTIN.iter().any(|(b, _)| *b == id) || is_base(id)
+        BUILTIN.iter().any(|(b, _)| *b == id) || is_base(id) || id == omarchy::ID
     }
 
     fn user_files(&self) -> Vec<PathBuf> {
@@ -101,6 +126,9 @@ impl ThemeStore {
 
     /// Загрузить тему по id (из кэша, встроенных или папки тем).
     pub fn get(&self, id: &str) -> Result<Arc<Theme>, String> {
+        if id == omarchy::ID {
+            return Ok(omarchy::current()?.theme.clone());
+        }
         if let Some(t) = self.cache.lock().unwrap().get(id) {
             return Ok(t.clone());
         }
@@ -122,6 +150,9 @@ impl ThemeStore {
     /// Файл темы как есть (встроенная — из бинарника). Нужен интерфейсу только для виджета OBS:
     /// секции whisper-obs с ресурсами разбирает движок ядра (WMT.open + WhisperThemeCss.obsCss).
     pub fn raw(&self, id: &str) -> Result<Vec<u8>, String> {
+        if id == omarchy::ID {
+            return Ok(omarchy::current()?.raw.to_vec());
+        }
         if let Some((_, bytes)) = BUILTIN.iter().find(|(b, _)| *b == id) {
             return Ok(bytes.to_vec());
         }
@@ -137,6 +168,10 @@ impl ThemeStore {
             if let Ok(t) = self.get(id) {
                 out.push(info(&t, true));
             }
+        }
+        // тема Omarchy — только когда Omarchy есть (иначе карточки нет)
+        if let Ok(b) = omarchy::current() {
+            out.push(info(&b.theme, true));
         }
         for path in self.user_files() {
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else { continue };
@@ -219,6 +254,7 @@ fn info(t: &Theme, builtin: bool) -> ThemeInfo {
         accent: color("accent").filter(|c| hex6(c).is_some()),
         accent2: color("accent2").filter(|c| hex6(c).is_some()),
         background_color: color("background").filter(|c| css_value_ok(c)),
+        intro: intro_of(t),
         id,
     }
 }
@@ -258,6 +294,24 @@ mod tests {
             assert!(t.css(WHISPER_ID).is_some(), "{id}: нет CSS секции {WHISPER_ID}");
             assert!(t.tokens.pointer("/color/accent").and_then(Value::as_str).and_then(hex6).is_some(), "{id}: нет accent");
         }
+    }
+
+    #[test]
+    fn intro_found() {
+        let head = "#WMT 1\n@@ manifest\n{\"id\":\"a\",\"name\":\"a\"}\n@@ css whisper-music\nx{}\n";
+        let open = |rest: &str| wmt::open(format!("{head}{rest}").as_bytes()).unwrap();
+        // нет секции или она пустая — нет и интро
+        assert_eq!(intro_of(&open("")), None);
+        assert_eq!(intro_of(&open("@@ css whisper-intro\n   \n")), None);
+        // без настроек — 3 с без названия
+        assert_eq!(intro_of(&open("@@ css whisper-intro\nbody::before{content:\"x\"}\n")), Some(Intro { name: String::new(), duration: 3.0 }));
+        // длительность — в пределах 0,3…10, имя — без управляющих символов и не длиннее 40
+        let long = "Я".repeat(50);
+        let t = open(&format!("@@ settings whisper-intro\n{{\"name\":\" \\u0007{long}\",\"duration\":99}}\n@@ css whisper-intro\nb{{}}\n"));
+        let i = intro_of(&t).unwrap();
+        assert_eq!((i.name.chars().count(), i.duration), (40, 10.0));
+        let t = open("@@ settings whisper-intro\n{\"name\":\"Загрузка\",\"duration\":0.01}\n@@ css whisper-intro\nb{}\n");
+        assert_eq!(intro_of(&t), Some(Intro { name: "Загрузка".into(), duration: 0.3 }));
     }
 
     #[test]

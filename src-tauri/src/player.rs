@@ -54,6 +54,12 @@ pub struct Player {
     /// «Постоянный уровень громкости»: включён ли и что сейчас играет (фильтр зависит от файла)
     norm: Mutex<bool>,
     current: Mutex<String>,
+    /// эквалайзер (фильтр `@vkeq` в `af`)
+    eq: Mutex<Eq>,
+    /// громкость ползунка (0…130, шкала интерфейса) и множитель затухания режима сна (0…1): в mpv уходит их
+    /// произведение, поэтому громкость можно менять и во время затухания, а после него она возвращается сама
+    vol: Mutex<f64>,
+    fade: Mutex<f64>,
     loud: Arc<crate::loudness::Loudness>,
     /// устройства вывода и текущее (`audio-device`) — mpv присылает их сам (observe_property), в том числе
     /// когда подключили наушники
@@ -61,6 +67,90 @@ pub struct Player {
 }
 
 const CUE_TTL: Duration = Duration::from_secs(30);
+
+/// Полосы эквалайзера, Гц (как у Whisper Yandex): крайние — полки, остальные — колокол шириной в октаву.
+pub const EQ_BANDS: [u32; 10] = [32, 64, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
+/// Предел подъёма и среза полосы и предусиления, дБ.
+const EQ_MAX: f64 = 12.0;
+
+/// Эквалайзер: 10 полос и предусиление. Звук идёт через фильтры ffmpeg в mpv (`@vkeq:lavfi=[…]` в `af`, после
+/// выравнивания громкости); пока он выключен, фильтра в цепочке нет вовсе. Полосы и предусиление меняются на ходу
+/// командой `af-command` у именованных фильтров (`equalizer@b3`, `volume@pre`) — без перезапуска звука.
+/// Полоса выше половины частоты дискретизации файла (16 кГц у файла 22 кГц) ffmpeg не применяет — звук идёт мимо неё.
+#[derive(Debug, Clone, PartialEq, Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Eq {
+    pub on: bool,
+    /// предусиление, дБ
+    pub pre: f64,
+    /// подъём/срез полос `EQ_BANDS`, дБ
+    pub gains: Vec<f64>,
+    /// «Без искажений»: поднятые полосы не выводят сигнал за предел — всё тише на самый большой подъём
+    pub guard: bool,
+    /// готовая настройка интерфейса ("flat", "rock"…; "custom" — своя)
+    pub preset: String,
+}
+
+impl Default for Eq {
+    fn default() -> Self {
+        Eq { on: false, pre: 0.0, gains: vec![0.0; EQ_BANDS.len()], guard: true, preset: "flat".into() }
+    }
+}
+
+/// дБ в пределах ±EQ_MAX с шагом 0,5 (NaN и бесконечность — 0).
+fn eq_db(v: f64) -> f64 {
+    if !v.is_finite() {
+        return 0.0;
+    }
+    (v.clamp(-EQ_MAX, EQ_MAX) * 2.0).round() / 2.0
+}
+
+impl Eq {
+    /// Значения от интерфейса — в допустимые: 10 полос, ±12 дБ, имя настройки — латиница до 20 символов.
+    pub fn clean(self) -> Eq {
+        let gains = if self.gains.len() == EQ_BANDS.len() { self.gains.into_iter().map(eq_db).collect() } else { vec![0.0; EQ_BANDS.len()] };
+        let ok = !self.preset.is_empty() && self.preset.len() <= 20 && self.preset.bytes().all(|b| b.is_ascii_lowercase());
+        Eq { on: self.on, pre: eq_db(self.pre), gains, guard: self.guard, preset: if ok { self.preset } else { "custom".into() } }
+    }
+
+    /// Предусиление с учётом «Без искажений».
+    fn pre_db(&self) -> f64 {
+        let top = if self.guard { self.gains.iter().copied().fold(0.0, f64::max) } else { 0.0 };
+        self.pre - top
+    }
+
+    /// Имя фильтра полосы `i` в графе и он сам.
+    fn band(&self, i: usize) -> (String, String) {
+        let (f, g) = (EQ_BANDS[i], self.gains.get(i).copied().unwrap_or(0.0));
+        let kind = if i == 0 { "lowshelf" } else if i == EQ_BANDS.len() - 1 { "highshelf" } else { "equalizer" };
+        let name = format!("{kind}@b{i}");
+        let shape = if kind == "equalizer" { ":t=q:w=1.41" } else { "" };
+        (name.clone(), format!("{name}=f={f}{shape}:g={g:.1}"))
+    }
+
+    /// Фильтр для `af` или None, если выключен.
+    fn filter(&self) -> Option<String> {
+        if !self.on {
+            return None;
+        }
+        let bands: Vec<String> = (0..EQ_BANDS.len()).map(|i| self.band(i).1).collect();
+        Some(format!("@vkeq:lavfi=[volume@pre=volume={:.1}dB,{}]", self.pre_db(), bands.join(",")))
+    }
+
+    /// Команды mpv, которые переводят включённый фильтр из `self` в `next` (только изменившееся).
+    fn commands_to(&self, next: &Eq) -> Vec<Value> {
+        let mut out = Vec::new();
+        if (self.pre_db() - next.pre_db()).abs() > 1e-9 {
+            out.push(json!(["af-command", "vkeq", "volume", format!("{:.1}dB", next.pre_db()), "volume@pre"]));
+        }
+        for i in 0..EQ_BANDS.len() {
+            if (self.gains[i] - next.gains[i]).abs() > 1e-9 {
+                out.push(json!(["af-command", "vkeq", "g", format!("{:.1}", next.gains[i]), next.band(i).0]));
+            }
+        }
+        out
+    }
+}
 
 /// Шкала громкости интерфейса: усиление = (v/100)^GAIN_POW. У mpv своя шкала кубическая (усиление = (m/100)³):
 /// с ней ползунок на 14% давал −51 дБ — почти тишину; линейная (как `audio.volume`) оказалась слишком громкой.
@@ -92,7 +182,7 @@ fn sock_path() -> PathBuf {
 }
 
 impl Player {
-    pub fn start<F>(volume: f64, loud: Arc<crate::loudness::Loudness>, on_event: F) -> Result<Player, String>
+    pub fn start<F>(volume: f64, eq: Eq, loud: Arc<crate::loudness::Loudness>, on_event: F) -> Result<Player, String>
     where
         F: Fn(PlayerEvent) + Send + 'static,
     {
@@ -163,6 +253,9 @@ impl Player {
             cue: Mutex::new(None),
             norm: Mutex::new(false),
             current: Mutex::new(String::new()),
+            eq: Mutex::new(eq.clean()),
+            vol: Mutex::new(volume.clamp(0.0, 100.0)),
+            fade: Mutex::new(1.0),
             loud,
             devices: Arc::new(Mutex::new((Vec::new(), "auto".into()))),
         };
@@ -212,10 +305,20 @@ impl Player {
         self.send(json!(["set_property", "start", if at > 0.0 { format!("{at:.3}") } else { "none".into() }]))?;
         self.send(json!(["set_property", "pause", hold]))?;
         *self.current.lock().unwrap() = src.to_string();
-        if *self.norm.lock().unwrap() {
-            self.send(json!(["set_property", "af", self.norm_filter(src)]))?;
-        }
+        self.send(json!(["set_property", "af", self.af_chain(src)]))?;
         self.send(json!(["loadfile", src, "replace"]))
+    }
+
+    /// Звуковые фильтры для источника: выравнивание громкости (если включено), затем эквалайзер (если включён).
+    fn af_chain(&self, src: &str) -> String {
+        let mut parts = Vec::new();
+        if *self.norm.lock().unwrap() {
+            parts.push(self.norm_filter(src));
+        }
+        if let Some(eq) = self.eq.lock().unwrap().filter() {
+            parts.push(eq);
+        }
+        parts.join(",")
     }
 
     /// Фильтр выравнивания для источника: файл на диске — по замеру (`loudness.rs`), поток — на лету.
@@ -248,8 +351,25 @@ impl Player {
     pub fn set_normalize(&self, on: bool) -> Result<(), String> {
         *self.norm.lock().unwrap() = on;
         let cur = self.current.lock().unwrap().clone();
-        let af = if on { self.norm_filter(&cur) } else { String::new() };
-        self.send(json!(["set_property", "af", af]))
+        self.send(json!(["set_property", "af", self.af_chain(&cur)]))
+    }
+
+    /// Эквалайзер. Включили или выключили — цепочка фильтров собирается заново (короткая заминка звука);
+    /// подвинули полосу — `af-command` только изменившимся фильтрам, звук не прерывается. Пока ничего не играет,
+    /// команды уходят в никуда — фильтр соберётся с новыми значениями перед следующим `loadfile`.
+    pub fn set_eq(&self, eq: Eq) -> Result<(), String> {
+        let eq = eq.clean();
+        let prev = std::mem::replace(&mut *self.eq.lock().unwrap(), eq.clone());
+        if prev.on != eq.on {
+            let cur = self.current.lock().unwrap().clone();
+            return self.send(json!(["set_property", "af", self.af_chain(&cur)]));
+        }
+        if eq.on {
+            for c in prev.commands_to(&eq) {
+                self.send(c)?;
+            }
+        }
+        Ok(())
     }
 
     /// Устройства вывода и текущее.
@@ -292,7 +412,24 @@ impl Player {
     }
 
     pub fn set_volume(&self, v: f64) -> Result<(), String> {
-        self.send(json!(["set_property", "volume", to_mpv(v.clamp(0.0, 130.0))]))
+        let v = v.clamp(0.0, 130.0);
+        *self.vol.lock().unwrap() = v;
+        self.send_volume()
+    }
+
+    /// Затухание режима сна: 1 — как на ползунке, 0 — тишина. Ползунок и настройки не меняются.
+    pub fn set_fade(&self, k: f64) -> Result<(), String> {
+        let k = if k.is_finite() { k.clamp(0.0, 1.0) } else { 1.0 };
+        let old = std::mem::replace(&mut *self.fade.lock().unwrap(), k);
+        if (old - k).abs() < 1e-6 {
+            return Ok(());
+        }
+        self.send_volume()
+    }
+
+    fn send_volume(&self) -> Result<(), String> {
+        let v = *self.vol.lock().unwrap() * *self.fade.lock().unwrap();
+        self.send(json!(["set_property", "volume", to_mpv(v)]))
     }
 
     pub fn stop(&self) -> Result<(), String> {
@@ -408,7 +545,8 @@ mod ipc {
 /// Шум, не связанный с загрузкой (теги, обложки, хуки скриптов), пропускается.
 fn log_reason(text: &str) -> Option<String> {
     let t = text.trim();
-    if t.is_empty() || ["hook", "auto_profiles", "Cover art", "metadata", "tag"].iter().any(|n| t.contains(n)) {
+    // «Invalid frequency» — полоса эквалайзера выше половины частоты дискретизации файла: ffmpeg её просто не применяет
+    if t.is_empty() || ["hook", "auto_profiles", "Cover art", "metadata", "tag", "Invalid frequency"].iter().any(|n| t.contains(n)) {
         return None;
     }
     let clean: Vec<&str> = t.split_whitespace().map(|w| if w.contains("://") { "…" } else { w }).collect();
@@ -624,6 +762,37 @@ mod tests {
             Some("Failed to open …")
         );
         assert_eq!(super::log_reason("Failed sending hook command auto_profiles/on_load."), None);
+        assert_eq!(super::log_reason("highshelf@b9: Invalid frequency and/or width!"), None);
+    }
+
+    #[test]
+    fn eq_filter_and_commands() {
+        use super::{Eq, EQ_BANDS};
+        // выключен — фильтра нет
+        assert_eq!(Eq::default().filter(), None);
+        // от интерфейса: лишняя полоса, NaN, за пределом, шаг не 0,5, чужое имя настройки
+        let bad = Eq { on: true, pre: f64::NAN, gains: vec![1.0; 11], guard: false, preset: "Rock!".into() }.clean();
+        assert_eq!(bad.gains, vec![0.0; EQ_BANDS.len()]);
+        assert_eq!((bad.pre, bad.preset.as_str()), (0.0, "custom"));
+        let mut gains = vec![0.0; EQ_BANDS.len()];
+        gains[0] = 6.24;
+        gains[3] = -40.0;
+        let eq = Eq { on: true, pre: 2.0, gains, guard: true, preset: "rock".into() }.clean();
+        assert_eq!((eq.gains[0], eq.gains[3], eq.preset.as_str()), (6.0, -12.0, "rock"));
+        let f = eq.filter().unwrap();
+        // «Без искажений»: предусиление 2 − самый большой подъём 6
+        assert!(f.starts_with("@vkeq:lavfi=[volume@pre=volume=-4.0dB,lowshelf@b0=f=32:g=6.0,"), "{f}");
+        assert!(f.contains(",equalizer@b3=f=250:t=q:w=1.41:g=-12.0,") && f.ends_with(",highshelf@b9=f=16000:g=0.0]"), "{f}");
+        // команды — только изменившимся фильтрам
+        let mut next = eq.clone();
+        next.gains[5] = 3.0;
+        let cmds = eq.commands_to(&next);
+        assert_eq!(cmds.len(), 1);
+        assert_eq!(cmds[0], serde_json::json!(["af-command", "vkeq", "g", "3.0", "equalizer@b5"]));
+        next.gains[0] = 9.0; // самый большой подъём вырос — меняется и предусиление
+        let cmds = eq.commands_to(&next);
+        assert_eq!(cmds[0], serde_json::json!(["af-command", "vkeq", "volume", "-7.0dB", "volume@pre"]));
+        assert_eq!(cmds.len(), 3);
     }
 
     #[test]

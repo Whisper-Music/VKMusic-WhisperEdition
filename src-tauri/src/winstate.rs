@@ -58,9 +58,38 @@ pub fn restore(win: &Window, saved: Option<WinState>) {
     let _ = win.show();
 }
 
+/// Окно стоит плиткой у тайлингового композитора. Hyprland сообщает такому окну и «развёрнуто» (проверено
+/// 2026-11-10, Hyprland 0.57: MAXIMIZED вместе с TILED со всех сторон) — запомни мы это, при следующем запуске
+/// `restore` попросил бы развернуть окно, и Hyprland развернул бы его на весь экран вместо плитки.
+#[cfg(target_os = "linux")]
+fn tiled(win: &Window) -> bool {
+    use gtk::gdk::WindowState as W;
+    use gtk::prelude::*;
+    // события окна приходят в главном потоке, но GTK из другого трогать нельзя
+    if !gtk::is_initialized_main_thread() {
+        return false;
+    }
+    let tiles = W::TILED | W::TOP_TILED | W::RIGHT_TILED | W::BOTTOM_TILED | W::LEFT_TILED;
+    win.gtk_window()
+        .ok()
+        .and_then(|g| g.window())
+        .is_some_and(|w| w.state().intersects(tiles))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn tiled(_: &Window) -> bool {
+    false
+}
+
 /// Текущее состояние окна поверх прежнего: у развёрнутого / свёрнутого размер и положение не трогаем
-/// (иначе после «развернуть» обычный размер стал бы размером экрана).
+/// (иначе после «развернуть» обычный размер стал бы размером экрана). Окно-плитка развёрнутым не считается,
+/// но и его размер — размер плитки — не запоминаем: обычным окном оно откроется прежнего размера.
 fn snapshot(win: &Window, prev: Option<WinState>) -> Option<WinState> {
+    if tiled(win) {
+        let mut s = prev?;
+        s.max = false;
+        return Some(s);
+    }
     let max = win.is_maximized().unwrap_or(false);
     let mut s = prev.unwrap_or(WinState { w: 1280.0, h: 820.0, x: None, y: None, max });
     s.max = max;
