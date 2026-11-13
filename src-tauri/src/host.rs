@@ -66,8 +66,8 @@ pub fn active() -> bool {
 pub fn vkm_base() -> &'static str {
     if active() {
         "/p/vkm/"
-    } else if cfg!(windows) {
-        // WebView2 открывает свои схемы как http://<схема>.localhost
+    } else if cfg!(any(windows, target_os = "android")) {
+        // WebView2 и Android WebView открывают свои схемы как http://<схема>.localhost
         "http://vkm.localhost/"
     } else {
         "vkm://localhost/"

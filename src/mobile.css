@@ -82,6 +82,10 @@ html.mobile .side .nav {
 }
 
 /* ---------- списки ---------- */
+/* длинное название без пробелов не должно растягивать колонку шире экрана (правая часть строки уезжала за край) */
+html.mobile .cols > *, html.mobile .libcol { min-width: 0; max-width: 100%; }
+html.mobile .list li > div { min-width: 0; flex: 1 1 auto; }
+html.mobile .list li .t, html.mobile .list li .a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html.mobile .list li { gap: 10px; padding: 6px 4px; }
 html.mobile .list li:hover { background: none; }
 html.mobile .list li.playing { background: rgba(255,255,255,.1); }

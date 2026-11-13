@@ -116,7 +116,10 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
   @Command
   fun setEvents(invoke: Invoke) {
     val ch = invoke.parseArgs(EventsArgs::class.java).channel
-    Engine.get(activity).sink = { ch.send(it) }
+    val e = Engine.get(activity)
+    e.sink = { ch.send(it) }
+    // первое состояние сразу, как mpv после запуска: по нему интерфейс рисует кнопку «Пуск»
+    e.push()
     invoke.resolve()
   }
 

@@ -4675,6 +4675,9 @@ function placeSeekDot(b) {
 }
 
 function initPlayer() {
+  // значок «Пуск» — сразу: первое состояние плеера может прийти раньше подписки на события (ExoPlayer на Android
+  // присылает его при запуске) и потеряться, а следующее будет только после включения трека
+  updatePlayButton();
   $("#play").addEventListener("click", togglePlay);
   $("#fPlay").addEventListener("click", togglePlay);
   for (const id of ["#likeBtn", "#fLike"]) {
