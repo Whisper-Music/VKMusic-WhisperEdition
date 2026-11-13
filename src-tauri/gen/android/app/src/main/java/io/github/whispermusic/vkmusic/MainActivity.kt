@@ -16,8 +16,9 @@ import androidx.core.view.WindowInsetsCompat
 
 /**
  * Окно приложения. До запуска Rust (он стартует из super.onCreate) — папки: HOME и XDG_* — личная папка приложения
- * (настройки, библиотека, кэш; config.rs, dirs), VKM_MUSIC_DIR / VKM_DOWNLOAD_DIR — общие «Музыка» и «Загрузки»
- * телефона (папка музыки и «Скачать»).
+ * (настройки, библиотека, кэш; config.rs, dirs), VKM_MUSIC_DIR — своя папка «Музыка/VK Music» (как ~/Music/vk на
+ * компьютере: в библиотеку попадает только то, что положили туда, а не вся музыка телефона — просьба владельца,
+ * 2026-11-14), VKM_DOWNLOAD_DIR — общие «Загрузки» («Скачать»).
  */
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,7 +29,10 @@ class MainActivity : TauriActivity() {
     Os.setenv("XDG_CACHE_HOME", cacheDir.absolutePath, true)
     Os.setenv("XDG_RUNTIME_DIR", cacheDir.absolutePath, true)
     @Suppress("DEPRECATION")
-    Os.setenv("VKM_MUSIC_DIR", Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC).absolutePath, true)
+    val music = java.io.File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "VK Music")
+    // папка — сразу, чтобы её было видно в «Файлах» и было куда класть свои треки
+    try { music.mkdirs() } catch (_: Exception) {}
+    Os.setenv("VKM_MUSIC_DIR", music.absolutePath, true)
     @Suppress("DEPRECATION")
     Os.setenv("VKM_DOWNLOAD_DIR", Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath, true)
     enableEdgeToEdge()

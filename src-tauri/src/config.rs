@@ -147,7 +147,7 @@ impl Config {
         std::fs::rename(&tmp, config_path()).map_err(|e| e.to_string())
     }
 
-    /// Папка локальной музыки: настройка или ~/Music/vk (Android — общая «Музыка» телефона).
+    /// Папка локальной музыки: настройка или ~/Music/vk (Android — «Музыка/VK Music» телефона).
     pub fn music_dir(&self) -> PathBuf {
         expand(&self.music_dir)
             .or_else(|| shared("VKM_MUSIC_DIR"))
@@ -162,7 +162,7 @@ impl Config {
     }
 }
 
-/// Android: общие папки телефона (/storage/emulated/0/Music, …/Download) — их передаёт MainActivity при запуске;
+/// Android: папки телефона (/storage/emulated/0/Music/VK Music, …/Download) — их передаёт MainActivity при запуске;
 /// HOME там — личная папка приложения, и «~/Music» была бы недоступна другим приложениям.
 fn shared(var: &str) -> Option<PathBuf> {
     if !cfg!(mobile) {
