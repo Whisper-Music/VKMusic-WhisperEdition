@@ -144,6 +144,13 @@ yt-dlp уже внутри установщика, ставить ничего �
 в любом случае». Настройки — в `%APPDATA%\vkmusic`, музыка — в `Музыка\vk`. Новые версии приложение находит само при запуске
 и ставит по кнопке «Обновить».
 
+**Android 7+** (ветка `mobile`, пока без готовых выпусков — APK собирается из исходников, см. ниже): тот же VK Music
+на телефоне — ВКонтакте и SoundCloud, библиотека, VK Микс и плейлисты, тексты песен, темы Whisper, «Слушать вместе»
+и Whisper Archive. Музыка играет в фоне, с уведомлением и кнопками на экране блокировки и в наушниках; эквалайзер и
+«Постоянный уровень громкости» — с Android 9. Вход — обычной страницей сервиса поверх приложения. Папка музыки —
+«Музыка» телефона, «Скачать» кладёт трек в «Загрузки». На телефоне нет загрузок по ссылкам (yt-dlp), трея,
+Discord и виджета OBS; «Назад» на главном экране сворачивает приложение, музыка играет дальше.
+
 <details>
 <summary><b>Сборка из исходников</b></summary>
 
@@ -169,6 +176,15 @@ cargo build --release
 ```
 
 Пакет `.deb` / `.AppImage`: `npx --yes @tauri-apps/cli@2 build --bundles deb,appimage`.
+
+Android (ветка `mobile`): нужны JDK 17, Android SDK и NDK, цели Rust
+`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android`.
+
+```bash
+git switch mobile
+./packaging/android.sh --install            # отладочный APK для arm64 и установка на телефон по adb
+VKM_KEYSTORE=vkmusic.jks VKM_KEYSTORE_PASS=… ./packaging/android.sh --release   # подписанный APK, все архитектуры
+```
 
 </details>
 

@@ -8,6 +8,8 @@ const invoke = TAURI.core.invoke;
 const listen = TAURI.event.listen;
 /** Интерфейс в браузере (vkmusic --host): __TAURI__ подменяет src/host.js. */
 const HOST = !!TAURI.__host;
+/** Телефон (Android): класс ставит boot.js; без трея, окна, горячих клавиш и yt-dlp (mobile.js, mobile.css). */
+const MOBILE = document.documentElement.classList.contains("mobile");
 /** Начало адресов протокола vkm:// (обложки файлов): vkm://localhost/ в окне, /p/vkm/ в браузере. */
 const VKM = TAURI.core.convertFileSrc("", "vkm");
 
@@ -1214,9 +1216,9 @@ function fetchSection(id, sec, more) {
         if (searchCache.get(key) === sec) searchCache.delete(key);
         return;
       }
+      // ошибка остаётся в кэше до нового поиска (runSearch) или «Повторить»: если выбросить её сразу, renderSearch
+      // ниже создал бы секцию заново и снова спросил сервис — запросы шли по кругу без конца (было до 2026-11-13)
       Object.assign(sec, { busy: false, error: msg, login: /не вошли/i.test(msg) });
-      // ошибки не кэшируем — следующий раз спросим снова (например, после входа)
-      if (!more) searchCache.delete(key);
     })
     .finally(() => S.page === "search" && renderSearch());
 }
@@ -1224,6 +1226,8 @@ function fetchSection(id, sec, more) {
 /** Поиск по строке: текст — в отмеченных сервисах; ссылка SoundCloud — открыть трек/плейлист. */
 function runSearch(q, force) {
   if (!force && q.length < SEARCH_MIN && !isUrl(q)) return;
+  // новый поиск пользователя — прежние ошибки спрашиваются заново (например, после входа)
+  for (const [k, sec] of searchCache) if (!sec.busy && sec.error && !sec.tracks.length) searchCache.delete(k);
   const kind = isScUrl(q) ? "url" : isUrl(q) ? "link" : "text";
   const lq = q.toLowerCase();
   S.sr = {
@@ -1444,6 +1448,8 @@ function renderServices() {
   const c = $("#content");
   c.replaceChildren();
   for (const id of Object.keys(SERVICES)) c.append(renderServiceCard(id));
+  // на телефоне yt-dlp и ffmpeg нет — загрузки по ссылкам тоже
+  if (MOBILE) return;
   const yd = el("div", "card colbreak");
   yd.append(
     el("h3", null, L("Загрузка файлов (yt-dlp)")),
@@ -2310,9 +2316,10 @@ function renderSettings() {
   renderIntroCard();
   renderGeneral();
   renderLyricsSettings();
-  if (window.renderTraySettings) renderTraySettings(); // tray.js
+  // на телефоне трея и окна нет: плеер — в уведомлении, интерфейс — только в приложении
+  if (window.renderTraySettings && !MOBILE) renderTraySettings(); // tray.js
   if (window.renderSleepCard) renderSleepCard(); // sleep.js
-  renderModeCard();
+  if (!MOBILE) renderModeCard();
   renderStorage();
   if (window.renderBackup) renderBackup(); // backup.js
   for (const m of mods) page.append(m);
@@ -2352,8 +2359,9 @@ function renderGeneral() {
     row.append(b);
   }
   c.append(row);
-  if (window.Layout) window.Layout.card(setCard("ui", L("Расположение")));
-  if (window.Hotkeys) window.Hotkeys.card(setCard("ui", L("Горячие клавиши")));
+  // расположение панелей и горячие клавиши — только на компьютере (на телефоне раскладка своя, клавиатуры нет)
+  if (window.Layout && !MOBILE) window.Layout.card(setCard("ui", L("Расположение")));
+  if (window.Hotkeys && !MOBILE) window.Hotkeys.card(setCard("ui", L("Горячие клавиши")));
 }
 
 /** «Окно и браузер» (Общее): тот же VK Music — окном или вкладкой браузера (--host, host.rs). Переключение
@@ -5131,7 +5139,7 @@ async function boot() {
     .then((c) => {
       S.caps = c;
       if (S.page === "services") renderServices();
-      if (!c.ytdlp || !c.ffmpeg) toast(L("Для загрузки по ссылкам нужны yt-dlp и ffmpeg: sudo pacman -S yt-dlp ffmpeg"), "error");
+      if ((!c.ytdlp || !c.ffmpeg) && !MOBILE) toast(L("Для загрузки по ссылкам нужны yt-dlp и ffmpeg: sudo pacman -S yt-dlp ffmpeg"), "error");
     })
     .catch(() => {});
 

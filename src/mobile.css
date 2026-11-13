@@ -1,0 +1,140 @@
+/* Телефон (Android; класс html.mobile ставит boot.js): та же разметка Whisper, разложенная под палец.
+   Сверху вниз: поиск и страница (.main) → плеер (.player, две строки) → разделы (.side — полоса внизу).
+   Экран «Сейчас играет» (#full) — обложка/текст, кнопки, режимы плеера (их переносит сюда mobile.js).
+
+   Темы Whisper написаны под окно компьютера и могут ставить панелям свои размеры и положение, поэтому раскладка
+   здесь — с !important (только раскладка: цвета, шрифты и эффекты остаются у темы). Свои правила — html.mobile,
+   чтобы на компьютере ничего не менялось. */
+
+html.mobile, html.mobile body { height: 100%; overflow: hidden; }
+html.mobile body { -webkit-tap-highlight-color: transparent; overscroll-behavior: none; -webkit-text-size-adjust: 100%; }
+
+/* окна нет — нет и его полосы, перетаскивания файлов, полосы входа (вход — окном Android поверх приложения) */
+html.mobile .titlebar,
+html.mobile .tabs,
+html.mobile .login-bar,
+html.mobile .drop-hint,
+html.mobile #sideFold,
+html.mobile .lyhandle { display: none !important; }
+
+html.mobile .app {
+  position: fixed !important; inset: 0 !important; width: auto !important; height: auto !important;
+  display: flex !important; flex-direction: column !important;
+  padding: 0 !important; gap: 0 !important; margin: 0 !important; transform: none !important;
+}
+
+/* ---------- страница ---------- */
+html.mobile .main {
+  order: 1; flex: 1 1 auto !important; min-height: 0 !important; width: auto !important; max-width: none !important;
+  position: relative !important; inset: auto !important; margin: 0 !important; border-radius: 0 !important;
+  overflow-x: hidden !important; overflow-y: auto !important; padding: 0 12px 16px !important;
+  overscroll-behavior: contain;
+}
+html.mobile .main::-webkit-scrollbar { width: 0; }
+/* поиск — над страницей, прилипает к верху (mobile.js переносит его из боковой панели) */
+html.mobile .msearch { position: sticky; top: 0; z-index: 6; padding: 10px 0 8px; margin: 0 -12px; padding-left: 12px; padding-right: 12px; }
+html.mobile .msearch .search { width: 100% !important; font-size: 16px; padding: 11px 16px; } /* 16px — без увеличения при вводе */
+html.mobile .head { flex-wrap: wrap; gap: 10px; margin: 2px 0 10px; }
+html.mobile .head h2 { font-size: 24px !important; line-height: 1.15; }
+html.mobile .headimg { width: 56px; height: 56px; }
+html.mobile .headtext { min-width: 0; flex: 1 1 160px; }
+html.mobile .headbtns { flex-wrap: wrap; gap: 6px; }
+html.mobile .round { width: 40px; height: 40px; }
+
+/* ---------- плеер: строка перемотки, под ней — трек и кнопки ---------- */
+html.mobile .player {
+  order: 2; flex: none !important; position: relative !important; inset: auto !important;
+  width: auto !important; height: auto !important; min-height: 0 !important; max-height: none !important;
+  margin: 0 !important; border-radius: 0 !important; transform: none !important;
+  display: grid !important; grid-template-columns: minmax(0, 1fr) auto !important;
+  grid-template-rows: auto auto !important; grid-template-areas: "seek seek" "info ctrls" !important;
+  gap: 0 6px !important; padding: 2px 8px 6px 12px !important; border-left: 0 !important; border-right: 0 !important;
+}
+html.mobile .pcenter { display: contents !important; }
+html.mobile .seekrow { grid-area: seek; gap: 6px; min-width: 0; }
+html.mobile .seekrow .time { width: 34px; font-size: 11px; }
+html.mobile .pinfo { grid-area: info; gap: 10px; min-width: 0; }
+html.mobile .pinfo .cover { width: 44px !important; height: 44px !important; flex: none; }
+html.mobile .pinfo .meta { flex: 1; }
+html.mobile .pinfo .meta b { font-size: 14px; }
+html.mobile .pinfo .meta span { font-size: 12px; }
+html.mobile .ctrls { grid-area: ctrls; gap: 2px !important; justify-content: flex-end; }
+html.mobile .ctrls > button { width: 42px; height: 42px; display: grid; place-items: center; flex: none; }
+html.mobile .ctrls .pmore { margin: 0; }
+/* громкость — кнопками телефона; остальное правого края — на экране «Сейчас играет» */
+html.mobile .pright { display: none !important; }
+
+/* ---------- разделы: полоса внизу, все шесть сразу (без прокрутки: «Настройки» всегда под пальцем — их ищет и
+   защита от ломающих тем, themeguard.js) ---------- */
+html.mobile .side {
+  order: 3; flex: none !important; position: relative !important; inset: auto !important;
+  width: auto !important; height: auto !important; min-height: 0 !important; margin: 0 !important; border-radius: 0 !important;
+  display: grid !important; grid-template-columns: repeat(6, minmax(0, 1fr)) !important; grid-auto-flow: column;
+  align-items: stretch; gap: 3px !important; padding: 5px 4px !important; overflow: hidden !important;
+  border-left: 0 !important; border-right: 0 !important; border-bottom: 0 !important;
+}
+html.mobile .side .spacer, html.mobile .side .queue-mini { display: none !important; }
+html.mobile .side .nav {
+  min-width: 0; width: auto !important; margin: 0 !important; padding: 8px 2px !important; text-align: center;
+  font-size: clamp(9.5px, 2.75vw, 13px) !important; letter-spacing: -0.01em; line-height: 1.15;
+  white-space: normal; overflow: hidden; text-overflow: ellipsis; overflow-wrap: anywhere; hyphens: auto;
+  display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 2px;
+}
+
+/* ---------- списки ---------- */
+html.mobile .list li { gap: 10px; padding: 6px 4px; }
+html.mobile .list li:hover { background: none; }
+html.mobile .list li.playing { background: rgba(255,255,255,.1); }
+html.mobile .list img { width: 44px; height: 44px; }
+/* карточка «Сейчас играет» рядом со списком — на телефоне это плеер внизу */
+html.mobile .nowcard { display: none !important; }
+/* действия строки на компьютере видны при наведении — на телефоне наведения нет: всегда */
+html.mobile .list li .lacts { opacity: 1; }
+html.mobile .list li .lq { display: none; }
+html.mobile .simgrid, html.mobile .plgrid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+
+/* ---------- настройки, статистика, магазин тем ---------- */
+html.mobile .settings { columns: 1 !important; max-width: none; }
+html.mobile .settabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+html.mobile .settabs::-webkit-scrollbar { display: none; }
+html.mobile .stylepick { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+html.mobile .statcards, html.mobile .statgrid, html.mobile .lsfav { grid-template-columns: minmax(0, 1fr) !important; }
+html.mobile .stpeople { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+html.mobile .cols { flex-direction: column; gap: 12px; }
+/* Discord и виджет OBS — программы компьютера */
+html.mobile #settingsPage > .card:has(#dcOn), html.mobile #settingsPage > .card:has(#obsOn) { display: none !important; }
+
+/* ---------- VK Микс ---------- */
+html.mobile .wavepage .stage { min-height: 220px; }
+
+/* ---------- всплывающее: не шире экрана ---------- */
+html.mobile .popup, html.mobile .tmenu, html.mobile .confirm-pop { max-width: calc(100vw - 16px) !important; }
+html.mobile .tmenu { max-height: 70vh; overflow-y: auto; }
+html.mobile .toast { max-width: calc(100vw - 24px); bottom: 150px; }
+
+/* ---------- «Сейчас играет» ---------- */
+html.mobile .full { --f-top: 0px; }
+html.mobile .fwrap { padding: 14px 16px 18px !important; gap: 12px; }
+html.mobile .fclose { top: 10px; right: 10px; }
+/* «Текст / язык / Genius» — строкой над треком, слева от крестика (на компьютере — поверх, у крестика) */
+html.mobile .fsrc { position: static !important; align-self: flex-start; flex-wrap: wrap; margin-right: 52px; }
+html.mobile .full[data-mode="lyrics"] .fhead { padding-right: 0; }
+html.mobile .full[data-mode="cover"] .fcover { width: min(80vw, 42vh) !important; height: min(80vw, 42vh) !important; }
+html.mobile .full[data-mode="cover"] .ftitle { font-size: 24px; white-space: normal; }
+html.mobile .full[data-mode="cover"] .fartist { font-size: 16px; }
+html.mobile .fhead { padding-right: 0; }
+html.mobile .ln { font-size: 22px; padding: 6px 8px; }
+html.mobile .ptext { font-size: 17px; }
+html.mobile .fbtns { gap: 12px; }
+html.mobile .fbtns button { width: 52px; height: 52px; }
+/* режимы плеера (перемешать, повтор, текст, громкость, сон) — строкой под кнопками */
+html.mobile .fmodes { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 4px; }
+html.mobile .fmodes > button { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; }
+html.mobile .fmodes .sleepbtn { position: relative; }
+
+/* ---------- очередь и история (core/queue.css): на весь экран и поверх «Сейчас играет» (её кнопка — там);
+   ниже окон (.login.modal, 80) и меню ---------- */
+html.mobile .qpanel {
+  z-index: 45 !important; top: 8px !important; bottom: 8px !important; left: 8px !important; right: 8px !important;
+  width: auto !important; max-width: none !important; height: auto !important;
+}

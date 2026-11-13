@@ -30,7 +30,8 @@
   const saveDismissed = () => { try { localStorage.setItem(KEY, JSON.stringify([...dismissed])); } catch {} };
   // окна, меню, подсказки, очередь, плеер на весь экран: если перекрывает это — проверка не годится, повторим позже
   const TRANSIENT = ".modal, .login, .tmenu, .popup, .toast, .confirm-pop, .qpanel, #full, .ccmodal";
-  const hostMode = () => document.documentElement.classList.contains("host-mode");
+  // окна нет: интерфейс во вкладке браузера (--host) или на телефоне — закрыть/свернуть/перетащить не требуются
+  const hostMode = () => document.documentElement.classList.contains("host-mode") || document.documentElement.classList.contains("mobile");
   const ACTS = {
     close: { name: "закрыть окно", el: "#wClose", th: ["close"], win: true },
     minimize: { name: "свернуть окно", el: "#wMin", th: ["minimize"], win: true },

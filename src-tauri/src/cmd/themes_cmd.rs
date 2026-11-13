@@ -1,5 +1,5 @@
 //! Темы: установка, выбор, файлы; библиотека тем whisper-themes.
-//! Команды Tauri (#[tauri::command]) — список в generate_handler! в main.rs; общее (AppState, Res, …) — из main.rs.
+//! Команды Tauri (#[tauri::command]) — список в generate_handler! в lib.rs; общее (AppState, Res, …) — из lib.rs.
 
 use crate::*;
 

@@ -4,11 +4,21 @@
 //! Если стоит mpv-mpris, медиаклавиши тоже работают.
 
 use serde::Serialize;
+#[cfg(desktop)]
 use serde_json::{json, Value};
+
+// Android: тот же API поверх ExoPlayer (mobile/player.rs); типы, эквалайзер и список устройств — общие
+#[cfg(mobile)]
+pub use crate::mobile::player::Player;
+#[cfg(desktop)]
 use std::io::Write;
+#[cfg(desktop)]
 use std::path::PathBuf;
+#[cfg(desktop)]
 use std::process::{Child, Stdio};
+#[cfg(desktop)]
 use std::sync::{Arc, Mutex};
+#[cfg(desktop)]
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -41,6 +51,7 @@ pub struct AudioDevice {
     pub description: String,
 }
 
+#[cfg(desktop)]
 pub struct Player {
     writer: Mutex<ipc::Writer>,
     child: Mutex<Child>,
@@ -66,6 +77,7 @@ pub struct Player {
     devices: Arc<Mutex<(Vec<AudioDevice>, String)>>,
 }
 
+#[cfg(desktop)]
 const CUE_TTL: Duration = Duration::from_secs(30);
 
 /// Полосы эквалайзера, Гц (как у Whisper Yandex): крайние — полки, остальные — колокол шириной в октаву.
@@ -114,12 +126,13 @@ impl Eq {
     }
 
     /// Предусиление с учётом «Без искажений».
-    fn pre_db(&self) -> f64 {
+    pub(crate) fn pre_db(&self) -> f64 {
         let top = if self.guard { self.gains.iter().copied().fold(0.0, f64::max) } else { 0.0 };
         self.pre - top
     }
 
     /// Имя фильтра полосы `i` в графе и он сам.
+    #[cfg(desktop)]
     fn band(&self, i: usize) -> (String, String) {
         let (f, g) = (EQ_BANDS[i], self.gains.get(i).copied().unwrap_or(0.0));
         let kind = if i == 0 { "lowshelf" } else if i == EQ_BANDS.len() - 1 { "highshelf" } else { "equalizer" };
@@ -129,6 +142,7 @@ impl Eq {
     }
 
     /// Фильтр для `af` или None, если выключен.
+    #[cfg(desktop)]
     fn filter(&self) -> Option<String> {
         if !self.on {
             return None;
@@ -138,6 +152,7 @@ impl Eq {
     }
 
     /// Команды mpv, которые переводят включённый фильтр из `self` в `next` (только изменившееся).
+    #[cfg(desktop)]
     fn commands_to(&self, next: &Eq) -> Vec<Value> {
         let mut out = Vec::new();
         if (self.pre_db() - next.pre_db()).abs() > 1e-9 {
@@ -156,24 +171,27 @@ impl Eq {
 /// с ней ползунок на 14% давал −51 дБ — почти тишину; линейная (как `audio.volume`) оказалась слишком громкой.
 /// Квадратичная — посередине (просьба владельца, 2026-11-05: «обычная громкость — около 20%»):
 /// 14% → −34 дБ, 20% → −28 дБ, 50% → −12 дБ, 100% → 0 дБ.
+#[cfg(desktop)]
 const GAIN_POW: f64 = 2.0;
 
+#[cfg(desktop)]
 /// Громкость интерфейса (0…100) → громкость mpv.
 pub fn to_mpv(v: f64) -> f64 {
     100.0 * (v.max(0.0) / 100.0).powf(GAIN_POW / 3.0)
 }
 
+#[cfg(desktop)]
 /// Обратно: громкость mpv → громкость интерфейса.
 pub fn from_mpv(m: f64) -> f64 {
     100.0 * (m.max(0.0) / 100.0).powf(3.0 / GAIN_POW)
 }
 
-#[cfg(windows)]
+#[cfg(all(desktop, windows))]
 fn sock_path() -> PathBuf {
     PathBuf::from(format!(r"\\.\pipe\vkmusic-mpv-{}", std::process::id()))
 }
 
-#[cfg(unix)]
+#[cfg(all(desktop, unix))]
 fn sock_path() -> PathBuf {
     let base = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
@@ -181,6 +199,7 @@ fn sock_path() -> PathBuf {
     base.join(format!("vkmusic-mpv-{}.sock", std::process::id()))
 }
 
+#[cfg(desktop)]
 impl Player {
     pub fn start<F>(volume: f64, eq: Eq, loud: Arc<crate::loudness::Loudness>, on_event: F) -> Result<Player, String>
     where
@@ -448,7 +467,7 @@ impl Player {
 }
 
 /// Связь с mpv: на Linux — unix-сокет (отдельные дескрипторы на чтение и запись).
-#[cfg(unix)]
+#[cfg(all(desktop, unix))]
 mod ipc {
     use std::io::{BufRead, BufReader};
     use std::os::unix::net::UnixStream;
@@ -465,7 +484,7 @@ mod ipc {
 
 /// Связь с mpv на Windows: именованный канал. Синхронный дескриптор канала не даёт писать, пока поток событий
 /// ждёт чтения, поэтому канал асинхронный (tokio): запись — через очередь, строки событий — в канал std.
-#[cfg(windows)]
+#[cfg(all(desktop, windows))]
 mod ipc {
     use std::path::Path;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -541,6 +560,7 @@ mod ipc {
     }
 }
 
+#[cfg(desktop)]
 /// Строка журнала mpv как причина ошибки: без ссылок (в них подписи и адрес), не длиннее 160 символов.
 /// Шум, не связанный с загрузкой (теги, обложки, хуки скриптов), пропускается.
 fn log_reason(text: &str) -> Option<String> {
@@ -553,6 +573,7 @@ fn log_reason(text: &str) -> Option<String> {
     Some(clean.join(" ").chars().take(160).collect())
 }
 
+#[cfg(desktop)]
 /// Причина для сообщения: первая и последняя строки журнала (если разные).
 fn reason_of(why: &[String]) -> Option<String> {
     match why {
@@ -632,6 +653,7 @@ fn common_prefix(s: &[&str]) -> usize {
     if cut < 4 || s.iter().any(|x| x[cut..].trim().is_empty()) { 0 } else { cut }
 }
 
+#[cfg(desktop)]
 /// `audio-device-list` mpv → устройства.
 fn parse_devices(v: Option<&Value>) -> Vec<AudioDevice> {
     v.and_then(Value::as_array)
@@ -647,6 +669,7 @@ fn parse_devices(v: Option<&Value>) -> Vec<AudioDevice> {
         .unwrap_or_default()
 }
 
+#[cfg(desktop)]
 fn read_events<F: Fn(PlayerEvent)>(
     lines: impl Iterator<Item = String>,
     devices: Arc<Mutex<(Vec<AudioDevice>, String)>>,

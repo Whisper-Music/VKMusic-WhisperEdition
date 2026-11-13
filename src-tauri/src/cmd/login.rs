@@ -1,5 +1,5 @@
 //! Вход в сервисы (ВКонтакте, SoundCloud): страница входа вторым webview, куки WebKit / WebView2.
-//! Команды Tauri (#[tauri::command]) — список в generate_handler! в main.rs; общее (AppState, Res, …) — из main.rs.
+//! Команды Tauri (#[tauri::command]) — список в generate_handler! в lib.rs; общее (AppState, Res, …) — из lib.rs.
 
 use crate::*;
 
@@ -19,7 +19,8 @@ pub(crate) fn login_layout(app: &AppHandle, login: bool) {
     if host::active() {
         return;
     }
-    // Windows: страница входа — дочерний webview поверх интерфейса (ниже полосы), раскладывать нечего
+    // Windows: страница входа — дочерний webview поверх интерфейса (ниже полосы), раскладывать нечего;
+    // Android — своё окно поверх приложения (mobile/login.rs)
     #[cfg(not(target_os = "linux"))]
     let _ = (app, login);
     #[cfg(target_os = "linux")]
@@ -58,16 +59,35 @@ pub(crate) fn login_layout(app: &AppHandle, login: bool) {
 }
 
 pub(crate) fn login_close(app: &AppHandle) {
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        crate::mobile::login::close();
+    }
+    #[cfg(desktop)]
     if host::active() {
         if let Some(w) = app.get_webview_window(LOGIN_LABEL) {
             let _ = w.close();
         }
         return;
     }
+    #[cfg(desktop)]
     if let Some(v) = app.get_webview(LOGIN_LABEL) {
         let _ = v.close();
     }
+    #[cfg(desktop)]
     login_layout(app, false);
+}
+
+/// Страница входа ещё открыта (не закрыта пользователем и не убрана после входа).
+fn login_open(app: &AppHandle) -> bool {
+    #[cfg(mobile)]
+    {
+        let _ = app;
+        crate::mobile::login::is_open()
+    }
+    #[cfg(desktop)]
+    app.get_webview(LOGIN_LABEL).is_some()
 }
 
 /// Хранилище кук WebKit (общее для всех webview приложения): `f` выполняется в главном потоке и
@@ -288,6 +308,9 @@ pub(crate) mod wv2 {
 // куки нужны и другим разделам (vk_cmd, sc_cmd) — через `use crate::*`
 #[cfg(windows)]
 pub(crate) use wv2::{all_cookies, delete_cookies};
+// Android: CookieManager (mobile/login.rs)
+#[cfg(mobile)]
+pub(crate) use crate::mobile::login::{all_cookies, delete_cookies};
 
 /// Вход выполнен, если у сервиса есть кука сессии.
 pub(crate) fn logged_in(app: &AppHandle, service: &str) -> bool {
@@ -307,9 +330,55 @@ pub(crate) async fn svc_login(app: AppHandle, service: String) -> Res<()> {
         "sc" => (sc::LOGIN_URL, "SoundCloud"),
         _ => return Err("Неизвестный сервис".into()),
     };
-    if app.get_webview(LOGIN_LABEL).is_some() {
-        return Ok(());
+    #[cfg(mobile)]
+    {
+        let lang = app.state::<AppState>().cfg.lock().unwrap().lang.clone();
+        crate::mobile::login::open(url, title, &lang)?;
     }
+    #[cfg(desktop)]
+    if !svc_login_page(&app, url, title)? {
+        return Ok(()); // уже открыта — её опрашивает прежний поток
+    }
+    let st = app.state::<AppState>();
+    st.vk.forget();
+    st.sc.forget();
+
+    // как в NK-Player: опрашиваем куки, пока не появится сессия, затем убираем страницу входа
+    let h = app.clone();
+    std::thread::spawn(move || {
+        // окно входа на Android открывается не сразу — без этого первый опрос счёл бы его закрытым
+        #[cfg(mobile)]
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+        loop {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
+            if !login_open(&h) {
+                let _ = h.emit("svc://event", serde_json::json!({ "type": "login_closed", "service": service }));
+                break;
+            }
+            if logged_in(&h, &service) {
+                if service == "vk" {
+                    if let Ok(Some(session)) = vk_cookie(&h) {
+                        // после входа ВК доводит сессию редиректами login.php?act=slogin, выставляя куки;
+                        // даём странице входа пройти их, как браузеру, — тогда полные куки сохранятся
+                        vk_login_settle(&h, session.base);
+                    }
+                }
+                login_close(&h);
+                let _ = h.emit("svc://event", serde_json::json!({ "type": "login", "service": service }));
+                break;
+            }
+        }
+    });
+    Ok(())
+}
+
+/// Компьютер: страница входа вторым webview в главном окне (с --host — своим окном). false — уже открыта.
+#[cfg(desktop)]
+fn svc_login_page(app: &AppHandle, url: &str, title: &'static str) -> Res<bool> {
+    if app.get_webview(LOGIN_LABEL).is_some() {
+        return Ok(false);
+    }
+    let app = app.clone();
     let url = tauri::Url::parse(url).map_err(|e| e.to_string())?;
     let popups = app.clone();
     let seq = AtomicU64::new(0);
@@ -355,45 +424,32 @@ pub(crate) async fn svc_login(app: AppHandle, service: String) -> Res<()> {
         .map_err(|e| format!("Не удалось открыть страницу входа: {e}"))?;
         login_layout(&app, true);
     }
-    let st = app.state::<AppState>();
-    st.vk.forget();
-    st.sc.forget();
-
-    // как в NK-Player: опрашиваем куки, пока не появится сессия, затем убираем страницу входа
-    let h = app.clone();
-    std::thread::spawn(move || loop {
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-        if h.get_webview(LOGIN_LABEL).is_none() {
-            let _ = h.emit("svc://event", serde_json::json!({ "type": "login_closed", "service": service }));
-            break;
-        }
-        if logged_in(&h, &service) {
-            if service == "vk" {
-                if let Ok(Some(session)) = vk_cookie(&h) {
-                    // после входа ВК доводит сессию редиректами login.php?act=slogin, выставляя куки;
-                    // даём странице входа пройти их, как браузеру, — тогда полные куки сохранятся в WebKit
-                    vk_login_settle(&h, session.base);
-                }
-            }
-            login_close(&h);
-            let _ = h.emit("svc://event", serde_json::json!({ "type": "login", "service": service }));
-            break;
-        }
-    });
-    Ok(())
+    Ok(true)
 }
 
 /// Открыть /audio на странице входа и дождаться, пока она туда дойдёт (до 15 с).
 pub(crate) fn vk_login_settle(app: &AppHandle, base: &str) {
-    let Some(v) = app.get_webview(LOGIN_LABEL) else { return };
     let Ok(target) = tauri::Url::parse(&format!("{base}/audio")) else { return };
+    #[cfg(mobile)]
+    let _ = app;
+    #[cfg(mobile)]
+    if !crate::mobile::login::navigate(&target) {
+        return;
+    }
+    #[cfg(desktop)]
+    let Some(v) = app.get_webview(LOGIN_LABEL) else { return };
+    #[cfg(desktop)]
     if v.navigate(target.clone()).is_err() {
         return;
     }
     let started = std::time::Instant::now();
     while started.elapsed() < std::time::Duration::from_secs(15) {
         std::thread::sleep(std::time::Duration::from_millis(500));
-        match v.url() {
+        #[cfg(mobile)]
+        let now = crate::mobile::login::url().ok_or(());
+        #[cfg(desktop)]
+        let now = v.url();
+        match now {
             Ok(u) if u.host_str() == target.host_str() && u.path() == "/audio" => {
                 // страница загружена — даём ей выставить куки
                 std::thread::sleep(std::time::Duration::from_millis(1500));

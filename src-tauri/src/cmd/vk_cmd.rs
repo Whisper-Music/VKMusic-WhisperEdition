@@ -1,5 +1,5 @@
 //! ВКонтакте: прослушивание, VK Микс и плейлисты (API с web-токеном сайта).
-//! Команды Tauri (#[tauri::command]) — список в generate_handler! в main.rs; общее (AppState, Res, …) — из main.rs.
+//! Команды Tauri (#[tauri::command]) — список в generate_handler! в lib.rs; общее (AppState, Res, …) — из lib.rs.
 
 use crate::*;
 
@@ -237,7 +237,11 @@ pub(crate) async fn vk_play_api(app: AppHandle, st: State<'_, AppState>, id: Str
 
 /// Ссылка на поток трека из API — локальным адресом ретранслятора (mp3 целиком, не HLS: относительные адреса
 /// сегментов через него не открылись бы — поэтому только для `vkapi:`).
+/// На Android ретранслятор не нужен (обход прокси Windows): ExoPlayer и запрос API идут одной сетью.
 pub(crate) fn via_relay(s: streams::Stream) -> streams::Stream {
+    if cfg!(mobile) {
+        return s;
+    }
     streams::Stream { url: relay::url_for(&s.url, &s.referrer), referrer: s.referrer }
 }
 

@@ -20,7 +20,10 @@
   // тема задаёт расположение сама (settings whisper-music → "layout": "fixed", как у Whisper Yandex): действуют
   // значения по умолчанию, свои — не теряются и вернутся с другим стилем
   const DEF = { side: "left", sb: "full", pl: "full", time: "always", dot: "on" };
-  let locked = false;
+  // телефон (класс mobile — boot.js): раскладка своя (mobile.css) — действуют значения по умолчанию, без
+  // перетаскивания краёв и сворачивания панели; свои значения с компьютера (резервная копия) не теряются
+  const MOBILE = document.documentElement.classList.contains("mobile");
+  let locked = MOBILE;
   const eff = (k) => (locked ? DEF[k] : ly[k]);
   const root = document.documentElement;
   const T = (s) => (typeof L === "function" ? L(s) : s);
@@ -185,6 +188,7 @@
   }
 
   function init() {
+    if (MOBILE) return apply();
     // поиск — в обёртку: в свёрнутой панели он кружок со значком и раскрывается поверх контента
     const s = document.getElementById("search");
     if (s && !s.parentElement.classList.contains("sbox")) {
@@ -252,8 +256,8 @@
   }
   /** Тема задаёт расположение сама (applyHooks в app.js). */
   function lock(on) {
-    if (locked === !!on) return;
-    locked = !!on;
+    if (locked === (MOBILE || !!on)) return;
+    locked = MOBILE || !!on;
     apply();
     window.dispatchEvent(new Event("resize"));
   }

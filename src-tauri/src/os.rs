@@ -61,15 +61,25 @@ pub fn hide_console(_: &mut Command) {}
 
 /// Открыть папку или ссылку программой по умолчанию.
 pub fn open(target: impl AsRef<OsStr>) -> Result<(), String> {
+    // Android: ссылки — приложением по умолчанию; папки открывают «Файлы» самого телефона
+    #[cfg(mobile)]
+    {
+        let t = target.as_ref().to_string_lossy();
+        if t.starts_with("https://") || t.starts_with("http://") {
+            return crate::mobile::open_url(&t);
+        }
+        return Err(format!("Откройте папку в приложении «Файлы»: {t}"));
+    }
     #[cfg(windows)]
     let (prog, mut cmd) = ("explorer", Command::new("explorer"));
-    #[cfg(not(windows))]
+    #[cfg(all(desktop, not(windows)))]
     let (prog, mut cmd) = ("xdg-open", Command::new("xdg-open"));
+    #[cfg(desktop)]
     cmd.arg(target).spawn().map(|_| ()).map_err(|e| format!("{prog}: {e}"))
 }
 
 /// Подождать, пока процесс `pid` завершится (не дольше `max`). Нужно перезапуску (`--host` в уже открытое окно,
-/// main.rs): новый экземпляр должен стартовать, когда прежний уже вышел, — иначе single-instance отдал бы запуск ему.
+/// lib.rs): новый экземпляр должен стартовать, когда прежний уже вышел, — иначе single-instance отдал бы запуск ему.
 #[cfg(unix)]
 pub fn wait_exit(pid: u32, max: std::time::Duration) {
     let t = std::time::Instant::now();

@@ -360,6 +360,10 @@ impl TrackCache {
                 std::fs::rename(&tmp, &dst).map_err(|e| e.to_string())?;
                 Ok(dst)
             }
+            // Android: ffmpeg нет — HLS и файлы выкачивает mobile/hls.rs (тоже без перекодирования)
+            #[cfg(mobile)]
+            Source::Stream { url, referrer } => crate::mobile::hls::fetch(&self.dir, key, url, referrer),
+            #[cfg(desktop)]
             Source::Stream { url, referrer } => {
                 if !url.starts_with("https://") && !crate::relay::is_relay(url) {
                     return Err("Неверная ссылка на поток".into());

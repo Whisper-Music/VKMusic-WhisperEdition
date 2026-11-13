@@ -41,7 +41,11 @@ pub struct Config {
     /// предел кэша треков, МБ; 0 — без ограничения (сверх — удаляются давно не игравшие)
     pub cache_limit_mb: u64,
     /// размер, положение и развёрнутость окна (winstate.rs)
+    #[cfg(desktop)]
     pub window: Option<crate::winstate::WinState>,
+    /// на телефоне окна нет — поле только сохраняется как было (резервная копия с компьютера)
+    #[cfg(mobile)]
+    pub window: Option<serde_json::Value>,
     /// устройство вывода (имя из `audio-device-list` mpv); None — системное
     pub audio_device: Option<String>,
     /// эквалайзер (player::Eq): фильтр mpv нужен уже при запуске, до интерфейса
@@ -143,15 +147,28 @@ impl Config {
         std::fs::rename(&tmp, config_path()).map_err(|e| e.to_string())
     }
 
-    /// Папка локальной музыки: настройка или ~/Music/vk.
+    /// Папка локальной музыки: настройка или ~/Music/vk (Android — общая «Музыка» телефона).
     pub fn music_dir(&self) -> PathBuf {
-        expand(&self.music_dir).unwrap_or_else(|| home().join("Music").join("vk"))
+        expand(&self.music_dir)
+            .or_else(|| shared("VKM_MUSIC_DIR"))
+            .unwrap_or_else(|| home().join("Music").join("vk"))
     }
 
-    /// Папка загрузок: настройка или ~/Downloads.
+    /// Папка загрузок: настройка или ~/Downloads (Android — общие «Загрузки» телефона).
     pub fn download_dir(&self) -> PathBuf {
-        expand(&self.download_dir).unwrap_or_else(|| home().join("Downloads"))
+        expand(&self.download_dir)
+            .or_else(|| shared("VKM_DOWNLOAD_DIR"))
+            .unwrap_or_else(|| home().join("Downloads"))
     }
+}
+
+/// Android: общие папки телефона (/storage/emulated/0/Music, …/Download) — их передаёт MainActivity при запуске;
+/// HOME там — личная папка приложения, и «~/Music» была бы недоступна другим приложениям.
+fn shared(var: &str) -> Option<PathBuf> {
+    if !cfg!(mobile) {
+        return None;
+    }
+    std::env::var_os(var).filter(|v| !v.is_empty()).map(PathBuf::from)
 }
 
 /// Путь из настроек: «~/…» — от домашней папки; пустой — None.

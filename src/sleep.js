@@ -53,7 +53,8 @@
   async function start() {
     let st;
     try {
-      st = await invoke("sleep_start", { minutes: cfg.min, shutdown: cfg.off });
+      // телефон приложение не выключает
+      st = await invoke("sleep_start", { minutes: cfg.min, shutdown: cfg.off && !MOBILE });
     } catch (e) {
       return toast(L("Не удалось включить режим сна: ") + errMsg(e), "error");
     }
@@ -70,7 +71,7 @@
   // выключение компьютера — только после подтверждения окошком у кнопки (как остальные опасные действия)
   function toggle(anchor) {
     if (active()) return stop();
-    if (!cfg.off) return start();
+    if (!cfg.off || MOBILE) return start();
     confirmClick(anchor, start, L("Через {0} музыка остановится, а компьютер выключится. Включить?", fmtMin(cfg.min)), L("Включить"));
   }
   btn.addEventListener("click", (e) => { e.stopPropagation(); toggle(btn); });
@@ -119,9 +120,11 @@
     const c = el("div", "card own sleepcard");
     c.dataset.tab = "ui";
     c.append(el("h3", null, L("Режим сна")));
-    c.append(el("p", "status", L("Через заданное время музыка плавно затихнет (последние 3 минуты) и встанет на паузу. Луна в нижней панели включает и выключает режим.")));
+    c.append(el("p", "status", MOBILE
+      ? L("Через заданное время музыка плавно затихнет (последние 3 минуты) и встанет на паузу. Луна на экране «Сейчас играет» включает и выключает режим.")
+      : L("Через заданное время музыка плавно затихнет (последние 3 минуты) и встанет на паузу. Луна в нижней панели включает и выключает режим.")));
     c.append(seg(L("Через"), TIMES.map((m) => [m, fmtMin(m)]), cfg.min, (m) => { cfg.min = m; save(); }));
-    c.append(seg(L("Потом"), [[false, L("Остановить музыку")], [true, L("Выключить компьютер")]], cfg.off, (v) => {
+    if (!MOBILE) c.append(seg(L("Потом"), [[false, L("Остановить музыку")], [true, L("Выключить компьютер")]], cfg.off, (v) => {
       cfg.off = v;
       save();
       if (active() && v !== willOff) toast(L("Сработает при следующем включении режима сна"));

@@ -500,7 +500,8 @@
     menuSep();
     const rate = S.rate || 1;
     menuItem(Icons.svg("speed"), L("Скорость: {0}", rateText(rate)), () => rateMenu(), { keep: true, arrow: true });
-    menuItem(Icons.svg("output"), L("Устройство вывода"), () => outputMenu(), { keep: true, arrow: true });
+    // на телефоне устройство вывода (наушники, Bluetooth) выбирает система
+    if (!MOBILE) menuItem(Icons.svg("output"), L("Устройство вывода"), () => outputMenu(), { keep: true, arrow: true });
     menuItem(Icons.svg("eq"), window.Eq && window.Eq.on() ? L("Эквалайзер · включён") : L("Эквалайзер"), () => window.Eq && window.Eq.open());
     if (!window.__TAURI__?.__host) menuItem(Icons.svg("mini"), L("Мини-плеер"), () => invoke("mini_toggle").catch((e) => toast(errMsg(e), "error")));
   }

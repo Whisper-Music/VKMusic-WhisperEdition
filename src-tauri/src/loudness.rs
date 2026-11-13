@@ -136,6 +136,10 @@ impl Loudness {
 
     /// Замерить в фоне (если ещё не замерен и не стоит в очереди).
     pub fn request(&self, path: &Path) {
+        // Android: ffmpeg нет — выравнивает DynamicsProcessing на лету (mobile/player.rs)
+        if cfg!(mobile) {
+            return;
+        }
         if self.get(path).is_some() || self.failed.lock().unwrap().contains(path) || size_of(path).is_none() {
             return;
         }

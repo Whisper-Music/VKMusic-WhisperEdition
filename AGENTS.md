@@ -5,7 +5,8 @@
 
 ## Что это
 
-**VK Music** — локальный музыкальный плеер для Linux (Arch) и Windows, Rust + Tauri 2.
+**VK Music** — локальный музыкальный плеер для Linux (Arch) и Windows, Rust + Tauri 2; в ветке `mobile` — ещё и
+Android (тот же код, раздел «Android» ниже).
 Библиотека — папка `~/Music/vk`; треки добавляются через yt-dlp; воспроизведение — mpv; оформление — темы `.wmt`
 (формат Whisper Music Theme из [YandexMusic-WhisperEdition](https://github.com/Whisper-Music/YandexMusic-WhisperEdition)).
 Приложение построено на **ядре Whisper** — [whisper-core](https://github.com/Whisper-Music/whisper-core), подмодуль
@@ -68,11 +69,11 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   `Private`, программы — `os::tool`: на Windows — из `bin` и без консольного окна, папки/ссылки — `os::open`) и под
   `cfg`: mpv — именованный канал `\\.\pipe\vkmusic-mpv-<pid>` через tokio (синхронный канал не даёт писать,
   пока поток событий ждёт чтения) и Job Object вместо `PR_SET_PDEATHSIG`; куки — `ICoreWebView2CookieManager`
-  (`wv2` в `main.rs`, не `Webview::cookies` из wry — по той же причине, что на Linux); страница входа —
+  (`wv2` в `cmd/login.rs`, не `Webview::cookies` из wry — по той же причине, что на Linux); страница входа —
   дочерний webview с `auto_resize` (GTK-раскладки нет); ключ архива — диспетчер учётных данных (без запасного файла);
   шрифты — `InstalledFontCollection` через PowerShell; `vkm://` в WebView2 — `http://vkm.localhost/`
   (`host::vkm_base`). Тесты на Windows не гоняются (только `cargo check` в CI).
-* Идентификатор — `vkmusic-whisper` (`IDENT` в main.rs = `identifier` в tauri.conf.json, тест `ident_matches_config`):
+* Идентификатор — `vkmusic-whisper` (`IDENT` в lib.rs = `identifier` в tauri.conf.json, тест `ident_matches_config`):
   папки WebKit `~/.local/share/vkmusic-whisper` (куки входа, localStorage), запись ключа архива в связке ключей.
   Прежний `ru.bobrik.vkmusic` переносится при запуске (`migrate_ident`, `secret::from_old`). Настройки приложения —
   по-прежнему `~/.config/vkmusic`, кэш — `~/.cache/vkmusic` (не зависят от идентификатора).
@@ -83,7 +84,9 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
 ## Устройство
 
 ```
-src-tauri/src/main.rs      AppState, общие команды (app_info, save_prefs, окно), протокол vkm://, setup (mpv, трей, окно), выход
+src-tauri/src/main.rs      запуск на компьютере: только `vkmusic_lib::run()` (и windows_subsystem)
+src-tauri/src/lib.rs       AppState, общие команды (app_info, save_prefs, окно), протокол vkm://, setup (mpv, трей, окно), выход;
+                           `run` — и mobile_entry_point Android (до 2026-11-13 всё это было в main.rs)
 src-tauri/src/cmd/         команды интерфейса по разделам (до 2026-11-06 — всё в main.rs): player_cmd (плеер, устройство,
                            трей), vk_cmd (ВК, VK Микс, плейлисты), login (вход, куки WebKit/WebView2), sc_cmd, saved_cmd
                            (библиотека сервисов), local_cmd (файлы, yt-dlp), lyrics_cmd, storage_cmd (статистика, кэш,
@@ -131,6 +134,10 @@ src-tauri/src/update.rs    автообновление (только Windows): 
 src-tauri/src/relay.rs     ретранслятор потоков треков ВК из API: 127.0.0.1/r/<токен> → CDN тем же клиентом, что и API
 src-tauri/src/os.rs        Linux/Windows: права на файлы (`Private`), внешние программы (`tool`, `bin_dir`), `open`
 src-tauri/src/host.rs      `--host [ПОРТ]`: интерфейс в браузере — HTTP-сервер на 127.0.0.1 (invoke, SSE-события, vkm/wa)
+src-tauri/src/mobile/      Android (cfg(mobile)): мост к Kotlin-плагину (mod.rs), плеер ExoPlayer (player.rs), вход и куки
+                           (login.rs), кэш потоков без ffmpeg — HLS с AES-128 и разбором MPEG-TS (hls.rs), заглушки трея и клавиш
+src-tauri/gen/android/     проект Android (Tauri android init); своё — MainActivity.kt, VkmPlugin.kt, PlaybackService.kt,
+                           манифест, Media3 в app/build.gradle.kts, BuildTask.kt (Tauri CLI через npx)
 src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
 src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, PolyForm Noncommercial) — не править
@@ -150,6 +157,8 @@ src/sleep.js               режим сна: луна #sleepBtn в .pright, к�
 src/cli.js                 стиль-консоль («console» в settings темы, тема «Терминал»): команды VK Music, разметка #cli Whisper
 src/mini.html, mini.js, mini.css  мини-плеер (окно `mini`): данные — только textContent, обложки — https и vkm /cover
 src/host.js                заглушка window.__TAURI__ для браузера (--host): сервер вставляет её первым скриптом index.html
+src/mobile.js, mobile.css   телефон (`html.mobile` — boot.js по UA Android): поиск наверх, режимы плеера и кнопки модулей —
+                           на «Сейчас играет», разделы — полосой внизу, «Назад» Android (`onBackButtonPress`)
 src/favicon.svg            значок вкладки браузера (--host) — тот же, что src-tauri/icons/icon.png; меняется вместе с ним
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
@@ -172,8 +181,8 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 `mini://state` (окну `mini`), `theme://omarchy` (тема системы сменилась — `omarchy.rs`), `sleep://event` (`end`: время режима сна вышло,
 `shutdown` / `error` — `sleep.rs`). Плюс `tauri://drag-*` для перетаскивания `.wmt`.
 * Новая команда = функция в `src-tauri/src/cmd/<раздел>.rs` (`pub(crate)`, общее — `use crate::*`) + строка
-  `cmd::<раздел>::<команда>` в `generate_handler![…]` (main.rs) + вызов в `src/app.js`. Помощник, который нужен
-  другому разделу, — `pub(crate)`, а его раздел — в `use cmd::{…}` в main.rs.
+  `cmd::<раздел>::<команда>` в `generate_handler![…]` (lib.rs) + вызов в `src/app.js`. Помощник, который нужен
+  другому разделу, — `pub(crate)`, а его раздел — в `use cmd::{…}` в lib.rs.
   Проверяйте, что каждая команда из JS есть в обработчике (и наоборот, лишних нет). `vk_status` / `sc_status`
   вызываются как `invoke(service + "_status")` — простым grep их не найти.
 * Файлы тем и обложки интерфейс получает по `vkm://localhost/…`: `/theme/<id>/<файл>`,
@@ -189,7 +198,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 ### Интерфейс в браузере (`--host`, просьба владельца 2026-11-05)
 
 * `vkmusic --host [ПОРТ]` (по умолчанию 7380 — постоянный: от адреса зависит localStorage браузера): то же приложение
-  без окна. Главное окно `main` создаётся скрытым с `about:blank` (`context` в `main.rs`) — оно держит куки WebKit и через
+  без окна. Главное окно `main` создаётся скрытым с `about:blank` (`context` в `lib.rs`) — оно держит куки WebKit и через
   него идут команды; интерфейс в нём не запускается. Сервер (`host.rs`, свой HTTP/1.1 на std, поток на соединение):
   файлы интерфейса — `asset_resolver`, `index.html` — с `host.js` первым скриптом; `POST /invoke/<команда>` →
   `Webview::on_message` главного окна (тело JSON или сырое — `theme_install`; ответ JSON или байты); события — SSE
@@ -216,6 +225,43 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `app.exit(0)` (mpv и настройки — как при закрытии окна). Значок в трее с `--host` — всегда, независимо от настройки
   (просьба владельца, 2026-11-08: из лаунчера иначе не закрыть): «Открыть VK Music» — `open_browser`, кнопки меню и
   мини-плеера — `tray://ctl` во вкладку; в карточке «Трей» нет выключателя и «Закрывать в трей» (`tray.js`, `HOST`). Графический сеанс нужен и с `--host`: скрытое окно GTK, окно входа в сервисы.
+
+### Android (ветка `mobile`, просьба владельца 2026-11-13)
+
+* Тот же крейт: приложение — библиотека `vkmusic_lib` (`crate-type = staticlib, cdylib, rlib`), `main.rs` на
+  компьютере только зовёт `run`. Платформенное — `cfg(desktop)` / `cfg(mobile)` (их ставит tauri-build); настольное
+  (mpv, трей, окно, глобальные клавиши, single-instance, keyring, --host, Omarchy, ffmpeg) на Android не собирается
+  или отключено, на его месте — `src-tauri/src/mobile/` с тем же API (`player::Player`, `all_cookies` / `delete_cookies`,
+  `tray::*`, `hotkeys_set`). Список команд в `generate_handler!` один; чисто настольные — с `#[cfg(desktop)]`.
+* Идентификатор Android — `io.github.whispermusic.vkmusic` (`tauri.android.conf.json`: имя пакета должно быть с точками);
+  на компьютере по-прежнему `vkmusic-whisper`. Ссылки whisper:// — `plugins.deep-link.mobile`.
+* Kotlin-плагин `VkmPlugin` (gen/android/app/src/main/java/io/github/whispermusic/vkmusic/) регистрирует `mobile::init`.
+  Его команды выполняются в главном потоке Android, поэтому из Rust: команды плеера — очередью без ожидания
+  (`mobile::send`), ответы (куки, состояние входа) — `mobile::ask` только из фоновых потоков, с пределом 10 с.
+  События плеера — `Channel` из Rust (`setEvents`) → `player://event`; кнопки уведомления «назад/вперёд» — `ctl` → `tray://ctl`.
+* Плеер — ExoPlayer (Media3 1.5.1) в `PlaybackService` (MediaSessionService): фоновая игра, уведомление, экран
+  блокировки, гарнитура; «назад/вперёд» у него — интерфейсу (`ForwardingPlayer`), очередь остаётся в app.js. Громкость
+  ползунка — множитель (та же квадратичная шкала), устройство вывода выбирает система. Эквалайзер (10 полос, предусиление)
+  и «Постоянный уровень громкости» (сжатие на лету, без замера EBU R128) — `DynamicsProcessing`, Android 9+.
+  Поток без расширения не открылся как файл — один раз как HLS. Ретранслятор `relay.rs` на телефоне не нужен (`via_relay`).
+  Что играет — `mini_state` (tray.js) → `meta` (уведомление; обложка — только `whisper_host::cover_ok`), цвет фона темы →
+  `bars` (системные панели).
+* Вход — окно `LoginDialog` с WebView поверх приложения (UA `vk::USER_AGENT`, ссылки на чужие приложения не открываются),
+  тот же опрос кук в `svc_login`. Куки — общий `CookieManager`: он отдаёт «имя=значение» по адресу, домен восстанавливается
+  (`mobile/login.rs`: видна на самом сайте — `.vk.ru`, только на поддомене — кука хоста). Выход — истёкшие куки с теми же именами.
+* Папки: `MainActivity` до запуска Rust ставит `HOME` / `XDG_*` — личная папка приложения (config.json, библиотека, кэш),
+  `VKM_MUSIC_DIR` / `VKM_DOWNLOAD_DIR` — общие «Музыка» и «Загрузки» (`config::shared`). Права — уведомления,
+  READ_MEDIA_AUDIO (до 13 — READ_EXTERNAL_STORAGE), запись в «Загрузки» до Android 9. Ключ архива — файл в личной папке
+  (`secret.rs`, `cfg(mobile)`; связки ключей нет, `secret_backend` → "keyring": другим приложениям папка недоступна).
+* Кэш треков сервисов без ffmpeg — `mobile/hls.rs` (обычный файл как есть; HLS: сегменты по порядку, AES-128-CBC,
+  MPEG-TS → .mp3 / .aac, fMP4 → .m4a); те же правила кэша и `GAP`, что на компьютере. Замера громкости нет (`loudness`).
+* Интерфейс — тот же (`html.mobile`, mobile.css / mobile.js); на телефоне нет карточек трея, расположения, горячих клавиш,
+  «Окно и браузер», Discord, OBS, загрузки yt-dlp, «Выключить компьютер» и «Устройства вывода» (`MOBILE` в app.js).
+* Сборка: JDK 17, Android SDK и NDK (`ANDROID_HOME`, `NDK_HOME`), `rustup target add aarch64-linux-android …`;
+  `packaging/android.sh` (по умолчанию отладочный APK arm64; `--release` — подписанный, ключ — `VKM_KEYSTORE`…).
+  Проверка без телефона: `cargo check --target aarch64-linux-android --lib` (CC / AR — clang и llvm-ar из NDK)
+  и интерфейс в Playwright: `vkmusic --host` в песочнице (dbus-run-session, свои XDG_*) + Chromium 393×851 с UA Android.
+  `gen/android` в git (кроме его .gitignore: build, generated, jniLibs, tauri.properties…).
 
 ### Ядро Whisper (`src/core`)
 
@@ -303,7 +349,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Rust ядра: команды — в `generate_handler!` (`whisper::…`, `whisper::auth::…`, `whisper::stream::…`,
   `whisper::rooms::…`, `discord::…`, `obs::…`); `build.rs` и `capabilities` у нас без списка команд приложения, поэтому
   отдельно разрешать их не нужно. Команды ядра, которые нам не нужны, не регистрируются, а упоминаются в
-  `const _` в начале main.rs (иначе dead_code): `wa_album_share`, `wa_invite_open` — для «Студии» Whisper Yandex.
+  `const _` в начале lib.rs (иначе dead_code): `wa_album_share`, `wa_invite_open` — для «Студии» Whisper Yandex.
   После обновления ядра — сверить новые `#[tauri::command]` в `src/core/rust` с обработчиком. Протокол `wa` — только главному окну. Зависимости ядра: `tauri-plugin-http` (только
   реэкспорт reqwest, плагин не подключается), `getrandom`, `libc`, `tokio`; для ключа — `keyring` (Secret Service,
   vendored dbus); ссылки — `tauri-plugin-deep-link` (`plugins.deep-link.desktop.schemes` в `tauri.conf.json`) и
@@ -432,7 +478,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   «error following redirect». Перед закрытием страница входа сама открывает `/audio` (`vk_login_settle`).
 * Пока открыт вход, в окне `main` два webview: `get_webview_window("main")` возвращает None — для кук
   берите `get_webview("main")`, для раскладки и `add_child` — `get_window("main")`.
-* Куки WebKit читаются и удаляются только через `with_cookie_manager` / `all_cookies` / `delete_cookies` (`main.rs`),
+* Куки WebKit читаются и удаляются только через `with_cookie_manager` / `all_cookies` / `delete_cookies` (`cmd/login.rs`),
   не `Webview::cookies` / `delete_cookie` из wry: wry отдаёт домен без ведущей точки (крейт `cookie`), кука `.vk.ru`
   становилась кукой одного хоста и не уходила на `login.vk.ru`, где ВК после перезапуска обновляет сессию
   (`role=fast` → `login.php?act=slogin`) — «Сессия ВКонтакте не распознана» до «Выйти» (2026-11-02); и удалить

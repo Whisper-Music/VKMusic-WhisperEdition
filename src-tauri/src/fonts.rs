@@ -1,6 +1,7 @@
 //! Системные шрифты для выбора шрифта интерфейса — список семейств из fontconfig (`fc-list`), на Windows — из .NET.
 
 use std::collections::BTreeMap;
+#[cfg(desktop)]
 use std::process::{Command, Stdio};
 
 /// Семейства шрифтов, установленных в системе, по алфавиту, без повторов (Windows — через .NET:
@@ -22,8 +23,18 @@ pub fn list() -> Result<Vec<String>, String> {
     Ok(parse(&String::from_utf8_lossy(&out.stdout)))
 }
 
+/// Android: семейства из /system/etc/fonts.xml (`<family name>` и `<alias name>`) — их и понимает CSS в WebView
+/// (sans-serif, serif-monospace, casual…). fontconfig на телефоне нет.
+#[cfg(mobile)]
+pub fn list() -> Result<Vec<String>, String> {
+    let xml = std::fs::read_to_string("/system/etc/fonts.xml").map_err(|e| format!("Список шрифтов недоступен: {e}"))?;
+    let re = regex::Regex::new(r#"<(?:family|alias)\s[^>]*?\bname="([^"]+)""#).map_err(|e| e.to_string())?;
+    let names: Vec<&str> = re.captures_iter(&xml).filter_map(|c| c.get(1)).map(|m| m.as_str()).collect();
+    Ok(parse(&names.join("\n")))
+}
+
 /// Семейства шрифтов, установленных в системе, по алфавиту, без повторов.
-#[cfg(not(windows))]
+#[cfg(all(desktop, not(windows)))]
 pub fn list() -> Result<Vec<String>, String> {
     let out = Command::new("fc-list")
         .args(["--format", "%{family[0]}\n", ":"])

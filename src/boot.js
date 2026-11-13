@@ -9,6 +9,8 @@
 (() => {
   const root = document.documentElement;
   root.classList.add("booting");
+  // телефон (Android): раскладка под палец — mobile.css, mobile.js; до первой отрисовки, как и стиль
+  if (/\bAndroid\b/.test(navigator.userAgent)) root.classList.add("mobile");
   try {
     const b = JSON.parse(localStorage.getItem("vkm_boot") || "null");
     if (b && typeof b === "object") {

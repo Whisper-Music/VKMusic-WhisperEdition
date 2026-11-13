@@ -9,6 +9,7 @@
 //!
 //! В JavaScript ключ не отдаётся никогда: интерфейс передаёт его один раз (`wa_token_set` ядра).
 
+#[cfg(desktop)]
 use keyring::Entry;
 use std::fs;
 use std::path::PathBuf;
@@ -19,10 +20,12 @@ const FILE: &str = "wa_token.secret";
 #[cfg(unix)]
 const MAX_SECRET: u64 = 16 * 1024;
 
+#[cfg(desktop)]
 fn entry() -> Result<Entry, String> {
     Entry::new(SERVICE, ACCOUNT).map_err(|e| e.to_string())
 }
 
+#[cfg(desktop)]
 /// Ключ, сохранённый под прежним идентификатором приложения, — переносится под новый (один раз).
 fn from_old() -> Option<String> {
     let old = Entry::new(crate::OLD_IDENT, ACCOUNT).ok()?;
@@ -37,6 +40,7 @@ fn file() -> PathBuf {
     crate::config::config_dir().join(FILE)
 }
 
+#[cfg(desktop)]
 /// Связка ключей недоступна (нет Secret Service), а не «записи нет».
 fn no_keyring(e: &keyring::Error) -> bool {
     matches!(e, keyring::Error::PlatformFailure(_) | keyring::Error::NoStorageAccess(_))
@@ -105,6 +109,7 @@ fn file_write(token: &str) -> Result<(), String> {
     res.map_err(|e| format!("Не удалось сохранить ключ: {e}"))
 }
 
+#[cfg(desktop)]
 pub fn get() -> Result<Option<String>, String> {
     match entry()?.get_password() {
         Ok(t) => {
@@ -127,6 +132,7 @@ pub fn get() -> Result<Option<String>, String> {
     }
 }
 
+#[cfg(desktop)]
 pub fn set(token: &str) -> Result<(), String> {
     match entry()?.set_password(token) {
         Ok(()) => {
@@ -138,6 +144,7 @@ pub fn set(token: &str) -> Result<(), String> {
     }
 }
 
+#[cfg(desktop)]
 pub fn clear() -> Result<(), String> {
     let _ = fs::remove_file(file());
     match entry()?.delete_credential() {
@@ -147,6 +154,7 @@ pub fn clear() -> Result<(), String> {
     }
 }
 
+#[cfg(desktop)]
 /// Где лежит ключ Whisper Archive: "keyring", "file" (открытым текстом — интерфейс предупреждает) или "none".
 #[tauri::command]
 pub fn secret_backend() -> &'static str {
@@ -156,5 +164,36 @@ pub fn secret_backend() -> &'static str {
     match entry().map(|e| e.get_password()) {
         Ok(Ok(_)) => "keyring",
         _ => "none",
+    }
+}
+
+// Android: связки ключей нет, а личная папка приложения (files/) недоступна другим приложениям — ключ лежит в ней
+// файлом 0600, это обычное место секретов приложения на Android. Интерфейсу — "keyring": предупреждать
+// «ключ открытым текстом» здесь не о чем.
+#[cfg(mobile)]
+pub fn get() -> Result<Option<String>, String> {
+    Ok(file_read())
+}
+
+#[cfg(mobile)]
+pub fn set(token: &str) -> Result<(), String> {
+    file_write(token)
+}
+
+#[cfg(mobile)]
+pub fn clear() -> Result<(), String> {
+    match fs::remove_file(file()) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+        _ => Ok(()),
+    }
+}
+
+#[cfg(mobile)]
+#[tauri::command]
+pub fn secret_backend() -> &'static str {
+    if file_read().is_some() {
+        "keyring"
+    } else {
+        "none"
     }
 }
