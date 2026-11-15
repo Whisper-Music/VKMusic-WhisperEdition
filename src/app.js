@@ -561,7 +561,7 @@ function setHeart(b, on) {
  */
 function renderTracks(items, reorder, opts = {}) {
   const wrap = el("ul", "list tracks");
-  items.forEach((t) => {
+  const addRow = (t) => {
     const row = el("li", "track");
     row.dataset.key = t.key;
     if (S.current && S.current.key === t.key) row.classList.add("playing");
@@ -649,9 +649,23 @@ function renderTracks(items, reorder, opts = {}) {
     });
     if (reorder) row.addEventListener("pointerdown", (ev) => startDrag(ev, row, wrap));
     wrap.append(row);
-  });
+  };
+  // Телефон: длинный список строится частями — сразу то, что на экране, остальное в следующих кадрах (библиотека
+  // из ~300 треков строилась ~0,6 с, и смена раздела заметно подвисала, 2026-11-15). Строки потом — как обычные.
+  if (MOBILE && items.length > TRACKS_FIRST) {
+    items.slice(0, TRACKS_FIRST).forEach(addRow);
+    let i = TRACKS_FIRST;
+    const more = () => {
+      if (i > TRACKS_FIRST && !wrap.isConnected) return; // страницу уже сменили
+      for (const end = Math.min(items.length, i + TRACKS_CHUNK); i < end; i++) addRow(items[i]);
+      if (i < items.length) requestAnimationFrame(more);
+    };
+    requestAnimationFrame(more);
+  } else items.forEach(addRow);
   return wrap;
 }
+/** Телефон: строк списка сразу (с запасом на экран) и затем за кадр. */
+const TRACKS_FIRST = 24, TRACKS_CHUNK = 40;
 
 function markPlaying() {
   document.querySelectorAll(".list li.track").forEach((r) => r.classList.toggle("playing", !!S.current && r.dataset.key === S.current.key));
@@ -5105,6 +5119,8 @@ async function boot() {
   document.querySelectorAll(".side .nav[data-page]").forEach((n) =>
     n.addEventListener("click", () => {
       const p = n.dataset.page;
+      // телефон: уже выбранный раздел нажатием не перерисовывается (кроме возврата из открытого в нём плейлиста)
+      if (MOBILE && S.page === p && !(S.vkPl && S.vkPl.from === p)) return;
       if ((p === "stats" || p === "settings") && S.page === p) return go("library");
       if (p !== "search" && S.page === "search") {
         $("#search").value = "";

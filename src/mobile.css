@@ -33,6 +33,8 @@ html.mobile .app {
 }
 
 /* ---------- страница ---------- */
+/* смена раздела — короче, чем на компьютере */
+html.mobile .content.page-in, html.mobile .settings.page-in { animation-duration: .12s; }
 html.mobile .main {
   order: 1; flex: 1 1 auto !important; min-height: 0 !important; width: auto !important; max-width: none !important;
   position: relative !important; inset: auto !important; margin: 0 !important; border-radius: 0 !important;
@@ -216,6 +218,11 @@ html.mobile .toast { max-width: calc(100vw - 24px); bottom: 140px !important; }
 /* ---------- «Сейчас играет» ---------- */
 html.mobile .full { --f-top: 0px; transition: transform .22s ease; }
 html.mobile .full.mdrag { transition: none; }
+/* разворачивается снизу, из мини-плеера (mobile.js — класс mopen; закрытие — обратно вниз) */
+html.mobile .full.mopen { animation: mfullIn .3s cubic-bezier(.2, .9, .25, 1); }
+@keyframes mfullIn { from { transform: translateY(100%); } }
+html.mobile .full.mopen .fcover { animation: mcoverIn .35s cubic-bezier(.2, .9, .25, 1); }
+@keyframes mcoverIn { from { transform: scale(.82); opacity: .4; } }
 html.mobile .fwrap { padding: 22px 20px 20px !important; gap: 14px; }
 /* ручка: смахнуть вниз — закрыть */
 html.mobile .fwrap::before { content: ""; position: absolute; top: 8px; left: 50%; translate: -50% 0; width: 40px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); }

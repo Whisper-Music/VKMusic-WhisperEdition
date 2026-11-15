@@ -156,11 +156,80 @@
     const close = swipe.on && swipe.dy > Math.min(160, innerHeight * 0.22);
     swipe = null;
     full.classList.remove("mdrag");
-    full.style.transform = "";
-    if (close) closeFull();
+    if (close) closeFull(); // уезжает вниз с того места, куда дотянули
+    else full.style.transform = "";
   };
   full.addEventListener("touchend", endSwipe);
   full.addEventListener("touchcancel", endSwipe);
+
+  // ---------- «Сейчас играет»: выезжает из мини-плеера и уезжает обратно ----------
+  // Открытие — класс mopen (анимация в mobile.css), закрытие — обёртка над closeFull из app.js (все её вызовы —
+  // крестик, «Назад», Escape, смахивание — идут через неё): сначала экран уезжает вниз, потом прячется.
+  const animOn = () => document.documentElement.dataset.anim !== "off" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  new MutationObserver(() => {
+    if (full.hidden || !animOn()) return;
+    full.classList.remove("mopen");
+    void full.offsetWidth;
+    full.classList.add("mopen");
+  }).observe(full, { attributes: true, attributeFilter: ["hidden"] });
+  full.addEventListener("animationend", () => full.classList.remove("mopen"));
+  const realClose = closeFull;
+  let closing = 0;
+  closeFull = function () {
+    if (full.hidden || !animOn()) return realClose.apply(this, arguments);
+    if (closing) return;
+    full.classList.remove("mopen");
+    full.style.transition = "transform .22s cubic-bezier(.4, 0, 1, 1)";
+    full.style.transform = "translateY(100%)";
+    closing = setTimeout(() => {
+      closing = 0;
+      realClose();
+      full.style.transition = full.style.transform = "";
+    }, 220);
+  };
+
+  // ---------- «Очередь и история»: смахнуть вбок — закрыть ----------
+  // Панель (модуль ядра, core/queue.js) на телефоне — на весь экран (mobile.css). Тянется за пальцем по горизонтали;
+  // отпустили дальше трети ширины — уезжает и закрывается своей кнопкой. Не с ручки перетаскивания строк (.grip).
+  let qs = null;
+  document.addEventListener("touchstart", (e) => {
+    const p = e.target.closest(".qpanel");
+    if (!p || p.hidden || e.touches.length !== 1 || e.target.closest(".grip, input, .tmenu")) return;
+    qs = { p, x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, on: false };
+  }, { passive: true });
+  document.addEventListener("touchmove", (e) => {
+    if (!qs) return;
+    const dx = e.touches[0].clientX - qs.x, dy = e.touches[0].clientY - qs.y;
+    if (!qs.on) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { qs = null; return; } // прокрутка списка
+      if (Math.abs(dx) < 12) return;
+      qs.on = true;
+      qs.p.style.transition = "none";
+    }
+    qs.dx = dx;
+    qs.p.style.transform = `translateX(${dx}px)`;
+    qs.p.style.opacity = String(Math.max(0.3, 1 - Math.abs(dx) / qs.p.offsetWidth));
+  }, { passive: true });
+  const qEnd = () => {
+    if (!qs) return;
+    const { p, dx, on } = qs;
+    qs = null;
+    if (!on) return;
+    p.style.transition = "transform .18s ease-out, opacity .18s ease-out";
+    if (Math.abs(dx) > p.offsetWidth / 3) {
+      p.style.transform = `translateX(${dx > 0 ? "" : "-"}110%)`;
+      p.style.opacity = "0";
+      setTimeout(() => {
+        p.querySelector(".qclose")?.click();
+        p.style.transition = p.style.transform = p.style.opacity = "";
+      }, 180);
+    } else {
+      p.style.transform = p.style.opacity = "";
+      setTimeout(() => (p.style.transition = ""), 200);
+    }
+  };
+  document.addEventListener("touchend", qEnd);
+  document.addEventListener("touchcancel", qEnd);
 
   // ---------- «Назад» Android ----------
   // открыто меню, окошко подтверждения или пояснение Genius
