@@ -561,7 +561,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 
 **Качество загрузок** — не перекодировать: `-f bestaudio/best --extract-audio --audio-format best`.
 Перекодирование в mp3 намеренно убрано (lossy → lossy). Обложка встраивается только если есть python-mutagen
-(`ytdlp::caps`), иначе yt-dlp падает на opus/m4a. Если меняете аргументы — прогоните их на настоящем yt-dlp
+(`ytdlp::caps`), иначе yt-dlp падает на opus/m4a. «Немузыкальные» куски клипов вырезаются по SponsorBlock
+(`--sponsorblock-remove music_offtopic`, только эта категория; просьба владельца, 2026-11-15) — ffmpeg режет `-c copy`,
+без перекодирования. Если меняете аргументы — прогоните их на настоящем yt-dlp
 (например, на локальном файле через `python3 -m http.server`) и обновите тесты в `ytdlp.rs`.
 
 **Интерфейс и тексты**

@@ -101,6 +101,12 @@ pub fn args_for(req: &DlRequest, dir: &Path, caps: &Caps) -> Result<Vec<String>,
     a.push(format!("before_dl:{TITLE_MARK} %(artist,creator,uploader|)s — %(track,title)s"));
     a.push("--print".into());
     a.push(format!("after_move:{FILE_MARK} %(filepath)s"));
+    if caps.ffmpeg {
+        // вырезать «немузыкальные» куски клипов (разговоры, вступления) по разметке SponsorBlock;
+        // ffmpeg режет без перекодирования (`-c copy`), у видео без разметки ничего не меняется
+        a.push("--sponsorblock-remove".into());
+        a.push("music_offtopic".into());
+    }
     if caps.mutagen {
         // обложка в файл; миниатюры YouTube — webp, плееры понимают jpg
         a.push("--embed-thumbnail".into());
@@ -234,6 +240,7 @@ mod tests {
         assert_eq!(a[pos("--audio-format") + 1], "best");
         assert!(!a.iter().any(|s| s == "mp3"), "не должно быть перекодирования в mp3");
         assert!(a.contains(&"--embed-thumbnail".to_string()));
+        assert_eq!(a[pos("--sponsorblock-remove") + 1], "music_offtopic");
         assert_eq!(a.last().unwrap(), "https://music.youtube.com/watch?v=abc");
     }
 
