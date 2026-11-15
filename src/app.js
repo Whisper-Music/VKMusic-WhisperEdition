@@ -2358,6 +2358,7 @@ function renderSettings() {
   // на телефоне трея и окна нет: плеер — в уведомлении, интерфейс — только в приложении
   if (window.renderTraySettings && !MOBILE) renderTraySettings(); // tray.js
   if (window.renderSleepCard) renderSleepCard(); // sleep.js
+  if (window.renderPowerCard) renderPowerCard(); // power.js
   if (!MOBILE) renderModeCard();
   renderStorage();
   if (window.renderBackup) renderBackup(); // backup.js
@@ -2752,7 +2753,7 @@ async function applyTheme(r, { intro = false } = {}) {
   if (r.background && r.background.video) {
     if (v.getAttribute("src") !== r.background.url) v.src = r.background.url;
     v.hidden = false;
-    if (!dynOn) v.play().catch(() => {}); // при фоне по обложке видео не видно
+    if (!dynOn && !(window.Power && Power.active())) v.play().catch(() => {}); // при фоне по обложке видео не видно; энергосбережение — на паузе
   } else {
     v.pause();
     v.removeAttribute("src");
@@ -2916,7 +2917,8 @@ function applyStyleVars() {
   r.setProperty("--bg-image", bg);
   // тема без анимаций (settings whisper-music → features.animations = false) — как у Whisper
   const f = (S.themeSettings && S.themeSettings.features) || {};
-  document.documentElement.dataset.anim = f.animations === false ? "off" : "on";
+  // энергосбережение (power.js) — тоже без анимаций
+  document.documentElement.dataset.anim = f.animations === false || (window.Power && Power.active()) ? "off" : "on";
   applyFont();
   applyHooks();
   if (window.Colors) window.Colors.apply(); // тонкая настройка цветов — для нового стиля
@@ -4617,12 +4619,14 @@ function dynPlaceholder() {
 /** Фон под играющий трек. Нет обложки — заглушка в цветах темы. */
 async function dynUpdate(t) {
   const my = ++dynSeq;
-  document.body.classList.toggle("dyn-on", dynOn);
+  // энергосбережение (power.js) — без фона по обложке
+  const dynWant = dynOn && !(window.Power && Power.active());
+  document.body.classList.toggle("dyn-on", dynWant);
   const v = $("#bgVideo");
-  if (!dynOn) {
+  if (!dynWant) {
     $("#dynBg").classList.remove("ready");
     dynKey = "";
-    if (!v.hidden && v.paused) v.play().catch(() => {});
+    if (!v.hidden && v.paused && !(window.Power && Power.active())) v.play().catch(() => {});
     return;
   }
   if (!v.paused) v.pause(); // видеообои темы под фоном по обложке не видны — не тратим на них кадры

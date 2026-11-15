@@ -507,6 +507,37 @@ fn app_background() {
     let _ = mobile::send("moveToBack", serde_json::json!({}));
 }
 
+#[derive(Serialize)]
+struct Battery {
+    /// заряд 0…1
+    level: f64,
+    charging: bool,
+}
+
+/// Заряд батареи для «Энергосбережения» (power.js) там, где у страницы нет navigator.getBattery (WebKitGTK):
+/// Linux — /sys/class/power_supply (первая батарея; «Full» и «Not charging» у блока питания — как на зарядке).
+/// Нет батареи (настольный компьютер) или другая система — None: работает только ручной режим.
+#[tauri::command(rename_all = "snake_case")]
+fn battery_status() -> Option<Battery> {
+    #[cfg(target_os = "linux")]
+    {
+        let dir = std::fs::read_dir("/sys/class/power_supply").ok()?;
+        for e in dir.flatten() {
+            let p = e.path();
+            let read = |f: &str| std::fs::read_to_string(p.join(f)).map(|s| s.trim().to_string()).ok();
+            if read("type").as_deref() != Some("Battery") {
+                continue;
+            }
+            let Some(level) = read("capacity").and_then(|c| c.parse::<f64>().ok()) else { continue };
+            let status = read("status").unwrap_or_default();
+            return Some(Battery { level: (level / 100.0).clamp(0.0, 1.0), charging: status != "Discharging" });
+        }
+        None
+    }
+    #[cfg(not(target_os = "linux"))]
+    None
+}
+
 /// Android: цвет системных панелей (строка состояния, навигация) и окна до загрузки интерфейса — фон текущей темы
 /// (mobile.js, только `#rrggbb`). На компьютере — ничего.
 #[tauri::command(rename_all = "snake_case")]
@@ -732,6 +763,7 @@ pub fn run() {
             app_switch,
             app_background,
             app_bars,
+            battery_status,
             save_prefs,
             fonts_list,
             win_minimize,
