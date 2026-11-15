@@ -33,6 +33,32 @@
   stripHover();
   new MutationObserver(stripHover).observe(document.head, { subtree: true, childList: true, characterData: true });
 
+  // ---------- системные панели — цветом фона темы ----------
+  // Фон страницы (как снимок для boot.js, saveBoot) — не --bg: у части тем это полупрозрачная панель (rgba), и строка
+  // состояния оставалась цветом прошлого стиля (зелёной от Osaka Jade у Vantablack, 2026-11-15)
+  let barsSent = "", barsT = 0;
+  const hex = (c) => {
+    const m = c && c.match(/rgba?\(([^)]+)\)/);
+    if (!m) return "";
+    const v = m[1].split(/[ ,/]+/).filter(Boolean).map(Number);
+    if (v.length > 3 && v[3] < 0.5) return "";
+    return "#" + v.slice(0, 3).map((x) => Math.round(x).toString(16).padStart(2, "0")).join("");
+  };
+  const syncBars = () => {
+    clearTimeout(barsT);
+    barsT = setTimeout(() => {
+      if (document.documentElement.classList.contains("booting")) return;
+      const bg = hex(getComputedStyle(document.body).backgroundColor) || hex(getComputedStyle(document.documentElement).backgroundColor) || "#000000";
+      if (bg === barsSent) return;
+      barsSent = bg;
+      // тот же цвет — под строкой поиска сверху (продолжает строку состояния; --bg темы бывает полупрозрачным)
+      document.documentElement.style.setProperty("--mbar", bg);
+      invoke("app_bars", { bg }).catch(() => {});
+    }, 300);
+  };
+  new MutationObserver(syncBars).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-style", "style"] });
+  syncBars();
+
   // ---------- верхняя строка: поиск и аккаунт ----------
   const search = $("#search");
   const main = $(".main");

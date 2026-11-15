@@ -45,7 +45,7 @@ html.mobile .main::-webkit-scrollbar { width: 0; }
 html.mobile .msearch {
   position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 8px;
   margin: 0 -14px; padding: 10px 14px 8px;
-  background: linear-gradient(var(--bg, #0b0618) 60%, transparent);
+  background: linear-gradient(var(--mbar, #000) 60%, transparent);
 }
 html.mobile .mfield { position: relative; flex: 1; min-width: 0; display: block; }
 html.mobile .mfield > svg { position: absolute; left: 14px; top: 50%; translate: 0 -50%; width: 18px; height: 18px; opacity: .65; pointer-events: none; z-index: 1; }
@@ -148,22 +148,6 @@ html.mobile .player .ctrls::before, html.mobile .player .ctrls::after,
 html.mobile .player .cover::before, html.mobile .player .cover::after,
 html.mobile .side .nav .nicon::before, html.mobile .side .nav .nicon::after { content: none !important; display: none !important; }
 html.mobile #thBtns { display: none !important; }
-/* Vantablack на телефоне — без квадратов (просьба владельца, 2026-11-15): тема на компьютере вся из прямых углов
-   (border-radius: 0 у панелей, кнопок, поиска, строк, обложек, карточек, меню); здесь — круглые кнопки и скругления,
-   цвета темы — прежние */
-html.mobile:root[data-style="vantablack"] .panel { border-radius: 18px !important; }
-html.mobile:root[data-style="vantablack"] .player { border-radius: 18px !important; }
-html.mobile:root[data-style="vantablack"] .search, html.mobile:root[data-style="vantablack"] .field { border-radius: 999px !important; }
-html.mobile:root[data-style="vantablack"] .chip, html.mobile:root[data-style="vantablack"] .pill, html.mobile:root[data-style="vantablack"] .settabs .chip { border-radius: 999px !important; }
-html.mobile:root[data-style="vantablack"] .nav, html.mobile:root[data-style="vantablack"] .side .nav { border-radius: 14px !important; }
-html.mobile:root[data-style="vantablack"] .card, html.mobile:root[data-style="vantablack"] .stylecard, html.mobile:root[data-style="vantablack"] .simcard, html.mobile:root[data-style="vantablack"] .login-box, html.mobile:root[data-style="vantablack"] .qpanel, html.mobile:root[data-style="vantablack"] .toast { border-radius: 18px !important; }
-html.mobile:root[data-style="vantablack"] .list li { border-radius: 12px !important; }
-html.mobile:root[data-style="vantablack"] .list img, html.mobile:root[data-style="vantablack"] .list .nocover, html.mobile:root[data-style="vantablack"] .cover, html.mobile:root[data-style="vantablack"] .simcard img, html.mobile:root[data-style="vantablack"] .plcover { border-radius: 10px !important; }
-html.mobile:root[data-style="vantablack"] .fcover { border-radius: 20px !important; }
-html.mobile:root[data-style="vantablack"] .player button, html.mobile:root[data-style="vantablack"] .fbtns button, html.mobile:root[data-style="vantablack"] .fmodes > button, html.mobile:root[data-style="vantablack"] .wavebtn, html.mobile:root[data-style="vantablack"] .playbtn, html.mobile:root[data-style="vantablack"] .round, html.mobile:root[data-style="vantablack"] .headbtns .nav.btn:has(> .ic) { border-radius: 50% !important; }
-html.mobile:root[data-style="vantablack"] .tmenu .mi { border-radius: 12px !important; }
-html.mobile:root[data-style="vantablack"] input[type=range]::-webkit-slider-runnable-track { border-radius: 2px !important; }
-html.mobile:root[data-style="vantablack"] input[type=range]::-webkit-slider-thumb, html.mobile:root[data-style="vantablack"] .seekdot { border-radius: 50% !important; }
 /* угловые узоры «Королевского» (--fs) — по размеру низкой панели */
 html.mobile .side { --fs: 30px; }
 html.mobile .player { --fs: 26px; }

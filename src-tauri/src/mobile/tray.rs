@@ -42,11 +42,7 @@ pub fn mini_state(state: Value) {
     if has {
         super::player::meta(&s("title"), &s("artist"), &s("cover"), playing);
     }
-    // цвет фона темы — системным панелям (только #rrggbb: в Color.parseColor не уходит ничего другого)
-    let bg = s("bg");
-    if bg.len() == 7 && parse_hex(&bg).is_some() {
-        let _ = super::send("bars", serde_json::json!({ "bg": bg }));
-    }
+    // цвет системных панелей — отдельной командой app_bars (mobile.js: фон страницы, а не --bg темы)
 }
 
 #[tauri::command]

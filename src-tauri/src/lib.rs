@@ -507,6 +507,18 @@ fn app_background() {
     let _ = mobile::send("moveToBack", serde_json::json!({}));
 }
 
+/// Android: цвет системных панелей (строка состояния, навигация) и окна до загрузки интерфейса — фон текущей темы
+/// (mobile.js, только `#rrggbb`). На компьютере — ничего.
+#[tauri::command(rename_all = "snake_case")]
+fn app_bars(bg: String) {
+    #[cfg(mobile)]
+    if bg.len() == 7 && tray::parse_hex(&bg).is_some() {
+        let _ = mobile::send("bars", serde_json::json!({ "bg": bg }));
+    }
+    #[cfg(desktop)]
+    let _ = bg;
+}
+
 /// Аргументы, с которыми перезапуститься при выходе: `--host` пришёл в уже открытое окно (single-instance)
 /// или переключение «окно ↔ браузер» (app_switch).
 static RELAUNCH: Mutex<Option<Vec<String>>> = Mutex::new(None);
@@ -719,6 +731,7 @@ pub fn run() {
             app_info,
             app_switch,
             app_background,
+            app_bars,
             save_prefs,
             fonts_list,
             win_minimize,

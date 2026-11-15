@@ -6,12 +6,16 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.system.Os
+import android.app.Activity
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.view.View
 import android.webkit.WebView
 import androidx.activity.enableEdgeToEdge
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 
 /**
@@ -21,7 +25,26 @@ import androidx.core.view.WindowInsetsCompat
  * 2026-11-14), VKM_DOWNLOAD_DIR — общие «Загрузки» («Скачать»).
  */
 class MainActivity : TauriActivity() {
+  companion object {
+    const val PREFS = "vkm"
+    /** фон темы прошлого запуска (VkmPlugin.bars) — окно и системные панели до загрузки интерфейса */
+    const val PREF_BG = "bg"
+
+    /** Окно, строка состояния и навигация — цветом фона темы; значки панелей — тёмные на светлом. */
+    fun applyBars(activity: Activity, c: Int) {
+      activity.window.setBackgroundDrawable(ColorDrawable(c))
+      activity.findViewById<View>(android.R.id.content)?.setBackgroundColor(c)
+      val light = (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) > 150
+      WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
+        isAppearanceLightStatusBars = light
+        isAppearanceLightNavigationBars = light
+      }
+    }
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
+    val bg = getSharedPreferences(PREFS, MODE_PRIVATE).let { if (it.contains(PREF_BG)) it.getInt(PREF_BG, 0) else null }
+    if (bg != null) window.setBackgroundDrawable(ColorDrawable(bg))
     val files = filesDir.absolutePath
     Os.setenv("HOME", files, true)
     Os.setenv("XDG_CONFIG_HOME", "$files/config", true)
@@ -37,6 +60,7 @@ class MainActivity : TauriActivity() {
     Os.setenv("VKM_DOWNLOAD_DIR", Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).absolutePath, true)
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    if (bg != null) applyBars(this, bg)
     // интерфейс — между системными панелями и над клавиатурой (Android 15+ рисует приложение под ними)
     val root = findViewById<View>(android.R.id.content)
     ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->

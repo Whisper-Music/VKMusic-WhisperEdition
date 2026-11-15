@@ -8,7 +8,7 @@
   "name": "Vantablack",
   "author": "Omarchy",
   "description": "Абсолютный чёрный, белый текст и серые оттенки — без единого цвета",
-  "version": "1.0",
+  "version": "1.1",
   "base": "neon",
   "apps": ["whisper-music"],
   "created": "2026-10-29T00:00:00Z",
@@ -42,40 +42,45 @@
 }
 
 @@ css whisper-music
-/* Разметка — Whisper (VK Music повторяет её): чистый чёрный, серые рамки-плитки, белый акцент. */
+/* Разметка — Whisper (VK Music повторяет её): чистый чёрный, серые рамки, белый акцент; скругления вместо прямых углов
+   (просьба владельца, 2026-11-15: «убери квадраты») — круглые кнопки плеера, «пилюли» поиска и чипов. */
 :root { --line: #1a1a1a; --hover: rgba(255, 255, 255, 0.05); --danger: #a4a4a4; }
-.panel { border-radius: 0; border: 2px solid var(--line); box-shadow: none; background: rgba(0, 0, 0, var(--panel-a)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.panel { border-radius: 18px; border: 2px solid var(--line); box-shadow: none; background: rgba(0, 0, 0, var(--panel-a)); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .player.panel { border-color: #8d8d8d; }
 .titlebar { background: #000; border-bottom: 1px solid var(--line); }
-.tbdot { border-radius: 0; background: #ececec; box-shadow: none; }
+.tbdot { border-radius: 50%; background: #ececec; box-shadow: none; }
 .tbbrand { color: #fff; letter-spacing: .14em; text-transform: lowercase; }
 
 .head h2 { color: #fff; text-shadow: none; letter-spacing: .03em; }
-.side .nav { border-radius: 0; background: transparent; color: #7a7a7a; }
+.side .nav { border-radius: 14px; background: transparent; color: #7a7a7a; }
 .side .nav:hover:not(.active) { background: var(--hover); color: #fff; }
 .side .nav.active { background: var(--line); color: #fff; text-shadow: none; box-shadow: inset 3px 0 0 #ececec; }
 
-.search, .field { border-radius: 0; background: #050505; border: 1px solid var(--line); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.search, .field { border-radius: 999px; background: #050505; border: 1px solid var(--line); -webkit-backdrop-filter: none; backdrop-filter: none; }
 .search:focus, .field:focus { border-color: #8d8d8d; box-shadow: none; }
 
-.list li { border-radius: 0; }
+.list li { border-radius: 12px; }
 .list li:hover { background: var(--hover); }
 .list li.playing { background: #111; }
 .list li.playing .t { color: #fff; text-shadow: none; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: #505050; }
-.list img, .cover, .simcard img, .lastAlbum img, .fcover { border-radius: 0; background: #0c0c0c; border: 1px solid var(--line); }
+.list img, .cover, .simcard img, .lastAlbum img { border-radius: 10px; }
+.fcover { border-radius: 20px; }
+.list img, .cover, .simcard img, .lastAlbum img, .fcover { background: #0c0c0c; border: 1px solid var(--line); }
 
-.card, .lastAlbum, .simcard, .stylecard, .chip, .nav, .tmenu, .toast, .login-box, .qpanel, .volpop { border-radius: 0; }
+.card, .lastAlbum, .simcard, .stylecard, .tmenu, .login-box, .qpanel, .volpop { border-radius: 18px; }
+.nav, .toast { border-radius: 14px; }
+.chip, .pill { border-radius: 999px; }
 .card, .lastAlbum { background: #050505; border-color: var(--line); }
 .nav, .chip { background: #0c0c0c; border: 1px solid var(--line); }
 .nav:hover:not(:disabled):not(.active) { border-color: #8d8d8d; }
 .nav.active, .chip.active, .player .playbtn, .wavebtn, .fbtns .playbtn { background: #ececec; color: #000; box-shadow: none; text-shadow: none; }
 .player .playbtn:hover, .nav.active:hover { background: #fff; filter: none; }
-.player button, .wavebtn { border-radius: 0; }
+.player button, .fbtns button, .wavebtn, .round { border-radius: 50%; }
 .modebtn.on, .likebtn.on { color: #fff; filter: none; }
 .toast, .tmenu { background: #050505; border-color: var(--line); }
 
-input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #ececec var(--p, 0%), var(--line) var(--p, 0%)); border-radius: 0; }
-input[type=range]::-webkit-slider-thumb { border-radius: 0; box-shadow: none; }
+input[type=range]::-webkit-slider-runnable-track { background: linear-gradient(90deg, #ececec var(--p, 0%), var(--line) var(--p, 0%)); border-radius: 2px; }
+input[type=range]::-webkit-slider-thumb { border-radius: 50%; box-shadow: none; }
 /* кружок на полосе трека VK Music (свой элемент, не родной кружок ползунка) */
-.seekdot { border-radius: 0; box-shadow: none; }
+.seekdot { border-radius: 50%; box-shadow: none; }
 ::selection { background: var(--line); color: #fff; }

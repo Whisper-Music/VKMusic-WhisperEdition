@@ -338,13 +338,9 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
       invoke.resolve()
       return
     }
-    activity.findViewById<android.view.View>(android.R.id.content).setBackgroundColor(c)
-    activity.window.decorView.setBackgroundColor(c)
-    val light = (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)) > 150
-    WindowCompat.getInsetsController(activity.window, activity.window.decorView).apply {
-      isAppearanceLightStatusBars = light
-      isAppearanceLightNavigationBars = light
-    }
+    // запомнить: при следующем запуске окно сразу этого цвета (MainActivity), без цвета прошлой темы
+    activity.getSharedPreferences(MainActivity.PREFS, Activity.MODE_PRIVATE).edit().putInt(MainActivity.PREF_BG, c).apply()
+    MainActivity.applyBars(activity, c)
     invoke.resolve()
   }
 }
