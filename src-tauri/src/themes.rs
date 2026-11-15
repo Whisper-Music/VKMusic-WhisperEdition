@@ -27,12 +27,8 @@ pub const DEFAULT_THEME: &str = "osaka-jade";
 /// Основы оформления Whisper — стили без файла (CSS — в src/whisper.css). id заняты, как у встроенных тем.
 pub const BASES: [(&str, &str); 4] = [("neon", "Неон"), ("royal", "Королевский"), ("steam", "Стимпанк"), ("lolitta", "Lolitta")];
 
-const BUILTIN: &[(&str, &[u8])] = &[
-    ("osaka-jade", include_bytes!("../../themes/osaka-jade.wmt")),
-    ("vantablack", include_bytes!("../../themes/vantablack.wmt")),
-    ("ashen-inventory", include_bytes!("../../themes/ashen-inventory.wmt")),
-    ("slate", include_bytes!("../../themes/slate.wmt")),
-];
+/// Все `themes/<id>.wmt`, какие есть при сборке (список собирает build.rs).
+const BUILTIN: &[(&str, &[u8])] = include!(concat!(env!("OUT_DIR"), "/builtin_themes.rs"));
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ThemeInfo {

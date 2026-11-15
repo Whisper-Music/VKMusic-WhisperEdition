@@ -1,3 +1,9 @@
 /target
 /src-tauri/gen/schemas
 /src-tauri/bin
+# свои темы владельца — только локально (build.rs встраивает все themes/*.wmt, какие есть)
+/themes/ashen-inventory
+/themes/ashen-inventory.wmt
+/themes/slate
+/themes/slate.wmt
+/scripts/slate-background.py

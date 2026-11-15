@@ -79,7 +79,7 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   по-прежнему `~/.config/vkmusic`, кэш — `~/.cache/vkmusic` (не зависят от идентификатора).
 * Лицензия — PolyForm Noncommercial 1.0.0 (`LICENSE`, как у Whisper Yandex и ядра); строку `Required Notice` не трогать.
 * Репозиторий — https://github.com/Whisper-Music/VKMusic-WhisperEdition. В нём только приложение: ядро — подмодуль
-  (`src/core`, своё — в whisper-core), темы библиотеки — в whisper-themes (здесь — только 4 встроенные, `themes/`).
+  (`src/core`, своё — в whisper-core), темы библиотеки — в whisper-themes (здесь — только 2 встроенные, `themes/`).
 
 ## Устройство
 
@@ -108,7 +108,7 @@ src-tauri/src/library.rs   сканирование ~/Music/vk (глубина 3
                            (путь, размер, время изменения) при повторном сканировании берутся из памяти (`TAGS`)
 src-tauri/src/fonts.rs     системные шрифты: `fc-list --format "%{family[0]}\n" :`
 src-tauri/src/wmt.rs       чтение .wmt: текст (#WMT 1, секции @@) и zip (свой ридер: stored/deflate, без zip64)
-src-tauri/src/themes.rs    встроенные темы (include_bytes!), ~/.config/vkmusic/themes, tokens → CSS-переменные,
+src-tauri/src/themes.rs    встроенные темы (список `themes/*.wmt` собирает build.rs), ~/.config/vkmusic/themes, tokens → CSS-переменные,
                            основы Whisper (neon/royal/steam/lolitta) как стили без файла, theme_file (сам файл для ядра), превью
 src-tauri/src/omarchy.rs   стиль «Omarchy» (тема системы): тема .wmt из текущей темы Omarchy (colors.toml, обои, превью), слежение
 src-tauri/src/themelib.rs  библиотека тем: whisper-themes на raw.githubusercontent.com (reqwest)
@@ -611,10 +611,14 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 **Темы**
 * Встроенная тема: правьте `themes/<id>/theme.wmt`, затем пересоберите архив
   `scripts/pack-theme.sh themes/<id>` (или тем же составом файлов через zip) и проверьте
-  `cargo test` (`builtin_parses`). Новая встроенная тема — ещё и строка в `BUILTIN` в `themes.rs`.
-  Картинки в собранных архивах `osaka-jade`, `vantablack`, `ashen-inventory` не совпадают с файлами в папках
+  `cargo test` (`builtin_parses`). Встроенные — все `themes/<id>.wmt`, какие есть при сборке: `BUILTIN` в `themes.rs`
+  собирает `src-tauri/build.rs` (первыми — `osaka-jade`, `vantablack`, остальные по алфавиту).
+* В git — только Osaka Jade и Vantablack. Свои темы владельца (Ashen Inventory, «Грифель» `slate` и скрипт его фона)
+  лежат в `themes/` и `scripts/` только у него (`.gitignore`, решение владельца 2026-11-15): в его сборках они
+  встроены, в выпусках и у остальных их нет. Не добавлять их обратно в git и не ссылаться на них из кода.
+  Картинки в собранных архивах `osaka-jade`, `vantablack` не совпадают с файлами в папках
   (2026-11-03): чтобы поменять только CSS, обновляйте в архиве один файл — `cd themes/<id> && zip -X ../<id>.wmt theme.wmt`.
-* id встроенных тем (`osaka-jade`, `vantablack`, `ashen-inventory`, `slate`) и основ Whisper (`neon`, `royal`, `steam`,
+* id встроенных тем (`osaka-jade`, `vantablack` и других из `themes/` сборки) и основ Whisper (`neon`, `royal`, `steam`,
   `lolitta` — стили без файла, CSS в `whisper.css`) заняты — свои темы с ними не ставятся.
 * Секции, как у Whisper Yandex: `@@ css whisper-core` (по ролям) → `@@ css whisper-music` (разметка Whisper — она же
   наша) → `@@ css whisper-vk` (своё для VK Music, необязательно) → `tokens`; `@@ settings whisper-music` — возможности
@@ -650,9 +654,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   (`settings → buttons`). Нет два раза подряд — аварийная полоса (popover, инлайн-стили с !important); тема спрятала
   и её — «Неон». Ctrl+Shift+Backspace — «Неон» всегда. «Не показывать» для темы — `vkm_tguard`.
 * Ассеты чужих игр, программ и брендов (арт, логотипы, шрифты без свободной лицензии) в темы не класть.
-  Ashen Inventory «в духе» Dark Souls нарисована целиком на CSS, фон — процедурный.
-  Обои Osaka Jade и Vantablack — из тем Omarchy (MIT). Фон «Грифеля» (`slate`) — процедурный (numpy + Pillow),
-  по мотивам доски из темы «Мел» Whisper Music, но без её картинки и надписей.
+  Обои Osaka Jade и Vantablack — из тем Omarchy (MIT).
 
 ## Чего не делать
 
