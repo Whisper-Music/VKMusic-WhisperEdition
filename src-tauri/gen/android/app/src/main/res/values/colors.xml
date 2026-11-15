@@ -7,4 +7,6 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- подложка значка и фон окна до загрузки темы (src/favicon.svg) -->
+    <color name="vkm_bg">#FF111C18</color>
 </resources>

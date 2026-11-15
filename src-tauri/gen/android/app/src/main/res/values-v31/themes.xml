@@ -1,0 +1,10 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Android 12+: экран запуска — логотип на подложке значка (остальное — как в values/themes.xml) -->
+    <style name="Theme.vkmusic" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/vkm_bg</item>
+        <item name="android:statusBarColor">@color/vkm_bg</item>
+        <item name="android:navigationBarColor">@color/vkm_bg</item>
+        <item name="android:windowSplashScreenBackground">@color/vkm_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+    </style>
+</resources>

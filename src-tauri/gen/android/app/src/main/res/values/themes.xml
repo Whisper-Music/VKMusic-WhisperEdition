@@ -1,6 +1,9 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Theme.vkmusic" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+    <!-- Тема окна VK Music: всегда тёмная (интерфейс рисует тема Whisper; до её загрузки — цвет подложки значка,
+         без белой вспышки при запуске). Цвет системных панелей потом ставит VkmPlugin.bars по фону темы. -->
+    <style name="Theme.vkmusic" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/vkm_bg</item>
+        <item name="android:statusBarColor">@color/vkm_bg</item>
+        <item name="android:navigationBarColor">@color/vkm_bg</item>
     </style>
 </resources>

@@ -51,6 +51,10 @@
     back: '<path d="M14.5 5.5L8 12l6.5 6.5"/>',
     link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
     // значки сервисов — свои, не логотипы
+    // нижняя полоса разделов на телефоне (mobile.js): библиотека, плейлисты, аккаунт (сервисы)
+    library: '<path d="M5 4.5v15M9.5 4.5v15"/><path d="M13.6 5.2l4.6 14.3"/>',
+    playlist: '<path d="M4 6h11M4 11h11M4 16h6"/><path d="M19 17V7l2.5-1"/><circle cx="16.5" cy="17" r="2.5"/>',
+    user: '<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
     vk: '<rect x="2.5" y="4.5" width="19" height="15" rx="4"/><text x="12" y="15.6" text-anchor="middle" font-size="8.5" font-weight="700" font-family="system-ui, sans-serif" fill="currentColor" stroke="none">VK</text>',
     sc: '<path d="M7 17.5h10.5a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6-1.3A4 4 0 0 0 7 17.5z"/><path d="M4 12v5.5M2 13.5v3"/>',
   };

@@ -488,9 +488,25 @@
     if (!t.room && !t.unavailable && !(S.current && S.current.key === t.key)) menuItem(Icons.svg("playnext"), L("Играть следующим"), () => window.playNext(t));
     if (canAddToPlaylist(t)) menuItem(Icons.svg("listadd"), L("В плейлист ВК"), () => addToPlaylistMenu(anchor, t));
     W.ui.trackMenu.build(t, null);                                    // «Сохранить в архив» (core/archive.js)
+    if (MOBILE && anchor) rowActionItems(anchor);
     if (anchor && anchor.id === "pMore") playerMenuItems();
     if (!tmenu.children.length) menuNote(L("Здесь пока нечего делать"));
     placeMenu();
+  }
+
+  // Телефон: значков действий в строке трека нет (.lacts скрыт, mobile.css) — те же действия пунктами меню; нажатие
+  // нажимает саму кнопку строки, поэтому подтверждение и всё остальное — как на компьютере. «В плейлист» уже есть выше.
+  function rowActionItems(anchor) {
+    const li = anchor.closest("li");
+    const btns = li ? [...li.querySelectorAll(".lacts > button")] : [];
+    const skip = new Set([L("В плейлист")]);
+    const items = btns.filter((b) => !skip.has(b.getAttribute("aria-label") || ""));
+    if (!items.length) return;
+    menuSep();
+    for (const b of items) {
+      const icon = b.querySelector("i[data-icon]")?.dataset.icon || "";
+      menuItem(icon ? Icons.svg(icon) : "", b.getAttribute("aria-label") || "", () => b.click(), { danger: icon === "trash" });
+    }
   }
 
   // ---------- «⋯» плеера: скорость, устройство вывода, эквалайзер (как у Whisper Yandex — подменю того же .tmenu) ----------
@@ -503,7 +519,7 @@
     // на телефоне устройство вывода (наушники, Bluetooth) выбирает система
     if (!MOBILE) menuItem(Icons.svg("output"), L("Устройство вывода"), () => outputMenu(), { keep: true, arrow: true });
     menuItem(Icons.svg("eq"), window.Eq && window.Eq.on() ? L("Эквалайзер · включён") : L("Эквалайзер"), () => window.Eq && window.Eq.open());
-    if (!window.__TAURI__?.__host) menuItem(Icons.svg("mini"), L("Мини-плеер"), () => invoke("mini_toggle").catch((e) => toast(errMsg(e), "error")));
+    if (!window.__TAURI__?.__host && !MOBILE) menuItem(Icons.svg("mini"), L("Мини-плеер"), () => invoke("mini_toggle").catch((e) => toast(errMsg(e), "error")));
   }
   function rateMenu() {
     menuReset();

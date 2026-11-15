@@ -157,8 +157,10 @@ src/sleep.js               режим сна: луна #sleepBtn в .pright, к�
 src/cli.js                 стиль-консоль («console» в settings темы, тема «Терминал»): команды VK Music, разметка #cli Whisper
 src/mini.html, mini.js, mini.css  мини-плеер (окно `mini`): данные — только textContent, обложки — https и vkm /cover
 src/host.js                заглушка window.__TAURI__ для браузера (--host): сервер вставляет её первым скриптом index.html
-src/mobile.js, mobile.css   телефон (`html.mobile` — boot.js по UA Android): поиск наверх, режимы плеера и кнопки модулей —
-                           на «Сейчас играет», разделы — полосой внизу, «Назад» Android (`onBackButtonPress`)
+src/mobile.js, mobile.css   телефон (`html.mobile` — boot.js по UA Android): сверху поиск и кнопка аккаунта («Сервисы»),
+                           мини-плеер карточкой (нет трека — класс `mnone`, плеера нет), 5 разделов со значками внизу,
+                           режимы плеера, кнопки модулей и «⋯» — на «Сейчас играет» (смахнуть вниз — закрыть), меню и
+                           подтверждения — шторкой снизу, «Назад» Android (`onBackButtonPress`)
 src/favicon.svg            значок вкладки браузера (--host) — тот же, что src-tauri/icons/icon.png; меняется вместе с ним
 src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
@@ -257,7 +259,13 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Кэш треков сервисов без ffmpeg — `mobile/hls.rs` (обычный файл как есть; HLS: сегменты по порядку, AES-128-CBC,
   MPEG-TS → .mp3 / .aac, fMP4 → .m4a); те же правила кэша и `GAP`, что на компьютере. Замера громкости нет (`loudness`).
 * Интерфейс — тот же (`html.mobile`, mobile.css / mobile.js); на телефоне нет карточек трея, расположения, горячих клавиш,
-  «Окно и браузер», Discord, OBS, загрузки yt-dlp, «Выключить компьютер» и «Устройства вывода» (`MOBILE` в app.js).
+  «Окно и браузер», Discord, OBS, загрузки yt-dlp, «Выключить компьютер», «Устройства вывода» и «Мини-плеера» (`MOBILE`).
+  Значков действий в строке трека (`.lacts`) на телефоне не видно — те же кнопки пунктами меню «⋯» (`rowActionItems` в
+  whisper-vk.js нажимает саму кнопку строки, поэтому подтверждения прежние). Пока ничего не включено, мини-плеера нет —
+  themeguard «Пуск» тогда не требует (`mnone`).
+* Иконка Android — адаптивная из логотипа (`src/favicon.svg`: подложка, полоски, одноцветный слой Android 13+) и PNG для
+  Android 7: `packaging/android-icon.py` (rsvg-convert) пишет их в `gen/android/app/src/main/res`. Тема окна — тёмная
+  (`values*/themes.xml`, цвет `vkm_bg`), экран запуска Android 12+ — логотип.
 * Сборка: JDK 17, Android SDK и NDK (`ANDROID_HOME`, `NDK_HOME`), `rustup target add aarch64-linux-android …`;
   `packaging/android.sh` (по умолчанию отладочный APK arm64; `--release` — подписанный, ключ — `VKM_KEYSTORE`…).
   Проверка без телефона: `cargo check --target aarch64-linux-android --lib` (CC / AR — clang и llvm-ar из NDK)

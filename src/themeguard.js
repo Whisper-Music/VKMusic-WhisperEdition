@@ -90,6 +90,8 @@
     const cli = document.body.classList.contains("cli-on");
     for (const [k, a] of Object.entries(ACTS)) {
       if ((a.win && hostMode()) || a.th.some((x) => thActs.has(x)) || (a.cli && cli)) continue;
+      // телефон: пока ничего не включено, мини-плеера (и «Пуска» в нём) нет намеренно (mobile.js, класс mnone)
+      if (k === "play" && document.documentElement.classList.contains("mnone")) continue;
       const v = reachable(a.el, a.area);
       if (v === null) unsure = true;
       else if (!v) out.push(k);
