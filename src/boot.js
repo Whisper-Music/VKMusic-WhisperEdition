@@ -10,7 +10,12 @@
   const root = document.documentElement;
   root.classList.add("booting");
   // телефон (Android): раскладка под палец — mobile.css, mobile.js; до первой отрисовки, как и стиль
-  if (/\bAndroid\b/.test(navigator.userAgent)) root.classList.add("mobile");
+  if (/\bAndroid\b/.test(navigator.userAgent)) {
+    root.classList.add("mobile");
+    // масштаб двумя пальцами на телефоне не нужен (просьба владельца, 2026-11-15): приложение, а не страница
+    const vp = document.querySelector('meta[name="viewport"]');
+    if (vp) vp.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no");
+  }
   try {
     const b = JSON.parse(localStorage.getItem("vkm_boot") || "null");
     if (b && typeof b === "object") {

@@ -796,11 +796,37 @@ let dragJustEnded = false;
  * перетаскивания .wmt). Строка едет за курсором, соседние плавно расступаются (FLIP), у краёв список
  * прокручивается. Отпустили — Rust ставит трек перед следующим (library_move).
  */
+/** Палец: сколько держать строку, чтобы поднять её для перетаскивания, мс. */
+const DRAG_HOLD_MS = 350;
+
 function startDrag(ev, row, wrap) {
   if (ev.button !== 0 || ev.target.closest("button, input, a, .lacts")) return;
   const box = scroller();
   const startY = ev.clientY;
   let dragging = false, grab = 0, lastY = ev.clientY, raf = 0;
+  // Палец (телефон): строку поднимает долгое нажатие (DRAG_HOLD_MS без движения), иначе движение — прокрутка списка;
+  // пока строку тянут, прокрутку страницы держим (touchmove → preventDefault), иначе WebView начинал прокручивать
+  // и обрывал перетаскивание (pointercancel) — «работает только двумя пальцами» (2026-11-15)
+  const touch = ev.pointerType === "touch";
+  let holdT = 0;
+  const noScroll = (e) => e.preventDefault();
+  const lift = (pointerId) => {
+    dragging = true;
+    grab = startY - row.getBoundingClientRect().top;
+    row.classList.add("dragging");
+    document.body.classList.add("drag-sorting");
+    try { row.setPointerCapture(pointerId); } catch {}
+    raf = requestAnimationFrame(tick);
+  };
+  if (touch) {
+    holdT = setTimeout(() => {
+      holdT = 0;
+      document.addEventListener("touchmove", noScroll, { passive: false });
+      if (navigator.vibrate) navigator.vibrate(15);
+      lift(ev.pointerId);
+      update();
+    }, DRAG_HOLD_MS);
+  }
 
   const naturalTop = () => {
     const prev = row.style.transform;
@@ -851,13 +877,10 @@ function startDrag(ev, row, wrap) {
   const move = (e) => {
     lastY = e.clientY;
     if (!dragging) {
-      if (Math.abs(lastY - startY) < DRAG_START) return;
-      dragging = true;
-      grab = startY - row.getBoundingClientRect().top;
-      row.classList.add("dragging");
-      document.body.classList.add("drag-sorting");
-      row.setPointerCapture(e.pointerId);
-      raf = requestAnimationFrame(tick);
+      if (Math.abs(lastY - startY) < (touch ? 10 : DRAG_START)) return;
+      // палец сдвинулся раньше, чем поднял строку, — это прокрутка, а не перетаскивание
+      if (touch) return up();
+      lift(e.pointerId);
     }
     update();
   };
@@ -866,6 +889,8 @@ function startDrag(ev, row, wrap) {
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
     window.removeEventListener("pointercancel", up);
+    clearTimeout(holdT);
+    document.removeEventListener("touchmove", noScroll);
     if (!dragging) return;
     cancelAnimationFrame(raf);
     // клик, который придёт следом за отпусканием, — не «включить трек»

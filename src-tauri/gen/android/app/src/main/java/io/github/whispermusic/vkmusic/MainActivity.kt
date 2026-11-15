@@ -67,5 +67,9 @@ class MainActivity : TauriActivity() {
     // музыка играет с выключенным экраном: следующий трек включает интерфейс (событие ended), поэтому процесс
     // страницы не должен засыпать вместе с окном
     if (Build.VERSION.SDK_INT >= 26) webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+    // масштаб двумя пальцами не нужен — это приложение, а не страница (и viewport в boot.js)
+    webView.settings.setSupportZoom(false)
+    webView.settings.builtInZoomControls = false
+    webView.settings.displayZoomControls = false
   }
 }

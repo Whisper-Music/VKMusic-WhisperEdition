@@ -15,6 +15,8 @@ html.mobile body {
 }
 html.mobile input, html.mobile textarea, html.mobile .ptext { -webkit-user-select: text; user-select: text; }
 html.mobile button, html.mobile .list li, html.mobile .nav { touch-action: manipulation; }
+/* без масштаба двумя пальцами (и в viewport — boot.js, и в WebView — MainActivity) */
+html.mobile, html.mobile body { touch-action: pan-x pan-y; }
 
 /* окна нет — нет и его полосы, перетаскивания файлов, полосы входа (вход — окном Android поверх приложения) */
 html.mobile .titlebar,
