@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Логотип VK Music одним цветом во весь значок — маленький значок уведомления плеера (PlaybackService) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M3.745,11.698 A2.047,2.047 0 0 1 7.839,11.698 L7.839,19.953 A2.047,2.047 0 0 1 3.745,19.953 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M9.919,4.081 A2.081,2.081 0 0 1 14.081,4.081 L14.081,19.919 A2.081,2.081 0 0 1 9.919,19.919 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M16.094,8.913 A2.081,2.081 0 0 1 20.255,8.913 L20.255,19.919 A2.081,2.081 0 0 1 16.094,19.919 Z" />
+</vector>

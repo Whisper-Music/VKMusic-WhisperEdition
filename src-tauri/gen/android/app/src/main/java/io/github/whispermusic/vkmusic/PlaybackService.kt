@@ -25,6 +25,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.session.CommandButton
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
@@ -169,10 +170,24 @@ object Engine {
     main.postDelayed(ticker, 250)
   }
 
+  /** Последнее «что играет» от интерфейса (tray.js → mini_state): название, исполнитель, обложка. */
+  private var lastMeta: Triple<String, String, String>? = null
+
+  private fun metadata(title: String, artist: String, cover: String): MediaMetadata {
+    val m = MediaMetadata.Builder().setTitle(title)
+    if (artist.isNotEmpty()) m.setArtist(artist)
+    if (cover.startsWith("https://")) m.setArtworkUri(Uri.parse(cover))
+    return m.build()
+  }
+
   fun load(src: String, title: String, ua: String, referer: String, start: Double, pause: Boolean) {
     val local = !src.startsWith("https://")
     val uri = if (local) Uri.fromFile(File(src)) else Uri.parse(src)
-    val b = MediaItem.Builder().setUri(uri).setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+    // интерфейс обычно присылает название, исполнителя и обложку раньше, чем трек загрузится: тогда уведомление сразу
+    // правильное, без «Исполнитель — Название» одной строкой и пустой обложки (title здесь — как раз эта строка)
+    val m = lastMeta?.takeIf { it.first.isNotEmpty() && title.contains(it.first) }
+    val md = if (m != null) metadata(m.first, m.second, m.third) else metadata(title, "", "")
+    val b = MediaItem.Builder().setUri(uri).setMediaMetadata(md)
     if (!local && (uri.path ?: "").endsWith(".m3u8")) b.setMimeType(MimeTypes.APPLICATION_M3U8)
     headers = ua to referer
     triedHls = false
@@ -204,10 +219,11 @@ object Engine {
 
   /** Подпись и обложка трека (уведомление, экран блокировки) — без перезагрузки звука. */
   fun meta(title: String, artist: String, cover: String) {
+    lastMeta = Triple(title, artist, cover)
     val cur = item ?: return
-    val m = MediaMetadata.Builder().setTitle(title).setArtist(artist)
-    if (cover.startsWith("https://")) m.setArtworkUri(Uri.parse(cover))
-    val next = cur.buildUpon().setMediaMetadata(m.build()).build()
+    val md = metadata(title, artist, cover)
+    if (cur.mediaMetadata == md) return
+    val next = cur.buildUpon().setMediaMetadata(md).build()
     item = next
     if (exo.mediaItemCount > 0) exo.replaceMediaItem(0, next)
   }
@@ -348,6 +364,8 @@ class PlaybackService : MediaSessionService() {
       .setSessionCommand(close)
       .setSlots(CommandButton.SLOT_BACK_SECONDARY)
       .build()
+    // маленький значок уведомления (на обложке и в строке состояния) — логотип VK Music, а не значок Media3
+    setMediaNotificationProvider(DefaultMediaNotificationProvider.Builder(this).build().apply { setSmallIcon(R.drawable.ic_vkm_notification) })
     session = MediaSession.Builder(this, Engine.get(this).session)
       .setSessionActivity(open)
       .setCallback(callback)
