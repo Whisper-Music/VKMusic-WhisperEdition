@@ -10,7 +10,7 @@
   "name": "Ashen Inventory",
   "author": "VK Music",
   "description": "Мрачный инвентарь: каменные панели, бронзовые рамки, слоты-ячейки и тлеющий пепел",
-  "version": "1.0",
+  "version": "1.1",
   "base": "royal",
   "apps": ["whisper-music"],
   "created": "2026-10-29T00:00:00Z",
@@ -133,7 +133,8 @@
   border-radius: 0; transform: rotate(45deg); background: linear-gradient(135deg, #3a2f1f, #120f0a);
   border: 1px solid var(--gold); color: var(--heading); box-shadow: 0 0 12px rgba(214, 160, 80, .25);
 }
-.player .playbtn svg, .fbtns .playbtn svg, .player .playbtn .ic, .fbtns .playbtn .ic { transform: rotate(-45deg); }
+/* значок — обратно прямо; только непосредственное содержимое кнопки: svg внутри .ic повернулся бы второй раз (так было до 1.1) */
+.player .playbtn > svg, .fbtns .playbtn > svg, .player .playbtn > .ic, .fbtns .playbtn > .ic { transform: rotate(-45deg); }
 .player .playbtn:active { transform: rotate(45deg) scale(.94); }
 .wavebtn { border-radius: 0; transform: rotate(45deg); background: linear-gradient(135deg, #3a2f1f, #120f0a); border: 1px solid var(--gold); color: var(--heading); }
 .wavebtn svg { transform: rotate(-45deg); }
