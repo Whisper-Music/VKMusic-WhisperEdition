@@ -97,7 +97,8 @@ html.mobile.mnone .player { display: none !important; }
 html.mobile .pright { display: none !important; }
 
 /* ---------- разделы: нижняя полоса со значками, все сразу (без прокрутки: «Настройки» всегда под пальцем — их
-   ищет и защита от ломающих тем, themeguard.js); выбранный — «пилюля» под значком ---------- */
+   ищет и защита от ломающих тем, themeguard.js). Цвета — темы: невыбранные — её кнопки разделов без подложки,
+   выбранный — её же выбранная кнопка (заливка и цвет текста под неё) ---------- */
 html.mobile .side {
   order: 3; flex: none !important; position: relative !important; inset: auto !important;
   width: auto !important; height: auto !important; min-height: 0 !important; margin: 0 !important; border-radius: 0 !important;
@@ -109,17 +110,42 @@ html.mobile .side .spacer, html.mobile .side .queue-mini, html.mobile .side #pro
 html.mobile .side .nav {
   min-width: 0; width: auto !important; height: auto !important; margin: 0 !important; padding: 4px 0 !important;
   display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  background: none !important; box-shadow: none !important; border: 0 !important; border-radius: 0 !important;
-  color: var(--muted) !important; text-shadow: none !important; font-weight: 500 !important;
+  border: 0 !important; border-radius: 14px !important;
+  font-weight: 500 !important;
   font-size: 11px !important; letter-spacing: 0 !important; line-height: 1.1; text-align: center;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 html.mobile .side .nav::before, html.mobile .side .nav::after { display: none !important; }
-html.mobile .side .nav .nicon { display: grid; place-items: center; width: 56px; height: 30px; border-radius: 15px; transition: background .2s; }
+html.mobile .side .nav:not(.active) { background: none !important; box-shadow: none !important; text-shadow: none !important; opacity: .78; }
+html.mobile .side .nav.active { opacity: 1; font-weight: 600 !important; margin: 0 2px !important; }
+/* «Лолита»: невыбранные разделы на компьютере — тёмно-розовые плашки со светлым текстом; без плашки светлый текст
+   пропадает на светлой панели — подпись цветом её кнопок */
+html.mobile:root[data-style="lolitta"] .side .nav:not(.active) { color: var(--l-btn2, var(--l-btn, #8a3b57)) !important; opacity: .9; }
+html.mobile .side .nav .nicon { display: grid; place-items: center; width: 40px; height: 26px; }
 html.mobile .side .nav .nicon svg { width: 22px; height: 22px; }
-html.mobile .side .nav.active { color: var(--text) !important; font-weight: 600 !important; }
-html.mobile .side .nav.active .nicon { background: var(--btn-fill, var(--accent)); color: var(--on-accent, #0b0618); }
 html.mobile .side .nav .nav-badge { position: absolute; margin: 0 0 0 26px; top: 4px; }
+
+/* ---------- украшения тем на полосе разделов и мини-плеере ----------
+   Темы рисуют на этих панелях таблички и надписи псевдоэлементами («Whisper», «Меню», табличка модели, статусы,
+   заклёпки), рассчитанными на высокую боковую панель и широкую нижнюю панель компьютера; на телефоне эти панели
+   другой формы, и надписи ложатся на разделы и название трека. Рамки панелей (так их рисуют и основы — Steam, Неон)
+   остаются: ::before самих панелей — во всю панель и без текста; остальное — убирается. Кнопки темы — тоже. */
+html.mobile .side, html.mobile .player { isolation: isolate; }
+/* под содержимым панели: у части тем это непрозрачные таблички («[ пауза ]», «Меню»), растянутые — закрыли бы кнопки */
+html.mobile .side::before, html.mobile .player::before {
+  content: "" !important; position: absolute !important; inset: 0 !important; z-index: -1 !important; width: auto !important; height: auto !important;
+  transform: none !important; translate: none !important; margin: 0 !important;
+}
+html.mobile .side::after, html.mobile .player::after,
+html.mobile .player .pinfo::before, html.mobile .player .pinfo::after,
+html.mobile .player .meta::before, html.mobile .player .meta::after,
+html.mobile .player .ctrls::before, html.mobile .player .ctrls::after,
+html.mobile .player .cover::before, html.mobile .player .cover::after,
+html.mobile .side .nav .nicon::before, html.mobile .side .nav .nicon::after { content: none !important; display: none !important; }
+html.mobile #thBtns { display: none !important; }
+/* угловые узоры «Королевского» (--fs) — по размеру низкой панели */
+html.mobile .side { --fs: 30px; }
+html.mobile .player { --fs: 26px; }
 
 /* ---------- списки: обложка, название, «сердце», «⋯» (остальные действия строки — в меню «⋯») ---------- */
 /* длинное название без пробелов не должно растягивать колонку шире экрана (правая часть строки уезжала за край) */
@@ -186,7 +212,7 @@ html.mobile .full.mdrag { transition: none; }
 html.mobile .fwrap { padding: 22px 20px 20px !important; gap: 14px; }
 /* ручка: смахнуть вниз — закрыть */
 html.mobile .fwrap::before { content: ""; position: absolute; top: 8px; left: 50%; translate: -50% 0; width: 40px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.3); }
-html.mobile .fclose { top: 16px; right: 14px; }
+html.mobile .fclose { position: absolute !important; top: 16px !important; right: 14px !important; left: auto !important; bottom: auto !important; margin: 0 !important; }
 /* «Текст / язык / Genius» — строкой над треком, слева от крестика (на компьютере — поверх, у крестика) */
 html.mobile .fsrc { position: static !important; align-self: flex-start; flex-wrap: wrap; margin-right: 52px; }
 html.mobile .fhead { padding-right: 0; }
