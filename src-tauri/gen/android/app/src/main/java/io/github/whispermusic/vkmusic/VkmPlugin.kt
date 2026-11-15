@@ -361,13 +361,12 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
 
   // ───────────── обновление (update.rs: APK последнего выпуска скачан в кэш приложения) ─────────────
 
-  /** APK ждёт, пока пользователь разрешит VK Music устанавливать приложения (настройки Android). */
-  private var pendingApk: File? = null
-
   /**
    * Открыть установщик Android с новым APK. Подпись проверяет сама система: поверх установленного встанет только APK,
-   * подписанный тем же ключом. Без разрешения «Установка неизвестных приложений» (Android 8+) — сначала его экран,
-   * установщик откроется, когда пользователь вернётся (onResume).
+   * подписанный тем же ключом. Без разрешения «Установка неизвестных приложений» (Android 8+) — сначала его экран, а
+   * APK запоминается в настройках: выдав разрешение, Android завершает процесс приложения (проверено на HyperOS,
+   * 2026-11-15), поэтому установщик открывается при следующем запуске или возврате — если с запроса прошло не больше
+   * PENDING_MS, иначе обновление ставится снова кнопкой.
    */
   @Command
   fun installApk(invoke: Invoke) {
@@ -377,7 +376,7 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
       return
     }
     if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) {
-      pendingApk = f
+      prefs().edit().putString(PREF_APK, f.path).putLong(PREF_APK_AT, System.currentTimeMillis()).apply()
       activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + activity.packageName)))
     } else {
       openInstaller(f)
@@ -385,10 +384,25 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
     invoke.resolve()
   }
 
-  override fun onResume() {
-    val f = pendingApk ?: return
-    pendingApk = null
-    if (Build.VERSION.SDK_INT < 26 || activity.packageManager.canRequestPackageInstalls()) openInstaller(f)
+  private fun prefs() = activity.getSharedPreferences(MainActivity.PREFS, Activity.MODE_PRIVATE)
+
+  override fun load(webView: WebView) {
+    super.load(webView)
+    resumeInstall()
+  }
+
+  override fun onResume() = resumeInstall()
+
+  private fun resumeInstall() {
+    val p = prefs()
+    val path = p.getString(PREF_APK, null) ?: return
+    val fresh = System.currentTimeMillis() - p.getLong(PREF_APK_AT, 0) in 0..PENDING_MS
+    val allowed = Build.VERSION.SDK_INT < 26 || activity.packageManager.canRequestPackageInstalls()
+    // разрешение не дали, но запрос свежий — ждём следующего возврата
+    if (fresh && !allowed) return
+    p.edit().remove(PREF_APK).remove(PREF_APK_AT).apply()
+    val f = File(path)
+    if (fresh && f.isFile) openInstaller(f)
   }
 
   private fun openInstaller(f: File) {
@@ -400,5 +414,12 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
       activity.startActivity(i)
     } catch (_: Exception) {
     }
+  }
+
+  companion object {
+    private const val PREF_APK = "update_apk"
+    private const val PREF_APK_AT = "update_apk_at"
+    /** сколько ждёт скачанное обновление, пока пользователь выдаёт разрешение на установку */
+    private const val PENDING_MS = 10 * 60 * 1000L
   }
 }
