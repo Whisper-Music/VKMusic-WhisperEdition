@@ -20,7 +20,11 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.TeeAudioProcessor
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -76,7 +80,16 @@ object Engine {
     if (ready) return this
     app = ctx.applicationContext
     val attrs = AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build()
-    exo = ExoPlayer.Builder(app)
+    // ответвитель звука для визуализатора (Viz.kt): пока он выключен, только считает отсчёты
+    val renderers = object : DefaultRenderersFactory(app) {
+      override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
+        DefaultAudioSink.Builder(context)
+          .setEnableFloatOutput(enableFloatOutput)
+          .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+          .setAudioProcessors(arrayOf(TeeAudioProcessor(Viz)))
+          .build()
+    }
+    exo = ExoPlayer.Builder(app, renderers)
       .setAudioAttributes(attrs, true) // звонок, навигатор, другое приложение — пауза/тише сами
       .setHandleAudioBecomingNoisy(true) // наушники вынули — пауза
       .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -131,6 +144,7 @@ object Engine {
       override fun seekToPrevious() = ctl("prev")
       override fun seekToPreviousMediaItem() = ctl("prev")
     }
+    Viz.sink = { b -> emit(JSObject().put("type", "viz").put("b", org.json.JSONArray(b.map { it.toInt() }))) }
     ready = true
     return this
   }
@@ -145,6 +159,7 @@ object Engine {
 
   fun push() {
     if (!ready) return
+    vizClock() // при загрузке — позиция, с которой трек начнётся
     val dur = exo.duration
     emit(
       JSObject()
@@ -169,6 +184,14 @@ object Engine {
     main.removeCallbacks(ticker)
     main.postDelayed(ticker, 250)
   }
+
+  /** Визуализатор (Viz.kt): замеры — только пока он включён и виден. */
+  fun viz(on: Boolean) {
+    if (ready) vizClock()
+    Viz.on = on
+  }
+
+  private fun vizClock(pos: Long = exo.currentPosition) = Viz.clock(pos, exo.isPlaying, exo.playbackParameters.speed)
 
   /** Последнее «что играет» от интерфейса (tray.js → mini_state): название, исполнитель, обложка. */
   private var lastMeta: Triple<String, String, String>? = null
@@ -210,6 +233,7 @@ object Engine {
       else ProgressiveMediaSource.Factory(http).createMediaSource(it)
     }
     loading = true
+    Viz.clock(startMs.coerceAtLeast(0), false, exo.playbackParameters.speed)
     exo.setMediaSource(source, startMs.coerceAtLeast(0))
     exo.playWhenReady = !pause
     exo.prepare()
@@ -233,7 +257,10 @@ object Engine {
   }
 
   fun seek(pos: Double) {
-    if (exo.mediaItemCount > 0) exo.seekTo((pos * 1000).toLong().coerceAtLeast(0))
+    if (exo.mediaItemCount == 0) return
+    val ms = (pos * 1000).toLong().coerceAtLeast(0)
+    vizClock(ms)
+    exo.seekTo(ms)
   }
 
   fun stop() {

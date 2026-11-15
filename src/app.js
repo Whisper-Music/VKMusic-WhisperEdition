@@ -2353,6 +2353,7 @@ function renderSettings() {
   const mods = [...page.querySelectorAll(":scope > .card:not(.own)")];
   renderThemes();
   renderIntroCard();
+  if (window.renderVizCard) renderVizCard(); // viz.js
   renderGeneral();
   renderLyricsSettings();
   // на телефоне трея и окна нет: плеер — в уведомлении, интерфейс — только в приложении

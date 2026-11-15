@@ -246,6 +246,7 @@
       document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       return;
     }
+    if (window.Viz && Viz.full()) return Viz.exitFull();
     if (popupOpen()) {
       closePopups();
       closeNote();

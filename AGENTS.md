@@ -100,6 +100,8 @@ src-tauri/src/backup.rs    резервные копии .vkmbak: настрой
 src-tauri/src/config.rs    ~/.config/vkmusic/config.json (serde(default) — старые/лишние поля не ломают загрузку)
 src-tauri/src/player.rs    mpv в фоне: --idle, JSON IPC через unix-сокет в $XDG_RUNTIME_DIR, PR_SET_PDEATHSIG;
                            цепочка `af` (выравнивание + эквалайзер `Eq`), затухание режима сна (`set_fade`)
+src-tauri/src/viz.rs       визуализатор VK Микса (unix): ветка анализа `@vkviz` в `af` mpv (24 полосы bandpass → astats → FIFO),
+                           замеры отдаются по позиции воспроизведения событием `player://event` `viz`
 src-tauri/src/sleep.rs     режим сна: таймер, затухание последних 3 минут, пауза, выключение компьютера (минута на отмену)
 src-tauri/src/ytdlp.rs     загрузки yt-dlp: аргументы, разбор вывода по маркерам VKMPROG/VKMTITLE/VKMFILE, события
 src-tauri/src/library.rs   сканирование ~/Music/vk (глубина 3), теги/формат/битрейт/обложки — lofty; теги неизменённых файлов
@@ -153,6 +155,10 @@ src/lsguard.js             до app.js: повреждённые JSON в localSt
 src/backup.js              карточка «Резервная копия» (Хранилище), автокопия при запуске
 src/tray.js                что играет — трею и мини-плееру (mini_state / tray_state), карточка «Трей» в «Общем»
 src/eq.js                  эквалайзер (как у Whisper Yandex): окно из «⋯» плеера, 10 полос, предусиление, настройки → player_eq
+src/viz.js                 визуализатор VK Микса (как у Whisper Yandex): #viz на .stage, весь экран — #vizFull, карточка
+                           «Визуализатор» в «Оформлении» (vkm_viz); замеры — `player_viz { enabled, live }`, пока его видно
+src/power.js               энергосбережение: карточка в «Общем» (vkm_power: выключено / всегда / при заряде ниже порога),
+                           класс eco на <html>; заряд — navigator.getBattery, иначе `battery_status` (Linux sysfs)
 src/sleep.js               режим сна: луна #sleepBtn в .pright, карточка «Режим сна» в «Общем» (vkm_sleep), sleep://event
 src/cli.js                 стиль-консоль («console» в settings темы, тема «Терминал»): команды VK Music, разметка #cli Whisper
 src/mini.html, mini.js, mini.css  мини-плеер (окно `mini`): данные — только textContent, обложки — https и vkm /cover
@@ -176,7 +182,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   в JS — тоже snake_case. Ошибки — `Result<T, String>` с понятным пользователю текстом **на русском**.
 * Исключение — `theme_install`: файл темы приходит сырым телом (`invoke("theme_install", Uint8Array)`,
   `tauri::ipc::InvokeBody::Raw`).
-* События Rust → JS: `player://event` (`state` / `ended` / `error`), `dl://event`
+* События Rust → JS: `player://event` (`state` / `ended` / `error` / `viz` — 24 уровня полос, дБ), `dl://event`
   (`title` / `progress` / `saved` / `done` / `failed`), `svc://event` (`login` / `login_closed`, поле `service`: `vk` | `sc`) — после них интерфейс прячет полосу входа,
 `cache://event` (`cached` / `failed`, поле `key` — ключ трека в библиотеке) — после него кэшируется следующий трек,
 `tray://ctl` (действие из меню значка или мини-плеера → `playerAction`, как событие `hotkey`; в `--host` — во вкладку через `host::EVENTS`),
@@ -246,6 +252,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   ползунка — множитель (та же квадратичная шкала), устройство вывода выбирает система. Эквалайзер (10 полос, предусиление)
   и «Постоянный уровень громкости» (сжатие на лету, без замера EBU R128) — `DynamicsProcessing`, Android 9+.
   Поток без расширения не открылся как файл — один раз как HLS. Ретранслятор `relay.rs` на телефоне не нужен (`via_relay`).
+  Визуализатор — `Viz.kt`: `TeeAudioProcessor` в `DefaultAudioSink` → БПФ 2048 → те же 24 полосы, что `viz.rs`;
+  замеры отдаёт свой поток по позиции (часы `Viz.clock` из главного потока — главный поток, занятый WebView, успевал
+  лишь ~15 раз в секунду), команда `viz { on }`.
   Что играет — `mini_state` (tray.js) → `meta` (уведомление; обложка — только `whisper_host::cover_ok`), цвет фона темы →
   `bars` (системные панели).
 * Вход — окно `LoginDialog` с WebView поверх приложения (UA `vk::USER_AGENT`, ссылки на чужие приложения не открываются),
@@ -263,6 +272,8 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   Значков действий в строке трека (`.lacts`) на телефоне не видно — те же кнопки пунктами меню «⋯» (`rowActionItems` в
   whisper-vk.js нажимает саму кнопку строки, поэтому подтверждения прежние). Пока ничего не включено, мини-плеера нет —
   themeguard «Пуск» тогда не требует (`mnone`).
+  Длинные списки треков на телефоне строятся частями (`renderTracks`: `TRACKS_FIRST` сразу, остальное по
+  `TRACKS_CHUNK` за кадр) — библиотека из ~300 треков иначе строилась ~0,6 с.
 * Темы на телефоне (просьба владельца, 2026-11-15: «полный функционал тем вроде „Терминал“ или „Телевизор“ не нужен»):
   у темы с `"layout": "fixed"` или `console` (Ретро-ТВ, Терминал, madk1d, lazzy2wice…) — только цвета, фон и шрифт
   (`tokens`), без её CSS; ручка громкости, кнопки темы (`#thBtns`) и консоль не включаются ни у какой темы (`applyTheme`).

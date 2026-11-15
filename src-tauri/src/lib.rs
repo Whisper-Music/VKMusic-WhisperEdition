@@ -51,6 +51,9 @@ mod themes;
 mod tray;
 #[cfg_attr(mobile, allow(dead_code))]
 mod update;
+// визуализатор VK Микса на компьютере: анализ в mpv, замеры через FIFO (unix; на Android — VkmPlugin)
+#[cfg(all(desktop, unix))]
+mod viz;
 mod vk;
 #[path = "../../src/core/rust/whisper/mod.rs"]
 mod whisper;
@@ -376,6 +379,16 @@ fn win_close(window: tauri::Window) {
     let _ = window.close();
     #[cfg(mobile)]
     let _ = window;
+}
+/// Визуализатор на весь экран (viz.js).
+#[tauri::command]
+fn win_set_fullscreen(window: tauri::Window, on: bool) {
+    #[cfg(desktop)]
+    if !host::active() {
+        let _ = window.set_fullscreen(on);
+    }
+    #[cfg(mobile)]
+    let _ = (window, on);
 }
 #[tauri::command]
 fn win_drag(window: tauri::Window) {
@@ -768,6 +781,7 @@ pub fn run() {
             fonts_list,
             win_minimize,
             win_toggle_max,
+            win_set_fullscreen,
             win_close,
             win_drag,
             cmd::player_cmd::player_play,
@@ -779,6 +793,7 @@ pub fn run() {
             cmd::player_cmd::player_stop,
             cmd::player_cmd::player_normalize,
             cmd::player_cmd::player_eq,
+            cmd::player_cmd::player_viz,
             cmd::player_cmd::sleep_start,
             cmd::player_cmd::sleep_cancel,
             cmd::player_cmd::sleep_status,

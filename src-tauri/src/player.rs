@@ -41,6 +41,8 @@ pub enum PlayerEvent {
     Ended,
     /// не удалось открыть/проиграть
     Error { message: String },
+    /// визуализатор VK Микса: уровни полос, дБ (−100…0; viz.rs, на Android — VkmPlugin)
+    Viz { b: Vec<i16> },
 }
 
 /// Устройство вывода звука из `audio-device-list` mpv.
@@ -75,6 +77,9 @@ pub struct Player {
     /// устройства вывода и текущее (`audio-device`) — mpv присылает их сам (observe_property), в том числе
     /// когда подключили наушники
     devices: Arc<Mutex<(Vec<AudioDevice>, String)>>,
+    /// визуализатор VK Микса (viz.rs; только unix — FIFO)
+    #[cfg(unix)]
+    viz: Option<Arc<crate::viz::Viz>>,
 }
 
 #[cfg(desktop)]
@@ -203,8 +208,9 @@ fn sock_path() -> PathBuf {
 impl Player {
     pub fn start<F>(volume: f64, eq: Eq, loud: Arc<crate::loudness::Loudness>, on_event: F) -> Result<Player, String>
     where
-        F: Fn(PlayerEvent) + Send + 'static,
+        F: Fn(PlayerEvent) + Send + Sync + 'static,
     {
+        let on_event = Arc::new(on_event);
         let sock = sock_path();
         #[cfg(unix)]
         let _ = std::fs::remove_file(&sock);
@@ -277,6 +283,11 @@ impl Player {
             fade: Mutex::new(1.0),
             loud,
             devices: Arc::new(Mutex::new((Vec::new(), "auto".into()))),
+            #[cfg(unix)]
+            viz: {
+                let oe = on_event.clone();
+                crate::viz::Viz::start(move |b| oe(PlayerEvent::Viz { b }))
+            },
         };
 
         let props = [
@@ -295,9 +306,13 @@ impl Player {
         player.send(json!(["request_log_messages", "warn"]))?;
 
         let devices = player.devices.clone();
+        #[cfg(unix)]
+        let viz = player.viz.clone();
+        #[cfg(not(unix))]
+        let viz = None;
         std::thread::Builder::new()
             .name("mpv-events".into())
-            .spawn(move || read_events(reader, devices, on_event))
+            .spawn(move || read_events(reader, devices, viz, move |e| on_event(e)))
             .map_err(|e| e.to_string())?;
         Ok(player)
     }
@@ -337,7 +352,27 @@ impl Player {
         if let Some(eq) = self.eq.lock().unwrap().filter() {
             parts.push(eq);
         }
+        #[cfg(unix)]
+        if let Some(v) = self.viz.as_ref().and_then(|v| v.filter()) {
+            parts.push(v);
+        }
         parts.join(",")
+    }
+
+    /// Визуализатор: `enabled` — включён в настройках (фильтр анализа в цепочке; изменилось — `af` заново),
+    /// `live` — его видно (замеры уходят интерфейсу).
+    pub fn set_viz(&self, enabled: bool, live: bool) -> Result<(), String> {
+        #[cfg(unix)]
+        if let Some(v) = &self.viz {
+            v.set_live(enabled && live);
+            if v.set_enabled(enabled) {
+                let cur = self.current.lock().unwrap().clone();
+                return self.send(json!(["set_property", "af", self.af_chain(&cur)]));
+            }
+        }
+        #[cfg(not(unix))]
+        let _ = (enabled, live);
+        Ok(())
     }
 
     /// Фильтр выравнивания для источника: файл на диске — по замеру (`loudness.rs`), поток — на лету.
@@ -463,6 +498,10 @@ impl Player {
         let _ = c.wait();
         #[cfg(unix)]
         let _ = std::fs::remove_file(&self.sock);
+        #[cfg(unix)]
+        if let Some(v) = &self.viz {
+            v.quit();
+        }
     }
 }
 
@@ -669,10 +708,22 @@ fn parse_devices(v: Option<&Value>) -> Vec<AudioDevice> {
         .unwrap_or_default()
 }
 
+/// Часы визуализатора для read_events (на Windows его нет — тип-заглушка, всегда None).
+#[cfg(all(desktop, unix))]
+type VizClock = crate::viz::Viz;
+#[cfg(all(desktop, not(unix)))]
+struct VizClock;
+#[cfg(all(desktop, not(unix)))]
+impl VizClock {
+    fn clock(&self, _: Option<f64>, _: Option<bool>) {}
+    fn reset(&self) {}
+}
+
 #[cfg(desktop)]
 fn read_events<F: Fn(PlayerEvent)>(
     lines: impl Iterator<Item = String>,
     devices: Arc<Mutex<(Vec<AudioDevice>, String)>>,
+    #[cfg_attr(not(unix), allow(unused_variables))] viz: Option<Arc<VizClock>>,
     on_event: F,
 ) {
     let mut st = PlayerState { idle: true, ..Default::default() };
@@ -701,6 +752,9 @@ fn read_events<F: Fn(PlayerEvent)>(
                     }
                     Some("time-pos") => {
                         raw_pos = f.unwrap_or(0.0);
+                        if let Some(v) = &viz {
+                            v.clock(Some(raw_pos), None);
+                        }
                         st.pos = if loading { 0.0 } else { raw_pos };
                         urgent = false;
                     }
@@ -708,8 +762,18 @@ fn read_events<F: Fn(PlayerEvent)>(
                         raw_dur = f.unwrap_or(0.0);
                         st.duration = if loading { 0.0 } else { raw_dur };
                     }
-                    Some("pause") => st.paused = b.unwrap_or(false),
-                    Some("idle-active") => st.idle = b.unwrap_or(false),
+                    Some("pause") => {
+                        st.paused = b.unwrap_or(false);
+                        if let Some(v) = &viz {
+                            v.clock(None, Some(st.paused || st.idle));
+                        }
+                    }
+                    Some("idle-active") => {
+                        st.idle = b.unwrap_or(false);
+                        if let Some(v) = &viz {
+                            v.clock(None, Some(st.paused || st.idle));
+                        }
+                    }
                     // громкость задаёт сам интерфейс: каждый шаг ползунка не должен гонять полное состояние
                     // плеера (кнопки, время, отчёты ядру) — уходит вместе с ближайшей позицией
                     Some("volume") => {
@@ -725,6 +789,9 @@ fn read_events<F: Fn(PlayerEvent)>(
             }
             Some("start-file") => {
                 why.clear();
+                if let Some(v) = &viz {
+                    v.reset();
+                }
                 loading = true;
                 st.pos = 0.0;
                 st.duration = 0.0;

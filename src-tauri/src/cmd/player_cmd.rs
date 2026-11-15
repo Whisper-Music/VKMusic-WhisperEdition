@@ -181,3 +181,10 @@ pub(crate) fn sleep_cancel(app: AppHandle) {
 pub(crate) fn sleep_status() -> Option<sleep::SleepState> {
     sleep::status()
 }
+
+/// Визуализатор VK Микса (viz.js): `enabled` — включён в настройках (на компьютере — фильтр анализа в цепочке mpv),
+/// `live` — его видно (страница VK Микса или на весь экран, окно на экране): только тогда идут замеры.
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) fn player_viz(st: State<'_, AppState>, enabled: bool, live: bool) -> Res<()> {
+    st.player()?.set_viz(enabled, live)
+}

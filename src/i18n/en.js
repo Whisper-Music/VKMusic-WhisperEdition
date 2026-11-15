@@ -898,4 +898,15 @@ window.I18N_DICTS.en = {
   "Плеер Android остановлен": "The Android player has stopped",
   "На телефоне открываются только ссылки": "Only links can be opened on the phone",
   "Поток зашифрован — кэшировать нельзя": "The stream is encrypted and can't be cached",
+  // визуализатор VK Микса (viz.js)
+  "Визуализатор": "Visualizer",
+  "Аудиовизуализатор": "Audio visualizer",
+  "Круговой": "Circular",
+  "Столбцами": "Bars",
+  "Неровные круги вокруг кнопки: дышат с басом и вздрагивают на каждую долю.": "Uneven rings around the button: they breathe with the bass and twitch on every beat.",
+  "Столбцы разной высоты по частотам: слева и справа от кнопки, бас ближе к центру.": "Bars of different heights by frequency: left and right of the button, bass closer to the center.",
+  "Сейчас не рисуется: включено энергосбережение.": "Not drawn right now: power saving is on.",
+  "Esc — выйти · Пробел — пауза": "Esc — exit · Space — pause",
+  "Визуализатор на весь экран (F)": "Full-screen visualizer (F)",
+  "Выйти из полноэкранного режима (Esc)": "Exit full screen (Esc)",
 };

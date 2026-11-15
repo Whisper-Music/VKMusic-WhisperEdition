@@ -39,6 +39,8 @@ enum Native {
     Error { message: String },
     /// кнопка уведомления, гарнитуры или экрана блокировки: prev | toggle | next
     Ctl { action: String },
+    /// визуализатор: уровни полос, дБ
+    Viz { b: Vec<i16> },
 }
 
 impl Player {
@@ -68,6 +70,7 @@ impl Player {
                 }
                 Native::Ended => on_event(PlayerEvent::Ended),
                 Native::Error { message } => on_event(PlayerEvent::Error { message }),
+                Native::Viz { b } => on_event(PlayerEvent::Viz { b }),
                 Native::Ctl { action } => {
                     if ["prev", "toggle", "next"].contains(&action.as_str()) {
                         let _ = app.emit_to("main", "tray://ctl", action);
@@ -109,6 +112,11 @@ impl Player {
             return Err("Неверная ссылка на поток".into());
         }
         self.load_with(url, title, user_agent, referrer)
+    }
+
+    /// Визуализатор: замеры (Engine.viz в Kotlin) — только пока он включён и его видно.
+    pub fn set_viz(&self, enabled: bool, live: bool) -> Result<(), String> {
+        super::send("viz", json!({ "on": enabled && live }))
     }
 
     pub fn set_speed(&self, rate: f64) -> Result<(), String> {

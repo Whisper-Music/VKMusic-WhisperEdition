@@ -169,6 +169,12 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
   }
 
   @Command
+  fun viz(invoke: Invoke) {
+    Engine.get(activity).viz(invoke.getArgs().getBoolean("on", false))
+    invoke.resolve()
+  }
+
+  @Command
   fun effects(invoke: Invoke) {
     val a = invoke.parseArgs(EffectsArgs::class.java)
     val g = FloatArray(10) { i -> a.gains.getOrElse(i) { 0.0 }.toFloat() }

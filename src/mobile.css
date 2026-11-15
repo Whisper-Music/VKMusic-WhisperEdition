@@ -257,3 +257,8 @@ html.mobile .qpanel {
   z-index: 45 !important; top: 8px !important; bottom: 8px !important; left: 8px !important; right: 8px !important;
   width: auto !important; max-width: none !important; height: auto !important;
 }
+
+/* визуализатор на весь экран (viz.js): клавиш нет — подсказки про Esc и Пробел не нужны; кнопка выхода — над
+   системной полосой жестов */
+html.mobile .vfhint { display: none; }
+html.mobile .vfctl { bottom: calc(22px + env(safe-area-inset-bottom, 0px)); }

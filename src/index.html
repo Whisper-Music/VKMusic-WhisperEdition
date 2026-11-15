@@ -93,9 +93,12 @@
       <!-- страница «VK Микс»: кнопка бесконечного потока, орбиты вокруг неё рисуют стили и темы -->
       <section id="wavePage" class="wavepage" hidden>
         <div class="stage">
+          <!-- визуализатор (viz.js, как у Whisper Yandex): спектр — от плеера (mpv / ExoPlayer) -->
+          <canvas id="viz" hidden></canvas>
           <div id="waveOrbits" class="waveorbits" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
           <button id="waveBtn" class="wavebtn" title="VK Микс"></button>
         </div>
+        <button id="vizFsBtn" class="vizfsbtn" title="Визуализатор на весь экран (F)" hidden><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </section>
 
       <!-- остальные страницы: список треков, миксы, поиск, статистика, магазин тем -->
@@ -190,6 +193,15 @@
     </div>
   </div>
 
+  <!-- визуализатор на весь экран (viz.js): панели прячутся, остаются фон и визуализатор -->
+  <div id="vizFull" class="vizfull" hidden>
+    <canvas id="vizFullCv"></canvas>
+    <div class="vfctl">
+      <span class="vfhint">Esc — выйти · Пробел — пауза</span>
+      <button id="vizFsExit" class="vizfsbtn" title="Выйти из полноэкранного режима (Esc)"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+  </div>
+
   <!-- пока открыта страница входа сервиса, окно интерфейса сжато до этой полосы (как в NK-Player) -->
   <div class="login-bar" id="loginBar" hidden>
     <span id="loginBarText"></span>
@@ -213,6 +225,7 @@
   <script src="eq.js"></script>
   <script src="sleep.js"></script>
   <script src="power.js"></script>
+  <script src="viz.js"></script>
   <script src="keynav.js"></script>
   <script src="cli.js"></script>
   <script src="hotkeys.js"></script>

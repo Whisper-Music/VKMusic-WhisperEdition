@@ -25,6 +25,8 @@
     listremove: '<path d="M4 6h12M4 11h12M4 16h7"/><path d="M14 16.5h7"/>',
     edit: '<path d="M4.5 19.5h4l10-10-4-4-10 10z"/><path d="M13 7l4 4"/>',
     check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+    vizcircle: '<circle cx="12" cy="12" r="4"/><path d="M12 3.5a8.5 8.5 0 1 1-6 2.5"/>',
+    vizbars: '<path d="M3 10h2.6v4H3zM7.2 6h2.6v12H7.2zM11.4 3h2.6v18h-2.6zM15.6 7.5h2.6v9h-2.6zM19.8 10.5h2.2v3h-2.2z" fill="currentColor" stroke="none"/>',
     mini: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="11" y="11" width="8" height="6" rx="1" fill="currentColor" stroke="none"/>',
     speed: '<path d="M4.5 17a8 8 0 1 1 15 0"/><path d="M12 13l4-4.5"/><circle cx="12" cy="13" r="1.2"/>',
     output: '<path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3.5" y="14" width="4" height="6" rx="1.5"/><rect x="16.5" y="14" width="4" height="6" rx="1.5"/>',
