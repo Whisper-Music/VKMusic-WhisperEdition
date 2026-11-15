@@ -54,11 +54,19 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   предупреждения RustSec из зависимостей Tauri — в `.cargo/audit.toml` с причиной, новое туда — только так же).
 * Выпуски — `.github/workflows/release.yml` (как у Whisper Yandex): тег `vX.Y.Z` или запуск вручную → черновик в
   GitHub Releases: Linux x64 (`.deb` с зависимостями mpv/ffmpeg, `.AppImage`; ubuntu-22.04 ради старой glibc) и
-  Windows x64 (NSIS `-setup.exe`, просьба владельца 2026-11-05). Автообновление — только Windows (просьба владельца,
+  Windows x64 (NSIS `-setup.exe`, просьба владельца 2026-11-05) и Android (задание `android`, просьба владельца 2026-11-15:
+  `packaging/android.sh --release` — один APK для всех архитектур, `VK.Music_<версия>_android.apk`; ключ подписи —
+  секреты `VKM_KEYSTORE_B64` (`base64 -w0` файла .jks), `VKM_KEYSTORE_PASS`, `VKM_KEY_ALIAS` — если не `vkmusic`;
+  ключ один навсегда: APK с другим ключом Android поверх установленного не поставит; `versionCode` Tauri считает из версии). Автообновление Windows (просьба владельца,
   2026-11-05; `update.rs`, tauri-plugin-updater только в `cfg(windows)`): `latest.json` последнего выпуска, установщик
   подписан minisign — открытый ключ в `tauri.windows.conf.json` (`plugins.updater`), закрытый — секреты репозитория
   `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` (у владельца — `~/.tauri/vkmusic-whisper.key`; потерять ключ = выпущенные
   копии больше не обновятся). Интерфейс проверяет раз при запуске (`checkUpdate`), ставит — по кнопке в подсказке.
+  Автообновление Android (просьба владельца, 2026-11-15; `update.rs`, `cfg(target_os = "android")`): плагин на телефоне
+  не работает — `latest-android.json` выпуска (`{ version, url, size }`, пишет задание `android`), APK — только из
+  выпусков этого репозитория, качается в кэш приложения, затем `VkmPlugin.installApk` → установщик Android через
+  FileProvider (`REQUEST_INSTALL_PACKAGES`; нет разрешения «Установка неизвестных приложений» — сначала его экран,
+  установщик — по возвращении, `onResume`). Подпись проверяет система: поверх встанет только APK с тем же ключом.
   Linux — пакеты/AUR или вручную. Версия — одинаковая в `src-tauri/tauri.conf.json` и `src-tauri/Cargo.toml` (проверяет `guard`).
   CLI Tauri — `npx @tauri-apps/cli@2` (своего package.json нет); локально: `npx --yes @tauri-apps/cli@2 build --bundles deb`.
   Ярлык в `.deb` — `packaging/vkmusic.desktop` (`bundle.linux.deb.desktopTemplate`: нужен `%u` для ссылок whisper://).
@@ -132,7 +140,7 @@ src-tauri/src/whisper_vk.rs    архив для VK Music: wa_save_track (фай
 src-tauri/src/secret.rs    ключ Whisper Archive: Secret Service (keyring), без связки ключей — файл 0600 (secret_backend)
 src-tauri/src/deeplink.rs  ссылки whisper://room/КОД: deep-link + single-instance, room_link_take, событие room-link
 src-tauri/src/hotkeys.rs   глобальные горячие клавиши (tauri-plugin-global-shortcut; Windows, Linux X11): hotkeys_set, событие hotkey
-src-tauri/src/update.rs    автообновление (только Windows): update_check, update_install, `with_updater`
+src-tauri/src/update.rs    автообновление (Windows — плагин, Android — свой latest-android.json): update_check, update_install, `with_updater`
 src-tauri/src/relay.rs     ретранслятор потоков треков ВК из API: 127.0.0.1/r/<токен> → CDN тем же клиентом, что и API
 src-tauri/src/os.rs        Linux/Windows: права на файлы (`Private`), внешние программы (`tool`, `bin_dir`), `open`
 src-tauri/src/host.rs      `--host [ПОРТ]`: интерфейс в браузере — HTTP-сервер на 127.0.0.1 (invoke, SSE-события, vkm/wa)

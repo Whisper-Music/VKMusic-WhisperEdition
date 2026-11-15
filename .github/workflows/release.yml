@@ -1,6 +1,11 @@
 name: release
-# Сборка выпуска: Linux x64 (.deb, .AppImage) и Windows x64 (установщик NSIS, -setup.exe) — черновиком в GitHub Releases.
+# Сборка выпуска: Linux x64 (.deb, .AppImage), Windows x64 (установщик NSIS, -setup.exe) и Android (подписанный APK
+# для всех архитектур) — черновиком в GitHub Releases.
 # В установщик Windows кладутся mpv, ffmpeg/ffprobe и yt-dlp (папка bin рядом с vkmusic.exe, tauri.windows.conf.json).
+# Android — packaging/android.sh --release; ключ подписи — секреты VKM_KEYSTORE_B64 (файл .jks в base64),
+# VKM_KEYSTORE_PASS и, если псевдоним не vkmusic, VKM_KEY_ALIAS. Ключ один на все выпуски: APK, подписанный
+# другим ключом, Android поверх установленного не поставит (только удалив приложение вместе с данными).
+# latest-android.json рядом с APK — автообновление на телефоне (update.rs), как latest.json у Windows.
 # Запуск: вручную (Actions → release → Run workflow) или тегом vX.Y.Z (git tag v0.2.0 && git push --tags).
 # Когда публикуешь черновик, GitHub сам создаёт тег vX.Y.Z — это тоже «push тега»; такой запуск ничего
 # не собирает (выпуск уже вышел) и завершается без ошибки, см. guard. Как у Whisper Yandex.
@@ -142,3 +147,72 @@ jobs:
           releaseBody: 'Что нового — допиши перед публикацией.'
           releaseDraft: true
           prerelease: false
+
+  # Android: подписанный APK (arm64, armv7, x86_64, x86 в одном файле) — в тот же черновик. После сборок для компьютера:
+  # черновик к тому времени уже создан tauri-action (а если они упали — создаётся здесь), гонки за него нет.
+  android:
+    needs: [guard, build]
+    if: ${{ !cancelled() && needs.guard.result == 'success' && needs.guard.outputs.skip != 'true' }}
+    runs-on: ubuntu-24.04
+    env:
+      NDK_VERSION: 27.2.12479018
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }  # ядро Whisper (src/core) — подмодуль whisper-core
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }  # CLI Tauri (npx @tauri-apps/cli)
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17, cache: gradle }
+      - uses: android-actions/setup-android@v3
+      - name: Android SDK — платформа, build-tools, NDK
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;$NDK_VERSION"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: '. -> target'
+          key: android
+
+      - name: Ключ подписи
+        env:
+          VKM_KEYSTORE_B64: ${{ secrets.VKM_KEYSTORE_B64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$VKM_KEYSTORE_B64" ]; then
+            echo "::error::Нет секрета VKM_KEYSTORE_B64 (ключ подписи APK, base64 -w0 vkmusic.jks) — см. начало release.yml"
+            exit 1
+          fi
+          printf '%s' "$VKM_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/vkmusic.jks"
+
+      - name: Сборка APK
+        env:
+          VKM_KEYSTORE: ${{ runner.temp }}/vkmusic.jks
+          VKM_KEYSTORE_PASS: ${{ secrets.VKM_KEYSTORE_PASS }}
+          VKM_KEY_ALIAS: ${{ secrets.VKM_KEY_ALIAS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          export NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
+          packaging/android.sh --release
+
+      - name: В черновик выпуска
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.guard.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          apk="$RUNNER_TEMP/VK.Music_${VERSION}_android.apk"
+          cp "src-tauri/gen/android/app/build/outputs/apk/universal/release/vkmusic-$VERSION.apk" "$apk"
+          if ! gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --target "$GITHUB_SHA" \
+              --title "VK Music Whisper Edition $tag" --notes "Что нового — допиши перед публикацией."
+          fi
+          # автообновление на телефоне (update.rs): версия, адрес и размер APK — читает releases/latest/download/…
+          jq -n --arg v "$VERSION" --arg u "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$(basename "$apk")" \
+            --argjson s "$(stat -c %s "$apk")" '{version: $v, url: $u, size: $s}' > "$RUNNER_TEMP/latest-android.json"
+          cat "$RUNNER_TEMP/latest-android.json"
+          gh release upload "$tag" "$apk" "$RUNNER_TEMP/latest-android.json" --repo "$GITHUB_REPOSITORY" --clobber

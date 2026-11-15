@@ -909,4 +909,9 @@ window.I18N_DICTS.en = {
   "Esc — выйти · Пробел — пауза": "Esc — exit · Space — pause",
   "Визуализатор на весь экран (F)": "Full-screen visualizer (F)",
   "Выйти из полноэкранного режима (Esc)": "Exit full screen (Esc)",
+  // автообновление Android (update.rs, app.js)
+  "Обновление скачано — подтвердите установку в окне Android": "Update downloaded — confirm the installation in the Android window",
+  "Обновление скачалось не полностью — попробуйте ещё раз": "The update didn't download completely — try again",
+  "Файл обновления не найден": "Update file not found",
+  "Нет папки кэша": "No cache folder",
 };

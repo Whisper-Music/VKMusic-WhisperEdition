@@ -5217,7 +5217,11 @@ async function checkUpdate() {
     label: L("Обновить"),
     fn: () => {
       toast(L("Скачивается обновление…"), "", null, 0);
-      invoke("update_install").catch((e) => toast(errMsg(e), "error"));
+      invoke("update_install")
+        // Windows: установщик закрывает приложение сам; телефон: открывается установщик Android (или сначала разрешение
+        // «Установка неизвестных приложений» для VK Music)
+        .then(() => { if (MOBILE) toast(L("Обновление скачано — подтвердите установку в окне Android"), "", null, 8000); })
+        .catch((e) => toast(errMsg(e), "error"));
     },
   }, 0);
 }

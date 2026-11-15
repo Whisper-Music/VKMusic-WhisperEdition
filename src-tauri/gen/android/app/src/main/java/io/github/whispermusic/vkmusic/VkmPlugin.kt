@@ -7,6 +7,8 @@ import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.view.Gravity
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -17,6 +19,7 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -31,6 +34,7 @@ import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
 import com.google.common.util.concurrent.ListenableFuture
+import java.io.File
 
 @InvokeArg
 class EventsArgs {
@@ -74,6 +78,11 @@ class LoginArgs {
 @InvokeArg
 class UrlsArgs {
   var urls: Array<String> = emptyArray()
+}
+
+@InvokeArg
+class PathArgs {
+  var path: String = ""
 }
 
 @InvokeArg
@@ -348,5 +357,48 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
     activity.getSharedPreferences(MainActivity.PREFS, Activity.MODE_PRIVATE).edit().putInt(MainActivity.PREF_BG, c).apply()
     MainActivity.applyBars(activity, c)
     invoke.resolve()
+  }
+
+  // ───────────── обновление (update.rs: APK последнего выпуска скачан в кэш приложения) ─────────────
+
+  /** APK ждёт, пока пользователь разрешит VK Music устанавливать приложения (настройки Android). */
+  private var pendingApk: File? = null
+
+  /**
+   * Открыть установщик Android с новым APK. Подпись проверяет сама система: поверх установленного встанет только APK,
+   * подписанный тем же ключом. Без разрешения «Установка неизвестных приложений» (Android 8+) — сначала его экран,
+   * установщик откроется, когда пользователь вернётся (onResume).
+   */
+  @Command
+  fun installApk(invoke: Invoke) {
+    val f = File(invoke.parseArgs(PathArgs::class.java).path).canonicalFile
+    if (!f.path.startsWith(activity.cacheDir.canonicalPath + File.separator) || !f.name.endsWith(".apk") || !f.isFile) {
+      invoke.reject("Файл обновления не найден")
+      return
+    }
+    if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) {
+      pendingApk = f
+      activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + activity.packageName)))
+    } else {
+      openInstaller(f)
+    }
+    invoke.resolve()
+  }
+
+  override fun onResume() {
+    val f = pendingApk ?: return
+    pendingApk = null
+    if (Build.VERSION.SDK_INT < 26 || activity.packageManager.canRequestPackageInstalls()) openInstaller(f)
+  }
+
+  private fun openInstaller(f: File) {
+    val uri = FileProvider.getUriForFile(activity, activity.packageName + ".fileprovider", f)
+    val i = Intent(Intent.ACTION_VIEW)
+      .setDataAndType(uri, "application/vnd.android.package-archive")
+      .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+      activity.startActivity(i)
+    } catch (_: Exception) {
+    }
   }
 }
