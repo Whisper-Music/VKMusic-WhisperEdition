@@ -2445,7 +2445,9 @@ const tilde = (p) => p.replace(/^\/home\/[^/]+/, "~");
 
 function renderStorage() {
   const c = setCard("out", L("Загрузки"));
-  c.append(el("p", "status", L("Куда кнопка со стрелкой сохраняет треки. Пусто — ~/Downloads.")));
+  c.append(el("p", "status", MOBILE
+    ? L("Куда кнопка со стрелкой сохраняет треки. Пусто — «Загрузки» телефона.")
+    : L("Куда кнопка со стрелкой сохраняет треки. Пусто — ~/Downloads.")));
   const row = el("form", "row storage-row");
   const input = el("input", "field");
   input.type = "text";
@@ -3372,7 +3374,9 @@ function renderThemes() {
   const saveBtn = button("download", L("Экспорт стиля"), "", () => saveStyleFile(saveBtn));
   saveBtn.title = L("Текущий стиль с вашими цветами и эффектами — файлом .wmt в папку загрузок: поправьте и загрузите обратно");
   row.append(button("download", L("Магазин тем"), "primary", () => go("store")), button("upload", L("Загрузить .wmt"), "", () => input.click()), saveBtn, input);
-  c.append(row, el("p", "status stylecap", L("Файл темы .wmt можно перетащить прямо в окно. Сломался вид окна — Ctrl+Shift+Backspace вернёт «Неон».")));
+  // перетаскивание файла и сочетание клавиш — только на компьютере
+  c.append(row);
+  if (!MOBILE) c.append(el("p", "status stylecap", L("Файл темы .wmt можно перетащить прямо в окно. Сломался вид окна — Ctrl+Shift+Backspace вернёт «Неон».")));
   // список тем — с диска (свои могли появиться), карточка перерисуется
   invoke("themes_list").then((list) => {
     const same = JSON.stringify(list) === JSON.stringify(S.themes);

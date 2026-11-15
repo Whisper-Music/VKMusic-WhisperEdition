@@ -67,6 +67,8 @@ html.mobile .sub { font-size: 13px; }
 html.mobile .headbtns { flex: none; flex-wrap: nowrap; gap: 6px; }
 html.mobile .headbtns .nav.btn:has(> .ic) { width: 40px; height: 40px; padding: 0 !important; border-radius: 50%; display: grid; place-items: center; }
 html.mobile .headbtns .nav.btn:has(> .ic) > span { display: none; }
+/* у значка — отступ до подписи (компьютер); подписи нет — значок ровно по центру кружка */
+html.mobile .headbtns .nav.btn:has(> .ic) > .ic { margin: 0 !important; }
 html.mobile .round { width: 40px; height: 40px; flex: none; }
 
 /* ---------- мини-плеер: карточка над разделами — обложка, трек, «Пуск», «Вперёд», тонкая полоса прогресса ---------- */
@@ -82,8 +84,8 @@ html.mobile .pcenter { display: contents !important; }
 html.mobile .pinfo { grid-area: info; gap: 10px; min-width: 0; cursor: pointer; }
 html.mobile .pinfo .cover { width: 44px !important; height: 44px !important; flex: none; border-radius: 10px !important; }
 html.mobile .pinfo .meta { flex: 1; }
-html.mobile .pinfo .meta b { font-size: 14.5px; }
-html.mobile .pinfo .meta span { font-size: 12.5px; }
+html.mobile .pinfo .meta b { font-size: 13.5px !important; }
+html.mobile .pinfo .meta span { font-size: 11.5px !important; }
 html.mobile .pinfo .likebtn { flex: none; width: 36px; height: 36px; margin: 0; opacity: 1; }
 html.mobile .ctrls { grid-area: ctrls; gap: 0 !important; justify-content: flex-end; }
 html.mobile .ctrls > button { width: 44px; height: 44px; display: grid; place-items: center; flex: none; }
@@ -93,6 +95,7 @@ html.mobile .ctrls .playbtn { width: 42px !important; height: 42px !important; }
 html.mobile .seekrow { position: absolute !important; left: 12px; right: 12px; bottom: 3px; height: 3px; margin: 0 !important; gap: 0 !important; pointer-events: none; }
 html.mobile .seekrow .time, html.mobile .seekrow .seekdot, html.mobile .seekrow .seektip { display: none !important; }
 html.mobile .seekrow #seek { width: 100%; height: 3px !important; margin: 0 !important; padding: 0 !important; }
+html.mobile .seekrow #seek::-webkit-slider-runnable-track { height: 3px !important; min-height: 0 !important; border: 0 !important; }
 /* ничего не включено — мини-плеера нет (класс mnone — mobile.js) */
 html.mobile.mnone .player { display: none !important; }
 /* громкость — кнопками телефона; остальное правого края — на экране «Сейчас играет» */
@@ -145,6 +148,8 @@ html.mobile .player .ctrls::before, html.mobile .player .ctrls::after,
 html.mobile .player .cover::before, html.mobile .player .cover::after,
 html.mobile .side .nav .nicon::before, html.mobile .side .nav .nicon::after { content: none !important; display: none !important; }
 html.mobile #thBtns { display: none !important; }
+/* Vantablack: «Пуск» — круглая, как в «Сейчас играет» (просьба владельца, 2026-11-15; в теме — квадратная) */
+html.mobile:root[data-style="vantablack"] .playbtn { border-radius: 50% !important; }
 /* угловые узоры «Королевского» (--fs) — по размеру низкой панели */
 html.mobile .side { --fs: 30px; }
 html.mobile .player { --fs: 26px; }
@@ -152,6 +157,8 @@ html.mobile .player { --fs: 26px; }
 /* ---------- списки: обложка, название, «сердце», «⋯» (остальные действия строки — в меню «⋯») ---------- */
 /* длинное название без пробелов не должно растягивать колонку шире экрана (правая часть строки уезжала за край) */
 html.mobile .cols > *, html.mobile .libcol { min-width: 0; max-width: 100%; }
+/* колонка списка — на всю ширину (темы, как «Мел», задают ей ширину рядом с карточкой «Сейчас играет»; её тут нет) */
+html.mobile .cols > .libcol { width: 100% !important; flex: 1 1 auto !important; }
 html.mobile .list li > div { min-width: 0; flex: 1 1 auto; }
 html.mobile .list li .t, html.mobile .list li .a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html.mobile .list li { gap: 12px; padding: 6px 2px 6px 4px; min-height: 60px; }

@@ -870,6 +870,7 @@ window.I18N_DICTS.en = {
   "Включён: музыка остановится в {0}": "On: the music stops at {0}",
   "Через заданное время музыка плавно затихнет (последние 3 минуты) и встанет на паузу. Луна в нижней панели включает и выключает режим.": "After the set time the music fades out (over the last 3 minutes) and pauses. The moon in the bottom bar turns the timer on and off.",
   "Через заданное время музыка плавно затихнет (последние 3 минуты) и встанет на паузу. Луна на экране «Сейчас играет» включает и выключает режим.": "After the set time the music fades out (over the last 3 minutes) and pauses. The moon on the Now Playing screen turns the timer on and off.",
+  "Куда кнопка со стрелкой сохраняет треки. Пусто — «Загрузки» телефона.": "Where the arrow button saves tracks. Empty — the phone's Downloads.",
   "Через": "After",
   "Потом": "Then",
   "Остановить музыку": "Stop the music",

@@ -12,6 +12,27 @@
 (() => {
   if (!MOBILE) return;
 
+  // ---------- без наведения ----------
+  // Наведения у пальца нет, а WebView оставляет :hover на нажатой кнопке («липкое» наведение): у Vantablack выбранный
+  // раздел после нажатия становился белым на белом (2026-11-15). На телефоне правила с :hover не срабатывают никогда —
+  // и в файлах основы, и в CSS темы и цветов (<style> меняются при смене стиля — обрабатываются заново)
+  const seen = new WeakSet();
+  const noHover = (rules) => {
+    for (const r of rules) {
+      if (r.selectorText && r.selectorText.includes(":hover")) r.selectorText = r.selectorText.replace(/:hover(?!:not\(:hover\))/g, ":hover:not(:hover)");
+      if (r.cssRules && r.cssRules.length) noHover(r.cssRules);
+    }
+  };
+  const stripHover = () => {
+    for (const sh of document.styleSheets) {
+      if (seen.has(sh)) continue;
+      seen.add(sh);
+      try { noHover(sh.cssRules); } catch {}
+    }
+  };
+  stripHover();
+  new MutationObserver(stripHover).observe(document.head, { subtree: true, childList: true, characterData: true });
+
   // ---------- верхняя строка: поиск и аккаунт ----------
   const search = $("#search");
   const main = $(".main");

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- «×» уведомления плеера (PlaybackService): остановить трек и убрать уведомление; тонкий, под стиль кнопок системы -->
+<!-- «×» уведомления плеера (PlaybackService): остановить трек и убрать уведомление; тонкий, под стиль кнопок системы. 48 dp при рисунке 24: HyperOS переводит значок в картинку по его размеру и растягивает — с 24 dp крестик был пиксельным -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp"
+    android:width="48dp" android:height="48dp"
     android:viewportWidth="24" android:viewportHeight="24">
     <path android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round"
         android:pathData="M7,7L17,17M17,7L7,17" />
