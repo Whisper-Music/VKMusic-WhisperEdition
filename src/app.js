@@ -5204,7 +5204,7 @@ async function boot() {
     })
     .catch(() => {});
 
-  // автообновление — только Windows (update.rs; на Linux update_check всегда отвечает «нет»): раз при запуске,
+  // автообновление — Windows и Android (update.rs; на Linux update_check всегда отвечает «нет»): раз при запуске,
   // установка — по кнопке в подсказке
   setTimeout(checkUpdate, 4000);
 }

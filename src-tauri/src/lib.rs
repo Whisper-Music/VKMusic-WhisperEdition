@@ -49,7 +49,6 @@ mod themelib;
 mod themes;
 #[cfg(desktop)]
 mod tray;
-#[cfg_attr(mobile, allow(dead_code))]
 mod update;
 // визуализатор VK Микса на компьютере: анализ в mpv, замеры через FIFO (unix; на Android — VkmPlugin)
 #[cfg(all(desktop, unix))]
@@ -766,11 +765,9 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            #[cfg(desktop)]
             update::update_check,
             hotkeys::hotkeys_set,
             cmd::local_cmd::cover_bytes,
-            #[cfg(desktop)]
             update::update_install,
             app_info,
             app_switch,

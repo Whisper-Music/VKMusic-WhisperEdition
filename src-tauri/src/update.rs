@@ -171,7 +171,9 @@ pub async fn update_install(app: AppHandle) -> Result<(), String> {
     }
 }
 
-/// Плагин подключается только на Windows (на Linux его настроек в конфиге нет): `.with_updater()` в цепочке Builder.
+/// Плагин подключается только на Windows (на Linux его настроек в конфиге нет): `.with_updater()` в цепочке Builder
+/// компьютера (на Android плагина нет — там своё, `imp` выше).
+#[cfg_attr(mobile, allow(dead_code))]
 pub trait WithUpdater {
     fn with_updater(self) -> Self;
 }
