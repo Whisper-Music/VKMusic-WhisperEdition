@@ -6,6 +6,7 @@ import android.content.Intent
 import android.media.audiofx.DynamicsProcessing
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.AudioAttributes
@@ -23,8 +24,14 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.collect.ImmutableList
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import app.tauri.plugin.JSObject
 import java.io.File
 
@@ -304,6 +311,29 @@ object Engine {
 class PlaybackService : MediaSessionService() {
   private var session: MediaSession? = null
 
+  /** «×» в уведомлении и на экране блокировки: остановить трек — уведомление уходит само (плеер пуст). */
+  private val close = SessionCommand("vkm.close", Bundle.EMPTY)
+
+  private val callback = object : MediaSession.Callback {
+    override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+      val cmds = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon().add(close).build()
+      return MediaSession.ConnectionResult.AcceptedResultBuilder(session).setAvailableSessionCommands(cmds).build()
+    }
+
+    override fun onCustomCommand(
+      session: MediaSession,
+      controller: MediaSession.ControllerInfo,
+      customCommand: SessionCommand,
+      args: Bundle,
+    ): ListenableFuture<SessionResult> {
+      if (customCommand.customAction == close.customAction) {
+        Engine.get(this@PlaybackService).stop()
+        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+      }
+      return super.onCustomCommand(session, controller, customCommand, args)
+    }
+  }
+
   override fun onCreate() {
     super.onCreate()
     val open = PendingIntent.getActivity(
@@ -311,7 +341,18 @@ class PlaybackService : MediaSessionService() {
       Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
       PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
-    session = MediaSession.Builder(this, Engine.get(this).session).setSessionActivity(open).build()
+    // «×» — слева от «назад»
+    val closeButton = CommandButton.Builder(CommandButton.ICON_UNDEFINED)
+      .setCustomIconResId(R.drawable.ic_vkm_close)
+      .setDisplayName(getString(R.string.vkm_close))
+      .setSessionCommand(close)
+      .setSlots(CommandButton.SLOT_BACK_SECONDARY)
+      .build()
+    session = MediaSession.Builder(this, Engine.get(this).session)
+      .setSessionActivity(open)
+      .setCallback(callback)
+      .setMediaButtonPreferences(ImmutableList.of(closeButton))
+      .build()
   }
 
   override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
