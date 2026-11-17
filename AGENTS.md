@@ -137,6 +137,8 @@ src-tauri/src/stats.rs     статистика прослушивания: ~/.c
 src-tauri/src/order.rs     порядок библиотеки: ~/.config/vkmusic/order.json, ключи (путь файла | vk:/sc:+id), новые сверху
 src-tauri/src/whisper_host.rs  что приложение даёт Rust ядра: ключ архива (secret.rs), heavy_slot, app_origin, Discord, OBS
 src-tauri/src/whisper_vk.rs    архив для VK Music: wa_save_track (файл трека библиотеки по ключу), wa_play (трек архива → mpv)
+src-tauri/src/libsync.rs   синхронизация библиотеки через Whisper Archive: файлы папки музыки ↔ /api/library/vk (key — sha256
+                           содержимого, путь → key — ~/.config/vkmusic/libsync.json), libsync_local/upload/restore/delete
 src-tauri/src/secret.rs    ключ Whisper Archive: Secret Service (keyring), без связки ключей — файл 0600 (secret_backend)
 src-tauri/src/deeplink.rs  ссылки whisper://room/КОД: deep-link + single-instance, room_link_take, событие room-link
 src-tauri/src/hotkeys.rs   глобальные горячие клавиши (tauri-plugin-global-shortcut; Windows, Linux X11): hotkeys_set, событие hotkey
@@ -161,6 +163,7 @@ src/keynav.js              клавиатура внутри окна (как у
 src/errinfo.js             понятные ошибки воспроизведения: где проблема (сервис, сеть, устройство, файл) и что делать
 src/lsguard.js             до app.js: повреждённые JSON в localStorage → window.__lsBroken (backup.js предложит автокопию)
 src/backup.js              карточка «Резервная копия» (Хранилище), автокопия при запуске
+src/libsync.js             синхронизация библиотеки через Whisper Archive: забрать / отправить / файлы, карточка в «Хранилище»
 src/tray.js                что играет — трею и мини-плееру (mini_state / tray_state), карточка «Трей» в «Общем»
 src/eq.js                  эквалайзер (как у Whisper Yandex): окно из «⋯» плеера, 10 полос, предусиление, настройки → player_eq
 src/viz.js                 визуализатор VK Микса (как у Whisper Yandex): #viz на .stage, весь экран — #vizFull, карточка
@@ -402,6 +405,22 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `wa_room_theme_get`, `wa_room_theme_remove`. В `--host` заголовки `x-*` передаёт `host.js` (`invoke(cmd, байты,
   { headers })`) и `host::invoke` — только они, не куки и не Host. Метку приложения у друзей («VK») ядро шлёт само
   (`wa_room_invites(since, app)`, id провайдера `vk`).
+* «Друзья» (ядро 408b0b6, 2026-11-17; `core/friends.js`, `friends.css`, Rust — `whisper::friends::*`): страница в
+  боковой панели через `kit.page(id, { title, render })` — `modulePage` в app.js: кнопка `#friendsBtn` и постоянный
+  узел `#friendsPage` есть в index.html (кнопка скрыта, пока модуль не зарегистрировал страницу), `go()` прячет и
+  показывает узлы `MODPAGES`, `rerender()` зовёт `render`. Альбом друга — `kit.playArchive(tracks, start, { author })`
+  → `playArchive`: треки `{ key: "wa:<uuid>", archive }` играют только из архива (`wa_play`), в библиотеку не входят.
+* Синхронизация библиотеки через Whisper Archive (просьба владельца, 2026-11-17; LIBRARY-SYNC.md архива, площадка
+  `vk`): `libsync.js` + `libsync.rs`, выключатель — «Хранилище → Синхронизация библиотеки» (по умолчанию выключено).
+  Синхронизируются только файлы папки музыки (запись `kind: import`, `source.site: file`, `app: whisper-vk`): треки
+  ВК и SoundCloud синхронизируют сами сервисы. key — `f-` + 32 знака sha256 содержимого; восстановленный файл
+  получает key записи (`libsync.json`, путь → key; не кэш — иначе восстановленные стали бы новыми записями). Пути
+  интерфейс не видит. Порядок: забрать (`wa_lib_list` с `rev`; удалённое — удалить файл, только если его не меняли
+  после прошлой отправки; нового трека нет — `libsync_restore` в папку музыки и на место по `likedAt` —
+  `library_move`), затем отправить (`wa_lib_changes` пачками по 100, удаления — пропавшие у нас; пропало больше 10 и
+  больше половины — не удаляем, забираем заново), затем файлы (`libsync_upload`, до 20 за раз, формат, который архив не
+  берёт, — `whisper_vk::accepted_audio`). При запуске (через 12 с), после изменения библиотеки (`LibSync.changed`,
+  8 с) и раз в 5 минут. Состояние — `vkm_libsync` (не в резервной копии); другой аккаунт архива (`wa_me`) — с нуля.
 * Строки очереди и истории ядра — с «сердцем» (`kit.likeButton` → наш `likeButton`). `fromCore` и `fromRoom` ищут трек
   по ключу через `libraryByKey` (индекс `libIndex`), а не перебором: их зовут на каждую строку.
 * Своё в `localStorage` (не модули): `vkm_boot` (снимок стиля для boot.js), `vkm_dyn` (фон по обложке),
@@ -410,7 +429,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   консоли), `vkm_cli_prev_style` (к какому стилю вернёт `gui`), `vkm_sleep` (режим сна: `{ min, off }` — минуты и
   «выключить компьютер»), `vkm_intro` (интро тем: `{ on, off: [id стилей] }`). Эквалайзер — не здесь, а в config.json
   (`Config::eq`): фильтр mpv нужен при запуске, до интерфейса. В резервную копию входит весь localStorage, кроме
-  `vkm_boot` и `wa_index_v3` (`backup::storage_key_ok`).
+  `vkm_boot`, `wa_index_v3` и `vkm_libsync` (`backup::storage_key_ok`).
 * Кэш треков: предел — `Config::cache_limit_mb` (0 — без ограничения, «Хранилище»); сверх него `TrackCache::prune`
   удаляет давно не игравшие (по времени изменения файла; включение из кэша — `touch`), кроме только что докачанного.
 * Фон по обложке (как у Whisper Yandex; CSS — `.dynbg` в whisper.css, разметка `#dynBg` внутри `#bg`): обложку

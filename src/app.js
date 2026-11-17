@@ -983,6 +983,7 @@ async function loadLibrary() {
   }
   S.localLoaded = true;
   if (S.page === "library") renderLibrary();
+  if (window.LibSync) LibSync.changed(); // libsync.js: файлы папки музыки — в архив
 }
 
 let reloadTimer = null;
@@ -2397,6 +2398,7 @@ function renderSettings() {
   if (!MOBILE) renderModeCard();
   renderStorage();
   if (window.renderBackup) renderBackup(); // backup.js
+  if (window.renderLibSyncCard) renderLibSyncCard(); // libsync.js
   for (const m of mods) page.append(m);
 }
 

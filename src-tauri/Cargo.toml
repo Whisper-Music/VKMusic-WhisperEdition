@@ -26,6 +26,8 @@ flate2 = "1"
 base64 = "0.22"
 regex = "1"
 lofty = "0.25"
+# key файлов для синхронизации библиотеки через Whisper Archive (libsync.rs)
+sha2 = "0.10"
 dirs = "6"
 libc = "0.2"
 # библиотека тем (raw.githubusercontent.com) и ВКонтакте (charset: страницы ВК бывают в windows-1251)

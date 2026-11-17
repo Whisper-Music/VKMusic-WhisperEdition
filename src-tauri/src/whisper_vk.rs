@@ -76,7 +76,7 @@ pub async fn wa_room_cache_track(app: AppHandle, st: State<'_, AppState>, key: S
 
 /// Файл в формате, который принимает архив (mp3, flac, ogg, wav, m4a). Остальное (opus в webm, aac в ts и т. п.)
 /// перекладывается ffmpeg без перекодирования (`-c copy`): opus/vorbis — в ogg, остальное — в m4a.
-fn accepted_audio(src: &Path) -> Res<Vec<u8>> {
+pub(crate) fn accepted_audio(src: &Path) -> Res<Vec<u8>> {
     let bytes = std::fs::read(src).map_err(|e| format!("Не удалось прочитать трек: {e}"))?;
     if upload::audio_kind(&bytes).is_some() {
         return Ok(bytes);

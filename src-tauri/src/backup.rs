@@ -129,7 +129,7 @@ pub fn collect(storage: BTreeMap<String, String>) -> Backup {
 
 /// Ключ localStorage, который входит в копию: снимок стиля и индекс архива пересобираются сами.
 pub fn storage_key_ok(k: &str) -> bool {
-    !k.is_empty() && k.len() <= MAX_STORAGE_KEY && !["vkm_boot", "wa_index_v3"].contains(&k)
+    !k.is_empty() && k.len() <= MAX_STORAGE_KEY && !["vkm_boot", "wa_index_v3", "vkm_libsync"].contains(&k)
 }
 
 fn to_bytes(b: &Backup) -> Result<Vec<u8>, String> {

@@ -921,4 +921,20 @@ window.I18N_DICTS.en = {
   "Обновление скачалось не полностью — попробуйте ещё раз": "The update didn't download completely — try again",
   "Файл обновления не найден": "Update file not found",
   "Нет папки кэша": "No cache folder",
+  // ── синхронизация библиотеки через Whisper Archive (libsync.js) ──
+  "Нужен вход в Whisper Archive: Настройки → Интеграции.": "Sign in to Whisper Archive first: Settings → Integrations.",
+  "Синхронизация…": "Syncing…",
+  "Синхронизировано: {0}": "Synced: {0}",
+  "получено: {0}": "received: {0}",
+  "удалено: {0}": "removed: {0}",
+  "ждут файла с другого устройства: {0}": "waiting for a file from another device: {0}",
+  "в архиве больше 1000 треков — новые не отправлены": "the archive holds 1000 tracks — new ones weren't sent",
+  "файл не отправился: {0}": "file not sent: {0}",
+  "Синхронизация не удалась: {0}": "Sync failed: {0}",
+  "Синхронизация библиотеки": "Library sync",
+  "Треки из папки музыки (скачанные по ссылке и свои файлы) — через Whisper Archive на телефоне и другом компьютере, на тех же местах. Треки ВКонтакте и SoundCloud синхронизирует сам сервис.":
+    "Tracks from the music folder (downloaded by link and your own files) reach your phone and other computer through Whisper Archive, in the same places. VK and SoundCloud tracks are synced by the services themselves.",
+  "Синхронизировать через Whisper Archive": "Sync through Whisper Archive",
+  "Ещё не синхронизировалось.": "Not synced yet.",
+  "Синхронизировать сейчас": "Sync now",
 };

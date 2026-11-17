@@ -19,6 +19,7 @@ mod host;
 #[cfg(desktop)]
 mod hotkeys;
 mod library;
+mod libsync;
 // на телефоне не нужно: нет ffmpeg (loudness), Omarchy, обновления Windows и прокси (relay)
 #[cfg_attr(mobile, allow(dead_code))]
 mod loudness;
@@ -94,6 +95,8 @@ struct AppState {
     playlists: playlists::PlaylistStore,
     /// порядок треков библиотеки (order.json)
     order: order::OrderStore,
+    /// синхронизация библиотеки через Whisper Archive: путь файла → key записи
+    libsync: Arc<libsync::Index>,
     player: Mutex<Option<Arc<player::Player>>>,
     player_error: Mutex<Option<String>>,
     dl_seq: AtomicU64,
@@ -629,6 +632,7 @@ pub fn run() {
         saved: saved::SavedStore::new(),
         playlists,
         order: order::OrderStore::new(),
+        libsync: Arc::new(libsync::Index::new()),
         cfg: Mutex::new(cfg),
         player: Mutex::new(None),
         player_error: Mutex::new(None),
@@ -914,6 +918,10 @@ pub fn run() {
             whisper::friends::wa_image,
             whisper::library::wa_lib_list,
             whisper::library::wa_lib_changes,
+            libsync::libsync_local,
+            libsync::libsync_upload,
+            libsync::libsync_restore,
+            libsync::libsync_delete,
             whisper_vk::wa_room_cache_track,
             deeplink::room_link_take,
             // Discord и виджет OBS

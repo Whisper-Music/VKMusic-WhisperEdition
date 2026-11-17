@@ -95,6 +95,7 @@ html:root[data-ly-sb="mini"] .side .nav:hover:not(.active) { transform: none; }
 .side > #likes { --ic: var(--ly-i-heart); }
 .side > #mixes { --ic: var(--ly-i-mix); }
 .side > #statsBtn { --ic: var(--ly-i-stats); }
+.side > #friendsBtn { --ic: var(--ly-i-friends); }
 .side > #settingsBtn { --ic: var(--ly-i-gear); }
 .side > #profile { --ic: var(--ly-i-user); }
 /* кнопка «Свернуть» внизу панели: неброская, со стрелками к краю (в полосе — от края, «развернуть») */
@@ -211,6 +212,7 @@ html:root[data-ly-time="hover"] .seekrow.tipon .time { opacity: .35; }
   --ly-i-stats: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 13h4v7H4zM10 4h4v16h-4zM16 9h4v11h-4z'/%3E%3C/svg%3E");
   --ly-i-gear: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill-rule='evenodd' d='M10.3 2h3.4l.5 2.6 1.8.8 2.2-1.5 2.4 2.4-1.5 2.2.8 1.8 2.6.5v3.4l-2.6.5-.8 1.8 1.5 2.2-2.4 2.4-2.2-1.5-1.8.8-.5 2.6h-3.4l-.5-2.6-1.8-.8-2.2 1.5-2.4-2.4 1.5-2.2-.8-1.8L2 13.7v-3.4l2.6-.5.8-1.8-1.5-2.2 2.4-2.4 2.2 1.5 1.8-.8zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z'/%3E%3C/svg%3E");
   --ly-i-user: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='8' r='4.2'/%3E%3Cpath d='M3.5 21a8.5 8.5 0 0 1 17 0z'/%3E%3C/svg%3E");
+  --ly-i-friends: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='9' cy='8' r='3.5'/%3E%3Cpath d='M2 20c0-3.9 3.1-7 7-7s7 3.1 7 7z'/%3E%3Ccircle cx='17' cy='9' r='2.8'/%3E%3Cpath d='M17.5 13.2c2.6.3 4.5 2.6 4.5 5.3V20h-4.4c0-2.6-.8-4.9-2.2-6.6.7-.2 1.4-.3 2.1-.2z'/%3E%3C/svg%3E");
   --ly-i-fold: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 25 24' fill='none' stroke='%23000' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 6l-5 6 5 6M15 6l-5 6 5 6M22 6l-5 6 5 6'/%3E%3C/svg%3E");
   --ly-i-search: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='10.5' cy='10.5' r='6.5'/%3E%3Cpath d='m15.5 15.5 5 5'/%3E%3C/svg%3E");
 }
