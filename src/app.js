@@ -56,7 +56,6 @@ const PAGES = {
   vk: "Плейлисты",
   search: "Поиск",
   stats: "Статистика",
-  services: "Сервисы",
   settings: "Настройки",
   store: "Магазин тем",
   friends: "Друзья",
@@ -733,6 +732,11 @@ function chip(text, active, onClick) {
 }
 
 function go(page, keepPopups) {
+  // «Сервисы» — теперь вкладка «Интеграции» в настройках
+  if (page === "services") {
+    S.setTab = "int";
+    page = "settings";
+  }
   // повторное нажатие пункта меню внутри открытого плейлиста — обратно к списку
   if (page === S.page && S.vkPl && S.vkPl.from === page) S.vkPl = null;
   if (page !== "search" && page !== "store") S.lastPage = page;
@@ -786,7 +790,7 @@ $("#back").addEventListener("click", () => {
 /** Перерисовать текущую страницу (после изменений данных). */
 function rerender() {
   const c = $("#content");
-  c.className = "content page-" + S.page + (S.page === "stats" ? " stats" : S.page === "services" ? " settings svcpage" : "");
+  c.className = "content page-" + S.page + (S.page === "stats" ? " stats" : "");
   $("#headBtns").replaceChildren();
   setChips([]);
   setHead(L(PAGES[S.page] || ""));
@@ -797,7 +801,6 @@ function rerender() {
   else if (S.page === "stats") renderStatsPage();
   else if (S.page === "vk") renderVk();
   else if (S.page === "search") renderSearch();
-  else if (S.page === "services") renderServices();
   else if (S.page === "settings") renderSettings();
   else if (S.page === "store") renderStore();
   else if (MODPAGES[S.page]) {
@@ -1477,13 +1480,13 @@ $("#loginCancel").addEventListener("click", () => {
 
 async function refreshStatus(service) {
   S.svc[service] = "loading";
-  if (S.page === "services") renderServices();
+  refreshServiceCards();
   try {
     S.svc[service] = await invoke(service + "_status");
   } catch (e) {
     S.svc[service] = { logged_in: false, profile: null, error: errMsg(e) };
   }
-  if (S.page === "services") renderServices();
+  refreshServiceCards();
 }
 
 listen("svc://event", (ev) => {
@@ -1577,13 +1580,23 @@ function renderCaps() {
 }
 
 /** «Сервисы»: вход во ВКонтакте и SoundCloud, загрузка файлов через yt-dlp — карточками, как настройки Whisper. */
-function renderServices() {
-  const c = $("#content");
-  c.replaceChildren();
-  for (const id of Object.keys(SERVICES)) c.append(renderServiceCard(id));
+/**
+ * Сервисы (вход во ВКонтакте и SoundCloud, загрузка файлов yt-dlp) — первыми карточками вкладки «Интеграции»
+ * в настройках (просьба владельца, 2026-11-18; раньше — своя страница «Сервисы»). Старые входы (go("services"):
+ * кнопка аккаунта на телефоне, «Войти» в поиске, кнопки тем) ведут сюда.
+ */
+function renderServiceCards() {
+  const page = $("#settingsPage");
+  const own = (card) => {
+    card.classList.add("own");
+    card.dataset.tab = "int";
+    page.append(card);
+    return card;
+  };
+  for (const id of Object.keys(SERVICES)) own(renderServiceCard(id));
   // на телефоне yt-dlp и ffmpeg нет — загрузки по ссылкам тоже
   if (MOBILE) return;
-  const yd = el("div", "card colbreak");
+  const yd = own(el("div", "card"));
   yd.append(
     el("h3", null, L("Загрузка файлов (yt-dlp)")),
     el(
@@ -1600,7 +1613,10 @@ function renderServices() {
     invoke("open_music_dir").catch((e) => toast(errMsg(e), "error"))
   ));
   yd.append(row);
-  c.append(yd);
+}
+/** Состояние входа или возможностей поменялось — перерисовать карточки, если «Интеграции» на экране. */
+function refreshServiceCards() {
+  if (S.page === "settings" && S.setTab === "int") renderSettings();
 }
 
 // ───────────────────────── «Миксы»: VK Микс и плейлисты ВК ─────────────────────────
@@ -2532,6 +2548,8 @@ function renderSettings() {
   renderStorage();
   if (window.renderBackup) renderBackup(); // backup.js
   if (window.renderLibSyncCard) renderLibSyncCard(); // libsync.js
+  renderServiceCards(); // «Интеграции»: ВКонтакте, SoundCloud, загрузка файлов
+  if (window.renderTrackMenuCard && !MOBILE) renderTrackMenuCard(); // whisper-vk.js: «Меню трека»
   for (const m of mods) page.append(m);
 }
 
@@ -3266,7 +3284,7 @@ const TH_ACTIONS = {
   like: ["#likeBtn", "В библиотеку"], mute: ["#volBtn", "Выключить звук"], shuffle: ["#shuffleBtn", "Перемешать"],
   repeat: ["#repeatBtn", "Повтор"], full: ["#cover", "Обложка и текст на весь экран"], more: ["#pMore", "Ещё"],
   "page:wave": ["#wave", "VK Микс"], "page:likes": ["#likes", "Библиотека"], "page:stats": ["#statsBtn", "Статистика"],
-  "page:settings": ["#settingsBtn", "Настройки"], "page:profile": ["#profile", "Сервисы"],
+  "page:settings": ["#settingsBtn", "Настройки"], "page:profile": ["#profile", "Сервисы и интеграции"],
   "vol-up": [null, "Громче"], "vol-down": [null, "Тише"],
   close: ["#wClose", "Закрыть"], minimize: ["#wMin", "Свернуть"], maximize: ["#wMax", "Развернуть"], drag: [null, "Перетащить окно"],
 };
@@ -5574,7 +5592,7 @@ async function boot() {
   invoke("dl_caps")
     .then((c) => {
       S.caps = c;
-      if (S.page === "services") renderServices();
+      refreshServiceCards();
       if ((!c.ytdlp || !c.ffmpeg) && !MOBILE) toast(L("Для загрузки по ссылкам нужны yt-dlp и ffmpeg: sudo pacman -S yt-dlp ffmpeg"), "error");
     })
     .catch(() => {});

@@ -205,7 +205,8 @@
   }
   const fill = (r) => r.style.setProperty("--p", ((r.value - r.min) / (r.max - r.min)) * 100 + "%");
 
-  function openEditor() {
+  /** Окно «Тонкая настройка цветов»; focus — ключ места: окно открывается сразу на его строке («Цвета этого места…»). */
+  function openEditor(focus) {
     if (document.querySelector(".ccmodal")) return;
     const wrap = el("div", "login modal ccmodal");
     const box = el("div", "panel login-box modalbox ccbox");
@@ -314,6 +315,13 @@
     wrap.addEventListener("pointerdown", (e) => e.target === wrap && close());
     wrap.append(box);
     document.body.append(wrap);
+    const fr = typeof focus === "string" && rows[focus] && rows[focus].row;
+    if (fr) {
+      const d = fr.closest("details");
+      if (d) d.open = true;
+      fr.classList.add("ccflash");
+      requestAnimationFrame(() => fr.scrollIntoView({ block: "center" }));
+    }
   }
 
   /** Основной и второй цвета пользователя для стиля (или null — как в теме). */
@@ -366,5 +374,5 @@
     if (ok(c && c.accent2)) o.accent2 = ok(c.accent2);
     save();
   }
-  window.Colors = { main, card, apply, ccOf, setMain };
+  window.Colors = { main, card, apply, ccOf, setMain, edit: (k) => openEditor(k), has: (k) => ITEMS.some((it) => it.k === k) };
 })();

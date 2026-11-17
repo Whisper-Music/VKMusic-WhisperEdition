@@ -251,8 +251,6 @@ body.drag-sorting, body.drag-sorting * { cursor: grabbing !important; -webkit-us
 .omrow { display: flex; flex-direction: column; gap: 4px; }
 .omrow[hidden] { display: none !important; }
 .slide span { color: var(--muted); }
-.svcpage { columns: 1; }
-@media (min-width: 1100px) { .svcpage { columns: 2; } }
 .svc-head { display: flex; align-items: center; gap: 10px; }
 .svc-head .ic svg { width: 22px; height: 22px; }
 .svc-status.on { color: var(--ok); }
@@ -571,3 +569,46 @@ h3.seenhead { margin-top: 16px; }
 /* вкладки настроек — на всю ширину над столбцами (в whisper.css это правило теперь на .settop — шапке с поиском
    у Whisper Yandex; у VK Music её нет, вкладки .settabs стоят сами) */
 .settings > .settabs { column-span: all; }
+
+/* ---------- меню по правому щелчку и «Меню трека» (whisper-vk.js; классы и вид — из panels.css Whisper Yandex) ---------- */
+.sbl { display: grid; gap: 6px; margin: 10px 0 4px; position: relative; }
+.sbl [hidden] { display: none !important; }
+.sblrow {
+  display: grid; grid-template-columns: 30px 1fr 28px 34px; align-items: center; gap: 6px;
+  padding: 4px 6px; border-radius: 10px; min-height: 38px;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  transition: background .15s, opacity .15s; cursor: grab; user-select: none; touch-action: none;
+}
+.sblrow:hover { background: color-mix(in srgb, var(--text) 9%, transparent); }
+.sblrow .sbllabel { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sblrow.off .sbllabel { color: var(--muted); }
+.sblrow button {
+  all: unset; box-sizing: border-box; display: grid; place-items: center; height: 30px; border-radius: 8px; cursor: pointer;
+}
+.sblrow button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sbleye { width: 34px; color: var(--text); }
+.sbleye:hover { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.sblrow.off .sbleye { color: var(--muted); opacity: .7; }
+:root[data-style="royal"] .sblrow, :root[data-style="steam"] .sblrow,
+:root[data-style="royal"] .sblrow button, :root[data-style="steam"] .sblrow button { border-radius: 2px; }
+:root[data-anim="off"] .sblrow { transition: none; }
+.tmenu .mthemes { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 10px 8px; }
+.tmenu .mtheme {
+  all: unset; box-sizing: border-box; position: relative; overflow: hidden; width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+  border: 2px solid color-mix(in srgb, var(--text) 25%, transparent); transition: transform .12s, border-color .12s;
+}
+.tmenu .mtheme.nocover { background: linear-gradient(135deg, var(--a) 0 50%, var(--b) 50% 100%); }
+/* обложка стиля (копия .sprev его карточки) — кружком на всю кнопку */
+.tmenu .mtheme .mthemeprev {
+  position: absolute; inset: 0; width: auto; height: auto; margin: 0; border-radius: 50%;
+  background-size: cover !important; background-position: center !important; pointer-events: none;
+}
+.tmenu .mtheme:hover { transform: scale(1.12); border-color: var(--text); }
+.tmenu .mtheme.on { border-color: var(--text); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
+.tmenu .mtheme:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* точка под курсором — к ней прикрепляется меню пустого места «Моей волны» (tmenu.js) */
+.ctxanchor { position: fixed; width: 1px; height: 1px; pointer-events: none; visibility: hidden; }
+/* «Меню трека» (tmenu.js): те же строки, но без перетаскивания — подпись и глазик, щёлкается вся строка */
+.sblrow.tmrow { grid-template-columns: 1fr 34px; padding-left: 12px; cursor: pointer; }
+.tmenu .moempty { display: inline-block; width: 18px; height: 18px; }

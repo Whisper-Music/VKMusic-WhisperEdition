@@ -199,12 +199,15 @@ src/sleep.js               режим сна: луна #sleepBtn в .pright, к�
 src/cli.js                 стиль-консоль («console» в settings темы, тема «Терминал»): команды VK Music, разметка #cli Whisper
 src/mini.html, mini.js, mini.css  мини-плеер (окно `mini`): данные — только textContent, обложки — https и vkm /cover
 src/host.js                заглушка window.__TAURI__ для браузера (--host): сервер вставляет её первым скриптом index.html
-src/mobile.js, mobile.css   телефон (`html.mobile` — boot.js по UA Android): сверху поиск и кнопка аккаунта («Сервисы»),
+src/mobile.js, mobile.css   телефон (`html.mobile` — boot.js по UA Android): сверху поиск и кнопка аккаунта (Настройки → Интеграции),
                            мини-плеер карточкой (нет трека — класс `mnone`, плеера нет), 5 разделов со значками внизу,
                            режимы плеера, кнопки модулей и «⋯» — на «Сейчас играет» (смахнуть вниз — закрыть), меню и
                            подтверждения — шторкой снизу, «Назад» Android (`onBackButtonPress`)
 src/favicon.svg            значок вкладки браузера (--host) — тот же, что src-tauri/icons/icon.png; меняется вместе с ним
-src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide
+src/whisper-vk.js          привязка к ядру Whisper: setApp, роли (ui.define), провайдер, player.bind, queue.bind, ui.provide;
+                           меню «⋯» и правый щелчок (как tmenu.js Whisper Yandex): у трека — меню «⋯» у курсора, у пустого места
+                           библиотеки, настроек, «VK Микса», боковой панели и окна — свои меню, «Цвета этого места…»
+                           (Colors.edit), последние стили; карточка «Меню трека» (vkm_tmenu { right, hide }, vkm_recent_styles)
 src/i18n/                  локализация: i18n.js (L, plural, applyStatic, setLang), ru.js, en.js
 src/core/                  ядро Whisper — git-подмодуль whisper-core (здесь не правится, см. «Ядро Whisper»)
 themes/<id>/               исходники встроенной темы: theme.wmt, background.*, preview.jpg
@@ -452,6 +455,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   8 с) и раз в 5 минут. Состояние — `vkm_libsync` (не в резервной копии); другой аккаунт архива (`wa_me`) — с нуля.
 * Строки очереди и истории ядра — с «сердцем» (`kit.likeButton` → наш `likeButton`). `fromCore` и `fromRoom` ищут трек
   по ключу через `libraryByKey` (индекс `libIndex`), а не перебором: их зовут на каждую строку.
+* «Сервисы» (вход во ВКонтакте и SoundCloud, загрузка файлов yt-dlp) — первыми карточками вкладки «Интеграции»
+  настроек (`renderServiceCards`, просьба владельца 2026-11-18); своей страницы больше нет: `go("services")` открывает
+  настройки на «Интеграциях», кнопка `#profile` скрыта (на неё ссылаются темы Whisper), на телефоне туда ведёт кнопка аккаунта.
 * Своё в `localStorage` (не модули): `vkm_boot` (снимок стиля для boot.js), `vkm_dyn` (фон по обложке), `vkm_pins` (закреплённые плейлисты ВК — закладки `#tabs > .tab` сверху, «Закрепить» в плейлисте, ✕ —
   открепить; `renderTabs` в конце `rerender`), `vkm_search_seen` ("Недавно открытые" в поиске —
   треки, включённые со страницы поиска, 30), `vkm_notify`, `vkm_mascot`,

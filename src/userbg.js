@@ -304,5 +304,5 @@
     c.append(n);
   }
 
-  window.UserBg = { ready, of: (st) => urls[st] || null, card };
+  window.UserBg = { ready, of: (st) => urls[st] || null, card, choose: () => choose(), clear: () => clear(), has: () => !!urls[style()] };
 })();

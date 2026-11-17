@@ -64,7 +64,7 @@
   const main = $(".main");
   const account = el("button", "maccount");
   account.type = "button";
-  account.setAttribute("aria-label", L("Сервисы"));
+  account.setAttribute("aria-label", L("Сервисы и интеграции"));
   account.innerHTML = Icons.svg("user");
   account.addEventListener("click", () => go("services"));
   if (search && main) {

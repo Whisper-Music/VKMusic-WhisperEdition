@@ -424,7 +424,7 @@
   }
   window.renderVizCard = renderVizCard;
   // «Назад» Android (mobile.js) закрывает весь экран
-  window.Viz = { full: () => fullOn, exitFull: () => setFull(false) };
+  window.Viz = { full: () => fullOn, exitFull: () => setFull(false), on: () => cfg.on, set: (v) => { cfg.on = !!v; save(); apply(); } };
 
   // ---------- что меняет видимость ----------
   new MutationObserver(apply).observe(page, { attributes: true, attributeFilter: ["hidden"] });

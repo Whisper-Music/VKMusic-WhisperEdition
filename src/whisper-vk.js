@@ -431,8 +431,16 @@
   tmenu.setAttribute("role", "menu");
   document.body.append(tmenu);
   let tmenuBtn = null, menuSeq = 0;
+  let menuPt = null;      // меню по правому щелчку — у курсора (window.menuPoint на время открытия), иначе у кнопки
+  let buildingMain = false; // строится главное меню трека: скрытые в «Меню трека» пункты не добавляются
   function closeTrackMenu() {
-    if (tmenu.hidden) return;
+    // меню могли спрятать и мимо этой функции (closePopups в app.js прячет все .popup) — кнопку всё равно забываем,
+    // иначе следующее открытие у неё же сочлось бы повторным нажатием и закрыло меню
+    if (tmenu.hidden) {
+      if (tmenuBtn) tmenuBtn.classList.remove("open");
+      tmenuBtn = null;
+      return;
+    }
     menuSeq++;
     tmenu.hidden = true;
     tmenu.replaceChildren();
@@ -440,10 +448,11 @@
     tmenuBtn = null;
   }
   function openMenu(btn, build) {
-    if (tmenuBtn === btn) return closeTrackMenu();
+    if (tmenuBtn === btn && !tmenu.hidden) return closeTrackMenu();
     closeTrackMenu();
     closePopups();
     tmenuBtn = btn;
+    menuPt = window.menuPoint || null;
     btn.classList.add("open");
     tmenu.hidden = false;
     build(menuSeq);
@@ -454,6 +463,7 @@
   // icon — SVG-строка (свои значки модулей ядра и наши Icons.svg), текст — только textContent
   function menuItem(icon, text, fn, { keep = false, arrow = false, danger = false, to = tmenu } = {}) {
     const b = el("button", "mi" + (danger ? " danger" : ""));
+    if (buildingMain && to === tmenu && tmenuHidden(text)) return b; // скрыт в «Меню трека» — в меню не попадает
     b.innerHTML = icon || "";
     b.append(el("span", "mt", text));
     if (arrow) b.append(el("i", "miarrow", "›"));
@@ -475,13 +485,23 @@
   }
   function placeMenu() {
     if (tmenu.hidden || !tmenuBtn) return;
-    const r = tmenuBtn.getBoundingClientRect(), m = tmenu.getBoundingClientRect();
+    const r = menuPt ? { left: menuPt.x, right: menuPt.x + tmenu.offsetWidth, top: menuPt.y, bottom: menuPt.y } : tmenuBtn.getBoundingClientRect();
+    const m = tmenu.getBoundingClientRect();
     const left = Math.max(8, Math.min(r.right - m.width, innerWidth - m.width - 8));
     const top = r.bottom + 6 + m.height <= innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - m.height - 6);
     tmenu.style.left = left + "px";
     tmenu.style.top = top + "px";
   }
   function trackMenuMain(t) {
+    buildingMain = true;
+    try {
+      trackMenuItems(t);
+    } finally {
+      buildingMain = false;
+    }
+    placeMenu();
+  }
+  function trackMenuItems(t) {
     const anchor = tmenuBtn;                                          // для окошка «В плейлист» после закрытия меню
     menuReset();
     if (W.ui.trackMenu.build(t, null, "top") > 0) menuSep();       // «Слушать вместе · КОД» (core/together.js)
@@ -494,8 +514,233 @@
     if (MOBILE && anchor) rowActionItems(anchor);
     if (anchor && anchor.id === "pMore") playerMenuItems();
     if (!tmenu.children.length) menuNote(L("Здесь пока нечего делать"));
-    placeMenu();
   }
+
+  // ---------- правый щелчок и «Меню трека» (как у Whisper Yandex, tmenu.js; просьба владельца 2026-11-18) ----------
+  // Системное меню WebView не показываем нигде — только своё (кроме полей ввода и выделенного текста: там оно —
+  // «Копировать / Вставить»). Трек в списке и нижняя панель — меню «⋯» у курсора (выключается в «Меню трека»);
+  // пустое место библиотеки, настроек, «VK Микса», боковая панель и остальное окно — свои меню. Везде — «Цвета этого
+  // места…» (тонкая настройка цветов сразу на нужной строке) и последние стили. localStorage vkm_tmenu { right, hide }.
+  const TM_KEY = "vkm_tmenu";
+  // ключ → подпись в настройках и подписи пунктов (русские — ключи перевода; сравниваются с переведёнными)
+  const TM_ITEMS = [
+    { k: "next", label: "Играть следующим", texts: ["Играть следующим"] },
+    { k: "vkadd", label: "Добавить в мои треки ВК", texts: ["Добавить в мои треки ВК"] },
+    { k: "studio", label: "Обрезать в студии", texts: ["Обрезать в студии"] },
+    { k: "playlist", label: "В плейлист ВК", texts: ["В плейлист ВК"] },
+    { k: "share", label: "Поделиться", texts: ["Поделиться"] },
+    { k: "archive", label: "Сохранить в архив", texts: ["Сохранить в архив", "Сохраняется в архив…"], raw: true },
+    { k: "room", label: "Предложить в комнату", texts: ["Предложить в комнату"], raw: true },
+    { k: "speed", label: "Скорость", prefix: "Скорость" },
+    { k: "output", label: "Устройство вывода", texts: ["Устройство вывода"] },
+    { k: "eq", label: "Эквалайзер", prefix: "Эквалайзер" },
+    { k: "mini", label: "Мини-плеер", texts: ["Мини-плеер"] },
+    { k: "colors", label: "Цвета этого места (по правому щелчку)", texts: [] },
+  ];
+  const tm = (() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(TM_KEY) || "{}") || {};
+      return { right: v.right !== false, hide: new Set(Array.isArray(v.hide) ? v.hide.filter((x) => typeof x === "string") : []) };
+    } catch {
+      return { right: true, hide: new Set() };
+    }
+  })();
+  const tmSave = () => { try { localStorage.setItem(TM_KEY, JSON.stringify({ right: tm.right, hide: [...tm.hide] })); } catch {} };
+  // модули ядра пишут по-русски без перевода (raw), свои пункты — через L()
+  function tmenuHidden(text) {
+    for (const it of TM_ITEMS) {
+      if (!tm.hide.has(it.k)) continue;
+      if (it.prefix && (text.startsWith(L(it.prefix)) || text.startsWith(it.prefix))) return true;
+      if ((it.texts || []).some((x) => text === x || text === L(x))) return true;
+    }
+    return false;
+  }
+
+  // «Цвета этого места…»: от селектора к ключу «Тонкой настройки цветов» (colors.js), частное — выше общего
+  const CC_AT = [
+    [".titlebar", "titleBarBg"],
+    [".side .nav.active", "navActBg"], [".side .nav", "navBg"], [".sbox, .side .search", "searchBg"], [".side", "sideBg"],
+    ["#pTitle", "plTitle"], ["#pArtist, .player .time", "plArtist"], [".seekrow", "seekFill"], [".volwrap, #volWrap", "volFill"],
+    [".player .playbtn, .wavebtn", "playBg"], [".modebtn", "plModeOn"], [".likebtn", "like"], [".player button", "plIcons"], [".player", "plBg"],
+    [".list .t", "rowTitle"], [".list .a", "rowArtist"], [".list li", "rowHover"], [".list", "listBg"],
+    ["#title, .head h2", "heading"], [".chip.active, .main .nav.active", "btnActBg"], [".chip, .round, .main .nav", "btnBg"],
+    [".switch, .settings input[type=range]", "ctl"], [".card h3, .main h3", "heading"], [".card, .lastAlbum, .simcard, .stylecard", "cardBg"],
+    [".sub, .status", "muted"], [".main", "mainBg"],
+  ];
+  const ccKeyAt = (t) => {
+    for (const [sel, k] of CC_AT) {
+      try { if (t && t.closest(sel) && window.Colors && Colors.has(k)) return k; } catch {}
+    }
+    return "text";
+  };
+  const PAL = '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 1.9-.9 1.9-1.9 0-.5-.2-.9-.5-1.3-.3-.3-.5-.8-.5-1.2 0-1 .8-1.9 1.9-1.9H17a4 4 0 0 0 4-4c0-4.3-4-7.7-9-7.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="7.6" cy="11.5" r="1.2" fill="currentColor"/><circle cx="10.5" cy="7.6" r="1.2" fill="currentColor"/><circle cx="15" cy="7.8" r="1.2" fill="currentColor"/></svg>';
+  function colorsItem(t) {
+    if (!window.Colors || tm.hide.has("colors")) return;
+    const k = ccKeyAt(t);
+    menuItem(PAL, L("Цвета этого места…"), () => Colors.edit(k));
+  }
+
+  // последние стили — кружками внизу меню (vkm_recent_styles, до 6, новый — первым)
+  const RECENT = "vkm_recent_styles";
+  const recent = () => { try { const v = JSON.parse(localStorage.getItem(RECENT) || "[]"); return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(0, 6) : []; } catch { return []; } };
+  let lastStyle = "";
+  function noteStyle() {
+    const st = document.documentElement.dataset.theme || "";
+    if (!st || st === lastStyle || document.documentElement.classList.contains("booting")) return;
+    lastStyle = st;
+    try { localStorage.setItem(RECENT, JSON.stringify([st, ...recent().filter((x) => x !== st)].slice(0, 6))); } catch {}
+  }
+  new MutationObserver(noteStyle).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+  function recentRow() {
+    const cards = recent().map((id) => [id, document.querySelector(`.stylecard[data-style="${CSS.escape(id)}"]`)]).filter(([, c]) => c);
+    if (cards.length < 2) return;
+    menuNote(L("Последние стили"));
+    const row = el("div", "mthemes");
+    const cur = document.documentElement.dataset.theme;
+    for (const [id, card] of cards) {
+      const b = el("button", "mtheme" + (id === cur ? " on" : ""));
+      b.type = "button";
+      const pv = card.querySelector(".sprev");
+      if (pv) { const c = pv.cloneNode(true); c.classList.add("mthemeprev"); b.append(c); }
+      const name = (card.querySelector(".scname") || {}).textContent || id;
+      b.title = name;
+      b.setAttribute("aria-label", name);
+      b.addEventListener("click", (e) => { e.stopPropagation(); closeTrackMenu(); if (id !== cur) selectTheme(id); });
+      row.append(b);
+    }
+    tmenu.append(row);
+  }
+
+  // точка под курсором: меню приложения встаёт рядом с ней
+  const ctxAnchor = el("i", "ctxanchor");
+  document.body.append(ctxAnchor);
+  function ctxMenu(x, y, build) {
+    if (tmenuBtn === ctxAnchor) closeTrackMenu();
+    window.menuPoint = { x, y };
+    openMenu(ctxAnchor, () => {
+      menuReset();
+      build();
+      recentRow();
+    });
+    window.menuPoint = null;
+    if (!tmenu.children.length) closeTrackMenu();
+    else placeMenu();
+  }
+  const IC_BACK = '<svg viewBox="0 0 24 24" width="18" height="18"><path d="M19 12H5m0 0 6-6m-6 6 6 6" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const IC_CHECK = '<svg viewBox="0 0 24 24" width="18" height="18"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const IC_NONE = '<i class="moempty"></i>';
+  const visible = (b) => !!b && !b.hidden && !!b.offsetParent;
+  function pageMenu(at) {
+    const back = $("#back");
+    if (visible(back)) menuItem(IC_BACK, L("Назад"), () => back.click());
+    const set = $("#settingsBtn");
+    if (visible(set)) menuItem(Icons.svg("gear"), L("Настройки"), () => set.click());
+    colorsItem(at);
+  }
+  function sideMenu(at) {
+    const de = document.documentElement;
+    if (de.dataset.lyUi === "super") menuItem(Icons.svg("panel"), L("Обычный вид (Ctrl+Shift+M)"), () => document.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyM", key: "M", ctrlKey: true, shiftKey: true })));
+    else if (!MOBILE && !de.hasAttribute("data-ly-lock")) {
+      const fold = $("#sideFold");
+      if (visible(fold)) menuItem(Icons.svg("panel"), de.dataset.lySb === "mini" ? L("Развернуть панель") : L("Свернуть панель"), () => fold.click());
+      menuItem(Icons.svg("mini"), L("Мини-вид"), () => document.dispatchEvent(new KeyboardEvent("keydown", { code: "KeyM", key: "M", ctrlKey: true, shiftKey: true })));
+    }
+    colorsItem(at);
+  }
+  function libraryMenu(at) {
+    const refresh = $("#headBtns button");
+    if (visible(refresh)) menuItem(Icons.svg("refresh"), L("Обновить библиотеку"), () => refresh.click());
+    colorsItem(at);
+  }
+  function settingsMenu(at) {
+    const load = [...document.querySelectorAll("#settingsPage .card button")].find((b) => b.textContent === L("Восстановить из файла…"));
+    if (load) menuItem(Icons.svg("upload"), L("Восстановить настройки из файла…"), () => load.click());
+    menuNote("Язык / Language");
+    for (const [v, label] of [["ru", "Русский"], ["en", "English"]]) {
+      const on = (document.documentElement.lang || "ru") === v;
+      menuItem(on ? IC_CHECK : IC_NONE, label, () => {
+        if (on) return;
+        const chip = [...document.querySelectorAll("#settingsPage .chip")].find((c) => c.textContent === label);
+        if (chip) chip.click();
+      });
+    }
+    colorsItem(at);
+  }
+  function waveMenu(at) {
+    if (window.UserBg) {
+      menuItem(Icons.svg("palette"), L("Свой фон…"), () => UserBg.choose());
+      if (UserBg.has()) menuItem(Icons.svg("x"), L("Убрать свой фон"), () => UserBg.clear());
+    }
+    if (window.Viz && Viz.set) menuItem(Icons.svg("vizbars"), Viz.on() ? L("Выключить визуализатор") : L("Включить визуализатор"), () => Viz.set(!Viz.on()));
+    colorsItem(at);
+  }
+  const EDIT = 'input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]), textarea, [contenteditable]';
+  document.addEventListener("contextmenu", (e) => {
+    if (e.defaultPrevented) return;
+    const t = e.target instanceof Element ? e.target : e.target && e.target.parentElement;
+    if (!t) return;
+    if (t.closest(EDIT) || String(window.getSelection ? window.getSelection() : "").trim()) return;
+    e.preventDefault();
+    if (MOBILE || t.closest(".tmenu, .modal, .ccmodal, .popup")) return;
+    const x = e.clientX, y = e.clientY;
+    if (tm.right) {
+      let more = t.closest("li") && t.closest("li").querySelector(":scope .morebtn");
+      if (!more && t.closest(".player")) more = $("#pMore");
+      if (more && !more.disabled && more.offsetParent) {
+        if (more.classList.contains("open")) closeTrackMenu();
+        window.menuPoint = { x, y };
+        more.click();
+        window.menuPoint = null;
+        // меню трека открылось — внизу тот же пункт про цвета
+        if (more.classList.contains("open")) { colorsItem(t); placeMenu(); }
+        return;
+      }
+    }
+    const inMain = !!t.closest(".main");
+    if (inMain && !$("#settingsPage").hidden) return ctxMenu(x, y, () => settingsMenu(t));
+    if (inMain && S.page === "library" && !S.vkPl && !t.closest("li")) return ctxMenu(x, y, () => libraryMenu(t));
+    const wp = $("#wavePage");
+    if (wp && !wp.hidden && wp.contains(t) && !t.closest("button, a, .chip, .list")) return ctxMenu(x, y, () => waveMenu(t));
+    if (t.closest(".app > .side")) return ctxMenu(x, y, () => sideMenu(t));
+    if (t.closest(".app, .titlebar")) ctxMenu(x, y, () => pageMenu(t));
+  });
+
+  /** Карточка «Меню трека» во вкладке «Общее»: правый щелчок и какие пункты показывать (глазик у каждого). */
+  window.renderTrackMenuCard = function renderTrackMenuCard() {
+    const c = setCard("ui", L("Меню трека"));
+    c.append(el("p", "status", L("Какие действия показывать в меню «⋯» и по правому щелчку. Пункт появляется, только когда он к месту.")));
+    c.append(switchRow(L("Правый щелчок по треку открывает его меню"), tm.right, (on) => { tm.right = on; tmSave(); }));
+    const list = el("div", "sbl tml");
+    const EYE = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>';
+    const EYE_OFF = EYE.replace("</svg>", '<path d="M4 20 20 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>');
+    for (const it of TM_ITEMS) {
+      const row = el("div", "sblrow tmrow");
+      const on = !tm.hide.has(it.k);
+      row.classList.toggle("off", !on);
+      const b = el("button", "sbleye");
+      b.type = "button";
+      b.innerHTML = on ? EYE : EYE_OFF; // свои постоянные значки
+      b.title = on ? L("Скрыть из меню") : L("Показать в меню");
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      row.addEventListener("click", () => {
+        if (tm.hide.has(it.k)) tm.hide.delete(it.k);
+        else tm.hide.add(it.k);
+        tmSave();
+        renderSettings();
+      });
+      row.append(el("span", "sbllabel", L(it.label)), b);
+      list.append(row);
+    }
+    c.append(list);
+    if (tm.hide.size) {
+      const r = el("div", "row");
+      const all = el("button", "nav", L("Показать все"));
+      all.type = "button";
+      all.addEventListener("click", () => { tm.hide.clear(); tmSave(); renderSettings(); });
+      r.append(all);
+      c.append(r);
+    }
+  };
 
   // Телефон: значков действий в строке трека нет (.lacts скрыт, mobile.css) — те же действия пунктами меню; нажатие
   // нажимает саму кнопку строки, поэтому подтверждение и всё остальное — как на компьютере. «В плейлист» уже есть выше.
