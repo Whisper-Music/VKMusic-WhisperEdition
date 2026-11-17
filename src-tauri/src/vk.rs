@@ -949,10 +949,21 @@ pub fn parse_home(r: &Value) -> (Home, Vec<(String, String)>) {
     (Home { mixes, groups }, keys)
 }
 
-/// Ответ `audio.add` — id новой аудиозаписи (число; бывает строкой) → id копии `<uid>_<id>`.
+/// Ответ `audio.add` → id копии `<uid>_<id>`. По документации — число (бывает строкой); сайт отвечает и объектом
+/// (`id` / `audio_id`, у полной записи — с `owner_id`) — разбираем все виды. Чужой owner_id — не наша копия.
 fn added_id(r: &Value, uid: i64) -> Option<String> {
-    let id = r.as_u64().or_else(|| r.as_str().and_then(|s| s.parse().ok())).filter(|&id| id > 0)?;
+    let num = |v: &Value| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())).filter(|&id| id > 0);
+    let id = num(r).or_else(|| ["audio_id", "id"].iter().find_map(|k| r.get(*k).and_then(num)))?;
+    if r.get("owner_id").and_then(Value::as_i64).is_some_and(|o| o != uid) {
+        return None;
+    }
     Some(format!("{uid}_{id}"))
+}
+
+/// Тот же трек среди ваших аудиозаписей: исполнитель и название (без регистра), длительность ±3 с.
+fn same_track(a: &Track, artist: &str, title: &str, duration: f64) -> bool {
+    let n = |s: &str| s.trim().to_lowercase().replace('ё', "е");
+    n(&a.artist) == n(artist) && n(&a.title) == n(title) && (duration <= 0.0 || a.duration <= 0.0 || (a.duration - duration).abs() <= 3.0)
 }
 
 fn api_hosts(base: &str) -> (&'static str, &'static str) {
@@ -1185,7 +1196,9 @@ impl Vk {
     /// Трек — в «Мои треки» ВК (`audio.add`, как «+» на сайте; просьба владельца, 2026-11-17). Возвращает id
     /// вашей копии (`<ваш id>_<новый id>`): так трек придёт и синхронизацией. Ваш собственный трек не добавляется
     /// второй раз — вернётся его id. saved_key — access_key из библиотеки, если в памяти его нет.
-    pub async fn add_audio(&self, s: &Session, track: &str, saved_key: Option<&str>) -> Res<String> {
+    pub async fn add_audio(&self, s: &Session, track: &Track, saved_key: Option<&str>) -> Res<String> {
+        let (artist, title, duration) = (track.artist.as_str(), track.title.as_str(), track.duration);
+        let track = track.id.as_str();
         let (owner, aid) = track.split_once('_').ok_or("Неверный id трека")?;
         if owner.trim_start_matches('-').parse::<u64>().is_err() || aid.parse::<u64>().is_err() {
             return Err("Неверный id трека".into());
@@ -1197,12 +1210,34 @@ impl Vk {
         if owner == uid.to_string() {
             return Ok(track.to_string());
         }
+        // уже есть среди ваших последних (добавили раньше, а ответ не разобрался) — второй копии не делаем
+        if let Some(id) = self.find_own(s, uid, artist, title, duration).await {
+            return Ok(id);
+        }
         let mut params = vec![("owner_id", owner.to_string()), ("audio_id", aid.to_string())];
         if let Some(k) = self.access_key(track).or_else(|| saved_key.filter(|k| valid_hash(k)).map(str::to_string)) {
             params.push(("access_key", k));
         }
         let r = self.api(s, "audio.add", &params).await?;
-        added_id(&r, uid).ok_or_else(|| "ВКонтакте не добавил трек в ваши аудиозаписи".to_string())
+        if let Some(id) = added_id(&r, uid) {
+            return Ok(id);
+        }
+        // ответ незнакомого вида — копия нашлась бы первой среди ваших
+        if let Some(id) = self.find_own(s, uid, artist, title, duration).await {
+            return Ok(id);
+        }
+        let shown: String = r.to_string().chars().take(120).collect();
+        Err(format!("ВКонтакте не вернул номер добавленного трека (ответ: {shown})"))
+    }
+
+    /// Трек среди 50 последних ваших аудиозаписей (`audio.get`) — id копии. Ошибка — None.
+    async fn find_own(&self, s: &Session, uid: i64, artist: &str, title: &str, duration: f64) -> Option<String> {
+        let r = self.api(s, "audio.get", &[("owner_id", uid.to_string()), ("count", "50".into())]).await.ok()?;
+        self.tracks_from(r.get("items"))
+            .into_iter()
+            .map(|(t, _)| t)
+            .find(|t| t.id.starts_with(&format!("{uid}_")) && same_track(t, artist, title, duration))
+            .map(|t| t.id)
     }
 
     /// access_key трека из последних ответов API (для трека, который добавляют в библиотеку).
@@ -1649,12 +1684,49 @@ mod tests {
     }
 
 
+    /// Без изменений в аккаунте: последние ваши аудиозаписи и поиск копии по первой из них (как после audio.add).
+    /// VKM_COOKIES=… cargo test live_find_own -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn live_find_own() {
+        let path = std::env::var("VKM_COOKIES").expect("VKM_COOKIES");
+        let mut cookies = Vec::new();
+        for l in std::fs::read_to_string(path).unwrap().lines() {
+            let l = l.strip_prefix("#HttpOnly_").unwrap_or(l);
+            let p: Vec<&str> = l.split('\t').collect();
+            if !l.starts_with('#') && p.len() >= 7 {
+                cookies.push(Cookie { domain: p[0].into(), path: p[2].into(), name: p[5].into(), value: p[6].into() });
+            }
+        }
+        let s = Session { base: "https://vk.ru", cookies: vk_cookies(cookies) };
+        let vk = Vk::new();
+        tauri::async_runtime::block_on(async {
+            let (_, uid) = vk.web_token(&s).await.unwrap();
+            let r = vk.api(&s, "audio.get", &[("owner_id", uid.to_string()), ("count", "3".into())]).await.unwrap();
+            let own = vk.tracks_from(r.get("items"));
+            for (t, _) in &own {
+                println!("{} — {} — {} ({} с)", t.id, t.artist, t.title, t.duration);
+            }
+            let (first, _) = own.first().expect("нет аудиозаписей");
+            let found = vk.find_own(&s, uid, &first.artist, &first.title, first.duration).await;
+            println!("найдено: {found:?}");
+            assert_eq!(found.as_deref(), Some(first.id.as_str()));
+        });
+    }
+
     #[test]
     fn audio_add_answer() {
         assert_eq!(added_id(&serde_json::json!(456239017), 42).as_deref(), Some("42_456239017"));
         assert_eq!(added_id(&serde_json::json!("456239017"), 42).as_deref(), Some("42_456239017"));
         assert_eq!(added_id(&serde_json::json!(0), 42), None);
-        assert_eq!(added_id(&serde_json::json!({ "id": 1 }), 42), None);
+        assert_eq!(added_id(&serde_json::json!({ "id": 7 }), 42).as_deref(), Some("42_7"));
+        assert_eq!(added_id(&serde_json::json!({ "audio_id": "8" }), 42).as_deref(), Some("42_8"));
+        assert_eq!(added_id(&serde_json::json!({ "owner_id": 42, "id": 9 }), 42).as_deref(), Some("42_9"));
+        assert_eq!(added_id(&serde_json::json!({ "owner_id": -5, "id": 9 }), 42), None);
+        assert_eq!(added_id(&serde_json::json!(true), 42), None);
+        let t = Track { id: "42_1".into(), reload: None, artist: "Кино".into(), title: "Звезда по имени Солнце".into(), duration: 225.0, cover: None, del: None, api: true };
+        assert!(same_track(&t, " кино", "Звезда по имени солнце", 224.0));
+        assert!(!same_track(&t, "Кино", "Звезда по имени Солнце", 240.0));
     }
 
     #[test]

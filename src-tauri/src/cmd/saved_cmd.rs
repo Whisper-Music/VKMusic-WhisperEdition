@@ -33,7 +33,17 @@ pub(crate) async fn vk_add(app: AppHandle, st: State<'_, AppState>, track: saved
     }
     let base = old.clone().unwrap_or(track);
     let session = vk_session(&app).await?;
-    let id = st.vk.add_audio(&session, &base.id, base.access_key.as_deref()).await?;
+    let want = vk::Track {
+        id: base.id.clone(),
+        reload: None,
+        artist: base.artist.clone(),
+        title: base.title.clone(),
+        duration: base.duration,
+        cover: None,
+        del: None,
+        api: true,
+    };
+    let id = st.vk.add_audio(&session, &want, base.access_key.as_deref()).await?;
     let copy = saved::Saved { id: id.clone(), reload: None, api: true, access_key: None, del: None, ..base.clone() };
     let s = st.saved.adopt(old.as_ref().map(|o| o.id.as_str()), copy)?;
     if id != base.id {
