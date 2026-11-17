@@ -54,6 +54,10 @@ mod desktop;
 #[cfg(desktop)]
 mod notify;
 #[cfg(desktop)]
+mod power;
+#[cfg(desktop)]
+mod thumbbar;
+#[cfg(desktop)]
 mod studio;
 #[cfg(desktop)]
 mod tray;
@@ -419,6 +423,7 @@ fn show_main(app: &AppHandle) {
     }
     #[cfg(desktop)]
     if let Some(w) = app.get_window("main") {
+        power::leave(app);
         let _ = w.show();
         let _ = w.unminimize();
         let _ = w.set_focus();
@@ -510,11 +515,19 @@ fn desktop_setup(app: &tauri::App, st: &AppState, host: bool) {
             if tray::active() && h.state::<AppState>().cfg.lock().unwrap().close_to_tray {
                 api.prevent_close();
                 let _ = w2.hide();
+                power::enter(&h); // в трее — экономия (Windows: движок не рисует, страница замерзает на паузе)
             }
+        }
+        if let tauri::WindowEvent::Resized(_) = e {
+            power::on_resized(&w2);
         }
     });
     let saved = st.cfg.lock().unwrap().window;
     winstate::restore(&win, saved);
+    // кнопки под миниатюрой окна на панели задач (Windows)
+    if let Some(ww) = app.get_webview_window("main") {
+        thumbbar::init(app.handle(), &ww);
+    }
     winstate::track(&win, move |next| {
         let st = handle.state::<AppState>();
         let mut c = st.cfg.lock().unwrap();
@@ -792,6 +805,8 @@ pub fn run() {
             studio::studio_save,
             #[cfg(desktop)]
             desktop::desktop_wallpaper,
+            #[cfg(desktop)]
+            thumbbar::thumbbar_state,
             cmd::local_cmd::cover_bytes,
             update::update_install,
             app_info,

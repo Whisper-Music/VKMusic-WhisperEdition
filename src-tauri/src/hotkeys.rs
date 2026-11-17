@@ -52,6 +52,7 @@ fn run(app: &AppHandle, action: &str) {
         }
         return;
     }
+    crate::power::wake(app);
     let _ = app.emit("hotkey", action);
 }
 

@@ -177,6 +177,10 @@ src/notify.js              уведомления «Слушать вместе�
 src-tauri/src/desktop.rs   обои рабочего стола (порт Whisper Yandex + Omarchy/~/.cache/current_wallpaper, swww): desktop_wallpaper
 src-tauri/src/studio.rs    «Студия»: studio_source (файл трека библиотеки байтами, до 200 МБ), studio_save (ffmpeg -c copy
                            отрезка → новый файл «Исполнитель - Название (обрезка м.сс–м.сс)» в папке музыки); только компьютер
+src-tauri/src/thumbbar.rs  кнопки под миниатюрой на панели задач Windows (порт Whisper Yandex): ♥ ⏮ ⏯ ⏭ → tray://ctl, значки —
+                           icons/thumb/*.png, состояние — thumbbar_state из tray.js
+src-tauri/src/power.rs     экономия в трее (порт Whisper Yandex): Windows — WebView2 невидим, память LOW, без музыки 8 с — TrySuspend;
+                           enter (крестик в трей) / leave (show_main) / wake (трей, клавиши, миниатюра) / on_playing (tray_state)
 src-tauri/src/notify.rs    уведомления: Linux — org.freedesktop.Notifications (D-Bus, нажатие → открыть), Windows — окно `notify`
                            (notifywin.html/js/css, как у Whisper Yandex: в углу рабочей области, без фокуса, стопка до трёх)
 src/tray.js                что играет — трею и мини-плееру (mini_state / tray_state), карточка «Трей» в «Общем»

@@ -238,6 +238,7 @@ fn on_action(app: &AppHandle, id: &str) {
         "hide" => hide_mini(app),
         "quit" => app.exit(0),
         a if PLAYER_ACTIONS.contains(&a) => {
+            crate::power::wake(app); // замороженная страница (Windows, трей) сначала просыпается
             let _ = app.emit_to("main", "tray://ctl", a);
         }
         _ => {}
@@ -247,6 +248,7 @@ fn on_action(app: &AppHandle, id: &str) {
 /// Подписи пунктов меню (на языке интерфейса) и состояние «Пауза / Играть»; подсказка значка — что играет.
 #[tauri::command(rename_all = "snake_case")]
 pub fn tray_state(app: AppHandle, labels: std::collections::HashMap<String, String>, playing: bool, title: String) {
+    crate::power::on_playing(&app, playing); // не играет и окно в трее — страницу можно заморозить (Windows)
     let Some(t) = app.try_state::<Tray>() else { return };
     for (id, item) in &t.items {
         let key = if *id == "toggle" { if playing { "pause" } else { "play" } } else { id };

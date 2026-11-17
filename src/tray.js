@@ -77,6 +77,7 @@
     };
   }
 
+  const THUMBBAR = /Windows/.test(navigator.userAgent) && !HOST && !MOBILE;
   function push() {
     clearTimeout(timer);
     timer = setTimeout(() => {
@@ -84,6 +85,8 @@
       invoke("mini_state", { state: s }).catch(() => {});
       syncAccent();
       if (trayInfo.tray) invoke("tray_state", { labels: s.labels, playing: s.playing, title: s.has ? [s.artist, s.title].filter(Boolean).join(" — ") : "" }).catch(() => {});
+      // кнопки под миниатюрой окна на панели задач (Windows, thumbbar.rs): Rust перерисует их, только если что-то другое
+      if (THUMBBAR) invoke("thumbbar_state", { has: s.has, playing: s.playing, liked: s.liked, en: s.lang === "en" }).catch(() => {});
     }, 120);
   }
 

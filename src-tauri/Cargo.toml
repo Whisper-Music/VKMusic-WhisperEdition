@@ -76,7 +76,8 @@ tauri-plugin-updater = "2"
 keyring = { version = "3", features = ["windows-native"] }
 # куки WebView2 как есть (те же версии, что у wry)
 webview2-com = "0.39"
-windows = "0.62"
+# Win32_UI_Shell / Com / WindowsAndMessaging — кнопки под миниатюрой (thumbbar.rs), ProcessStatus / Threading — power.rs
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_ProcessStatus", "Win32_System_Threading"] }
 # mpv: именованный канал (асинхронный — чтение и запись одновременно)
 tokio = { version = "1", features = ["time", "sync", "net", "io-util", "rt"] }
 # mpv закрывается вместе с приложением (Job Object)
