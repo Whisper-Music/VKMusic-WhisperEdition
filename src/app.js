@@ -2393,6 +2393,7 @@ function renderSettings() {
   renderLyricsSettings();
   // на телефоне трея и окна нет: плеер — в уведомлении, интерфейс — только в приложении
   if (window.renderTraySettings && !MOBILE) renderTraySettings(); // tray.js
+  if (window.renderNotifyCard) renderNotifyCard(); // notify.js
   if (window.renderSleepCard) renderSleepCard(); // sleep.js
   if (window.renderPowerCard) renderPowerCard(); // power.js
   if (!MOBILE) renderModeCard();

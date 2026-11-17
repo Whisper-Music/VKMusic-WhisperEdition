@@ -696,6 +696,8 @@
     confirm: (o) => askConfirm(o),
     // страница модуля в боковой панели (core/friends.js — «Друзья») и альбом архива друга
     page: (id, o) => modulePage(id, o),
+    // приглашение в комнату и «подмигивание», когда окно в фоне (notify.js; на телефоне нет — там подсказка)
+    ...(window.sysNotify ? { notify: (o) => window.sysNotify(o) } : {}),
     playArchive: (tracks, start, o) => playArchive(tracks, start, o),
     themeExport,
     themeImport,

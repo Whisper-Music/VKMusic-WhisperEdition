@@ -49,6 +49,8 @@ mod streams;
 mod themelib;
 mod themes;
 #[cfg(desktop)]
+mod notify;
+#[cfg(desktop)]
 mod tray;
 mod update;
 // визуализатор VK Микса на компьютере: анализ в mpv, замеры через FIFO (unix; на Android — VkmPlugin)
@@ -771,6 +773,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             update::update_check,
             hotkeys::hotkeys_set,
+            #[cfg(desktop)]
+            notify::notify_show,
+            #[cfg(desktop)]
+            notify::notify_take,
+            #[cfg(desktop)]
+            notify::notify_layout,
+            #[cfg(desktop)]
+            notify::notify_ctl,
             cmd::local_cmd::cover_bytes,
             update::update_install,
             app_info,

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "notify",
+  "description": "Окно уведомлений Windows (notify.rs, notifywin.html): события от Rust. Команды приложения — notify_take, notify_layout, notify_ctl (проверяют метку окна).",
+  "windows": ["notify"],
+  "permissions": ["core:default"]
+}

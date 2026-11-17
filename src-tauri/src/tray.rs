@@ -220,7 +220,7 @@ fn inside_pill(px: f32, py: f32, left: f32, top: f32, w: f32, bottom: f32) -> bo
 }
 
 /// «Открыть VK Music»: окно — или вкладка браузера с `--host` (окна там нет).
-fn open(app: &AppHandle) {
+pub(crate) fn open(app: &AppHandle) {
     if crate::host::active() {
         crate::host::open_browser();
     } else {

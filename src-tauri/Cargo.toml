@@ -80,4 +80,4 @@ windows = "0.62"
 # mpv: именованный канал (асинхронный — чтение и запись одновременно)
 tokio = { version = "1", features = ["time", "sync", "net", "io-util", "rt"] }
 # mpv закрывается вместе с приложением (Job Object)
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
