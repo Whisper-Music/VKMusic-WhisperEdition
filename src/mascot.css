@@ -1,0 +1,6 @@
+/* Маскот (mascot.js, как у Whisper Yandex): чёрный пиксельный кот на верхнем краю нижней панели.
+   Холст фиксирован в окне, место задаёт transform; по кнопкам плеера кликается сквозь него. */
+.mascot { position: fixed; left: 0; top: 0; z-index: 5; pointer-events: none; image-rendering: pixelated; image-rendering: crisp-edges;
+  /* чёрный кот на тёмном фоне не теряется: тонкий фиолетовый ореол по силуэту */
+  filter: drop-shadow(0 0 1.5px rgba(176, 120, 255, .55)) drop-shadow(0 0 6px rgba(176, 120, 255, .18)); }
+.mascot[hidden] { display: none; }

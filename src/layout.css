@@ -222,3 +222,149 @@ html:root[data-ly-time="hover"] .seekrow.tipon .time { opacity: .35; }
 
 /* VK Music: в свёрнутой панели строка очереди не помещается */
 html:root[data-ly-sb="mini"] .side .queue-mini { display: none; }
+
+/* (как у Whisper Yandex, 2026-11-17) */
+/* ---------- мини-вид (data-ly-ui="super", layout.js) ----------
+   Боковая панель — плавающая колонка значков слева (справа) по центру; плеер — по центру снизу: плитка с обложкой
+   и автором (.pinfo) + «таблетка» с линией и кнопками (.pcenter), «⋮» (#smMore) открывает над правым краем столбик
+   значков (.pright: слушать вместе, сон, очередь, громкость, «⋯», перемешивание и повтор; html.sm-open).
+   Боковая панель берёт правила свёрнутой (layout.js ставит data-ly-sb="mini"), колонка закреплённых — закладками сверху.
+   Плитка, таблетка и столбик на это время — панели (.panel, layout.js): их оформляют стиль и тема, как остальные */
+.smmore, .lysuper-note { display: none; }
+#layoutCard.lysuper .lysuper-note { display: block; margin: -2px 0 2px; font-size: 12px; }
+html:root[data-ly-ui="super"] .app {
+  /* --sm-side — ширина колонки, --sm-h — высота обеих нижних плашек (плитка и таблетка вровень) */
+  --sm-side: 60px; --sm-h: 64px; --sm-edge: 14px; --sm-bottom: 92px;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  grid-template-areas: "tabs" "main" !important;
+}
+/* основная часть — на всё окно, с отступом под колонку и плеер */
+html:root[data-ly-ui="super"] .main { margin: 0 0 var(--sm-bottom) calc(var(--sm-side) + var(--sm-edge)) !important; }
+html:root[data-ly-ui="super"][data-ly-side="right"] .main { margin: 0 calc(var(--sm-side) + var(--sm-edge)) var(--sm-bottom) 0 !important; }
+
+/* боковая панель: плавающая колонка значков */
+html:root[data-ly-ui="super"] .side {
+  position: fixed !important; z-index: 30; top: 50%; bottom: auto; left: var(--sm-edge); right: auto;
+  transform: translateY(-50%); width: var(--sm-side); height: auto !important; min-height: 0 !important;
+  max-height: calc(100vh - 2 * var(--sm-bottom)); margin: 0 !important; overflow: visible !important;
+  padding-top: 12px !important; padding-bottom: 10px !important;
+}
+html:root[data-ly-ui="super"][data-ly-side="right"] .side { left: auto; right: var(--sm-edge); }
+html:root[data-ly-ui="super"] .side > .spacer { display: none; }
+html:root[data-ly-ui="super"] .side { gap: 6px; }
+html:root[data-ly-ui="super"] .side .nav:not(.sidefold), html:root[data-ly-ui="super"] .sbox,
+html:root[data-ly-ui="super"] .sbox .search:not(:focus) { width: 42px; height: 42px; }
+html:root[data-ly-ui="super"] .side .nav:not(.sidefold)::before { width: 22px; height: 22px; }
+html:root[data-ly-ui="super"] .side > .nav.sidefold { height: 30px; width: 42px; }
+html:root[data-ly-ui="super"][data-style="royal"] .side { padding-top: 34px !important; padding-bottom: 34px !important; }
+
+/* плеер: обёртка без своего фона — плитка и таблетка как отдельные панели */
+html:root[data-ly-ui="super"] .player {
+  position: fixed !important; z-index: 30; left: 50%; right: auto; top: auto; bottom: var(--sm-edge);
+  transform: translateX(-50%); display: flex !important; align-items: stretch; gap: 10px;
+  width: auto !important; max-width: calc(100vw - 2 * (var(--sm-side) + 2 * var(--sm-edge)));
+  height: auto !important; min-height: 0 !important; margin: 0 !important; padding: 0 !important;
+  background: none !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  -webkit-backdrop-filter: none !important; backdrop-filter: none !important; animation: none !important;
+}
+html:root[data-ly-ui="super"] .player::before, html:root[data-ly-ui="super"] .player::after,
+html:root[data-ly-ui="super"] .player .lo-player, html:root[data-ly-ui="super"] .player .meta .roomline,
+html:root[data-ly-ui="super"] .player .time { display: none !important; }
+/* Фон, рамку и углы плашкам даёт стиль или тема: layout.js на время мини-вида вешает на них класс .panel
+   (у «Мела» — меловые рамки, у «Королевского» — орнамент и т. п.). Здесь только то, без чего маленькая панель
+   не смотрится: орнамент «Королевского» по углам — помельче (у больших панелей он 98px). */
+html:root[data-ly-ui="super"] .player :is(.pinfo, .pcenter, .pright) { --fs: 26px; }
+/* «Lolitta»: обычная .panel у неё тёмная, а текст и кнопки плеера — тёмные под светлую нижнюю панель.
+   Плашкам — светлый вид, как у её боковой панели (те же переменные --l-*, поэтому и у тем на этой основе) */
+html:root[data-ly-ui="super"][data-base="lolitta"] .player :is(.pinfo, .pcenter, .pright) {
+  border-radius: 16px; border: 2px solid var(--l-mid); -webkit-backdrop-filter: none; backdrop-filter: none;
+  background: radial-gradient(120% 80% at 50% 0, rgba(255,255,255,.28), transparent 60%), linear-gradient(175deg, var(--l-panel), var(--l-panel2));
+  box-shadow: 0 0 0 2px var(--l-tab2), 0 0 0 4px var(--l-line), 0 0 0 5px rgba(20,6,10,.5),
+    inset 0 0 0 3px color-mix(in srgb, var(--l-light) 80%, #fff), 0 12px 28px rgba(0,0,0,.5);
+}
+html:root[data-ly-ui="super"][data-anim="on"] .player :is(.pinfo, .pcenter) { animation: smIn .24s ease-out; }
+@keyframes smIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* плитка: обложка слева, справа название и автор; высотой вровень с таблеткой */
+html:root[data-ly-ui="super"] .player .pinfo {
+  position: relative; display: flex !important; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px;
+  flex: none; width: 240px; height: var(--sm-h); min-width: 0; padding: 0 14px 0 10px; margin: 0;
+}
+html:root[data-ly-ui="super"] .player .pinfo .cover { flex: none; width: calc(var(--sm-h) - 20px) !important; height: calc(var(--sm-h) - 20px) !important; margin: 0 !important; }
+html:root[data-ly-ui="super"] .player .meta { flex: 1; width: auto; min-width: 0; margin: 0; align-items: flex-start; text-align: left; gap: 2px; }
+html:root[data-ly-ui="super"] .player .meta > :is(b, span) {
+  display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.25;
+}
+html:root[data-ly-ui="super"] .player .meta > b { font-size: 14px !important; }
+html:root[data-ly-ui="super"] .player .meta > span { font-size: 12px !important; }
+
+/* таблетка: она же линия трека (см. ниже), внутри только ♥ ⏮ ⏯ ⏭ ✕ и «⋮» */
+html:root[data-ly-ui="super"] .player .pcenter {
+  position: relative; display: flex !important; flex-direction: column; justify-content: center; gap: 0; flex: 0 1 auto;
+  width: min(420px, calc(100vw - 2 * (var(--sm-side) + 2 * var(--sm-edge)) - 250px)); min-width: 260px;
+  height: var(--sm-h); padding: 0 14px; margin: 0;
+}
+/* Таблетка целиком — линия трека: пройденная часть панели чуть светлее и растёт слева направо. Ползунок растянут
+   на всю таблетку под кнопками, без кружка: щелчок или перетаскивание по свободному месту перематывает.
+   Цвет заливки — от цвета текста стиля (на тёмной панели светлеет, на светлой темнеет); «Тонкая настройка
+   цветов» → «Полоса воспроизведения» по-прежнему главнее. Подсказка со временем (.seektip) — над таблеткой. */
+html:root[data-ly-ui="super"] .player .seekrow {
+  position: absolute; inset: 0; z-index: 0; height: auto; margin: 0; display: block; border-radius: inherit;
+}
+html:root[data-ly-ui="super"] .player #seek {
+  position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0;
+  background: none; border-radius: inherit; overflow: hidden; cursor: pointer;
+}
+html:root[data-ly-ui="super"] .player #seek::-webkit-slider-runnable-track {
+  height: 100% !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--text) 13%, transparent) var(--p, 0%), transparent var(--p, 0%)) !important;
+}
+html:root[data-ly-ui="super"] .player #seek:is(:hover, :active)::-webkit-slider-runnable-track {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--text) 19%, transparent) var(--p, 0%), color-mix(in srgb, var(--text) 4%, transparent) var(--p, 0%)) !important;
+}
+html:root[data-ly-ui="super"] .player #seek::-webkit-slider-thumb {
+  width: 1px !important; height: 1px !important; margin: 0 !important; border: 0 !important; box-shadow: none !important; opacity: 0 !important;
+}
+/* кнопки — поверх линии; сам ряд щелчки пропускает, чтобы между кнопками тоже можно было перематывать */
+html:root[data-ly-ui="super"] .player .ctrls { position: relative; z-index: 1; pointer-events: none; display: flex; align-items: center; justify-content: center; gap: 4px; order: 0; margin: 0; }
+html:root[data-ly-ui="super"] .player .ctrls > * { pointer-events: auto; }
+html:root[data-ly-ui="super"] .player .ctrls button { width: 32px; height: 32px; }
+html:root[data-ly-ui="super"] .player .ctrls .playbtn { width: 36px; height: 36px; }
+html:root[data-ly-ui="super"] .player .ctrls button:not(.playbtn) svg { width: 17px; height: 17px; }
+html:root[data-ly-ui="super"] .player .ctrls .playbtn svg { width: 18px; height: 18px; }
+html:root[data-ly-ui="super"] .player .ctrls :is(.likebtn, .disbtn) svg { width: 17px; height: 17px; }
+html:root[data-ly-ui="super"] .player .ctrls .disbtn { margin: 0; }
+html:root[data-ly-ui="super"] .player .ctrls .likebtn:not(.on) { color: var(--muted); }
+html:root[data-ly-ui="super"] .player .smmore {
+  display: grid; place-items: center; position: absolute; right: -8px; top: 50%; transform: translateY(-50%);
+  color: var(--muted);
+}
+html:root[data-ly-ui="super"] .player .smmore:hover, html.sm-open .player .smmore { color: var(--text); }
+html.sm-open .player .smmore { background: rgba(255,255,255,.1); }
+
+/* столбик значков над правым краем таблетки — по «⋮» */
+html:root[data-ly-ui="super"] .player .pright {
+  position: absolute; right: 0; bottom: calc(100% + 10px); z-index: 2;
+  display: flex !important; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px; margin: 0;
+  opacity: 0; visibility: hidden; transform: translateY(6px); pointer-events: none;
+  transition: opacity .15s, transform .15s, visibility 0s linear .15s;
+}
+html.sm-open[data-ly-ui="super"] .player .pright { opacity: 1; visibility: visible; transform: none; pointer-events: auto; transition: opacity .15s, transform .15s; }
+html:root[data-ly-ui="super"][data-anim="off"] .player .pright { transition: none; }
+html:root[data-ly-ui="super"] .player .pright button { width: 36px; height: 36px; margin: 0; }
+html:root[data-ly-ui="super"] .player .pright .volwrap { justify-self: auto; }
+/* громкость в столбике открывается влево, а не вверх (вверху — другие значки) */
+html:root[data-ly-ui="super"] .player .pright .volpop {
+  bottom: auto; top: 50%; left: auto; right: calc(100% + 12px); transform: translate(6px, -50%) !important;
+}
+html:root[data-ly-ui="super"] .player .pright .volwrap:is(:hover, :focus-within) .volpop { transform: translate(0, -50%) !important; }
+html:root[data-ly-ui="super"] .player .pright .volpop::after { top: -12px; bottom: -12px; left: 100%; right: auto; width: 16px; height: auto; }
+/* узкое окно: таблетка ужимается, перемешивание и повтор и так в столбике */
+@media (max-width: 760px) {
+  html:root[data-ly-ui="super"] .app { --sm-edge: 10px; }
+  html:root[data-ly-ui="super"] .player .pinfo { width: 180px; }
+  html:root[data-ly-ui="super"] .player .pcenter { min-width: 230px; padding: 0 10px; }
+  html:root[data-ly-ui="super"] .player .ctrls { gap: 2px; }
+}
+

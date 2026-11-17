@@ -1020,4 +1020,19 @@ window.I18N_DICTS.en = {
   "У этого стиля свои видеообои.": "This style has your video wallpaper.",
   "У этого стиля свой фон.": "This style has your background.",
   "Фон — из темы. Свой фон запоминается для каждого стиля.": "The background comes from the theme. Your own background is remembered per style.",
+  // ── мини-вид (layout.js) ──
+  "Обычный вид (Ctrl+Shift+M)": "Normal view (Ctrl+Shift+M)",
+  "Ещё: слушать вместе, сон, очередь, громкость": "More: listen together, sleep, queue, volume",
+  "Стиль задаёт расположение сам — мини-вид с ним не работает": "This style sets the layout itself — mini view doesn't work with it",
+  "Мини-вид: Ctrl+Shift+M или двойной щелчок по пустому месту панели — обычный вид": "Mini view: Ctrl+Shift+M or double-click an empty spot of a panel for the normal view",
+  "Вид": "View",
+  "Мини-вид": "Mini view",
+  "Мини-вид: панели — свои, Ctrl+Shift+M или двойной щелчок по пустому месту панели — обычный вид.": "Mini view has its own panels; Ctrl+Shift+M or a double-click on an empty spot of a panel brings back the normal view.",
+  // ── маскот (mascot.js) ──
+  "Маскот": "Mascot",
+  "Чёрный пиксельный кот Whisper гуляет по нижней панели, кивает в такт и засыпает на паузе.": "Whisper's black pixel cat walks along the bottom panel, nods to the beat and falls asleep on pause.",
+  "Показывать маскота": "Show the mascot",
+  "Реагирует на музыку": "Reacts to music",
+  "Размер": "Size",
+  "Маленький": "Small",
 };

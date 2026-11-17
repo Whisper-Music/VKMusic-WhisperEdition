@@ -5,10 +5,11 @@
 // Внешний вид режимов — в layout.css. Карточку в «Настройки → Общее» рисует Layout.card (из app.js).
 (() => {
   const KEY = "vkm_layout";
-  const OPTS = { side: ["left", "right"], sb: ["full", "mini"], pl: ["full", "mini"], time: ["always", "hover"], dot: ["on", "off"] };
+  // ui — мини-вид (как у Whisper Yandex): боковая панель — плавающая колонка значков, плеер — «таблетка» снизу
+  const OPTS = { side: ["left", "right"], sb: ["full", "mini"], pl: ["full", "mini"], time: ["always", "hover"], dot: ["on", "off"], ui: ["normal", "super"] };
   // sw — ширина боковой панели, ph — высота нижней (px, перетаскиванием за край); 0 — размер по умолчанию
   // dot — кружок на полосе трека (.seekdot в app.css / app.js)
-  const ly = { side: "left", sb: "full", pl: "full", time: "always", dot: "on", sw: 0, ph: 0 };
+  const ly = { side: "left", sb: "full", pl: "full", time: "always", dot: "on", ui: "normal", sw: 0, ph: 0 };
   const SW_MIN = 170, SW_MAX = 440, PH_GROW = 160;
   try {
     const v = JSON.parse(localStorage.getItem(KEY) || "null");
@@ -19,12 +20,17 @@
   const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(ly)); } catch {} };
   // тема задаёт расположение сама (settings whisper-music → "layout": "fixed", как у Whisper Yandex): действуют
   // значения по умолчанию, свои — не теряются и вернутся с другим стилем
-  const DEF = { side: "left", sb: "full", pl: "full", time: "always", dot: "on" };
+  const DEF = { side: "left", sb: "full", pl: "full", time: "always", dot: "on", ui: "normal" };
   // телефон (класс mobile — boot.js): раскладка своя (mobile.css) — действуют значения по умолчанию, без
   // перетаскивания краёв и сворачивания панели; свои значения с компьютера (резервная копия) не теряются
   const MOBILE = document.documentElement.classList.contains("mobile");
   let locked = MOBILE;
-  const eff = (k) => (locked ? DEF[k] : ly[k]);
+  const moved = []; // мини-вид: переставленные кнопки плеера и метки их мест (superDom)
+  let smBtn = null; // мини-вид: кнопка «⋮» в таблетке
+  // в мини-вид боковая панель — всегда значками, нижняя — своя раскладка; выбор для обычного вида сохраняется
+  const isSuper = () => !locked && ly.ui === "super";
+  const SUPER = { sb: "mini", pl: "full" };
+  const eff = (k) => (locked ? DEF[k] : isSuper() && k in SUPER ? SUPER[k] : ly[k]);
   const root = document.documentElement;
   const T = (s) => (typeof L === "function" ? L(s) : s);
   const Tc = (ctx, s) => (typeof Lc === "function" ? Lc(ctx, s) : s);
@@ -44,17 +50,19 @@
   };
   function apply() {
     for (const k of Object.keys(OPTS)) attr("data-ly-" + k, eff(k));
-    const useSw = !locked && ly.sw > 0 && ly.sb !== "mini";
-    const usePh = !locked && ly.ph > 0 && ly.pl !== "mini";
+    superDom(isSuper());
+    const useSw = !locked && !isSuper() && ly.sw > 0 && ly.sb !== "mini";
+    const usePh = !locked && !isSuper() && ly.ph > 0 && ly.pl !== "mini";
     const app = document.querySelector(".app");
     size(app, "--ly-sw", useSw ? ly.sw + "px" : null);
     size(app, "--ly-ph", usePh ? ly.ph + "px" : null);
     attr("data-ly-sw", useSw ? "" : null);
     attr("data-ly-ph", usePh ? "" : null);
-    document.querySelectorAll(".lyhandle").forEach((h) => (h.hidden = locked));
+    document.querySelectorAll(".lyhandle").forEach((h) => (h.hidden = locked || isSuper()));
     const card = document.getElementById("layoutCard");
     if (card) {
       card.classList.toggle("lylock", locked);
+      card.classList.toggle("lysuper", isSuper());
       const note = card.querySelector(".lylock-note");
       if (note) note.hidden = !locked;
     }
@@ -63,8 +71,10 @@
       fold.hidden = locked;
       const text = Tc("панель", "Свернуть");
       if (fold.textContent !== text) fold.textContent = text;
-      fold.setAttribute("aria-label", ly.sb === "mini" ? T("Развернуть панель") : T("Свернуть панель"));
-      fold.setAttribute("aria-expanded", ly.sb === "mini" ? "false" : "true");
+      // в мини-вид эта кнопка возвращает обычный вид
+      fold.setAttribute("aria-label", isSuper() ? T("Обычный вид (Ctrl+Shift+M)") : ly.sb === "mini" ? T("Развернуть панель") : T("Свернуть панель"));
+      fold.title = isSuper() ? T("Обычный вид (Ctrl+Shift+M)") : "";
+      fold.setAttribute("aria-expanded", eff("sb") === "mini" ? "false" : "true");
     }
     // ширину боковой панели меряет ResizeObserver (init); без него — здесь
     if (!("ResizeObserver" in window)) measureSide();
@@ -76,6 +86,108 @@
       });
     });
   }
+
+  // ---------- мини-вид (как у Whisper Yandex) ----------
+  // Боковая панель — плавающая колонка значков слева по центру (правила свёрнутой панели + layout.css), плеер —
+  // «таблетка» по центру снизу: слева плитка с обложкой, в таблетке линия и кнопки ♥ ⏮ ⏯ ⏭ и «⋮».
+  // «⋮» открывает над правым краем столбик значков (то, что было справа в плеере, плюс перемешивание и повтор).
+  // Ничего не пересоздаётся: те же кнопки с теми же id и обработчиками, на их местах — метки-комментарии.
+  function superDom(on) {
+    const ctrls = document.querySelector(".player .ctrls"), pright = document.querySelector(".player .pright");
+    if (!ctrls || !pright) return; // разметки ещё нет (скрипт в <head>) — позже, из init()
+    const has = moved.length > 0;
+    if (on === has) return;
+    if (on) {
+      const put = (id, where) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const mark = document.createComment("ly-super:" + id);
+        el.before(mark);
+        moved.push([el, mark]);
+        where(el);
+      };
+      put("likeBtn", (el) => ctrls.prepend(el));
+      put("shuffleBtn", (el) => pright.prepend(el));
+      put("repeatBtn", (el) => pright.prepend(el));
+      if (!smBtn) {
+        smBtn = document.createElement("button");
+        smBtn.id = "smMore";
+        smBtn.type = "button";
+        smBtn.className = "smmore";
+        smBtn.title = T("Ещё: слушать вместе, сон, очередь, громкость");
+        smBtn.setAttribute("aria-haspopup", "true");
+        smBtn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="5" r="2" fill="currentColor"/><circle cx="12" cy="12" r="2" fill="currentColor"/><circle cx="12" cy="19" r="2" fill="currentColor"/></svg>';
+        smBtn.onclick = (e) => { e.stopPropagation(); smOpen(!root.classList.contains("sm-open")); };
+      }
+      ctrls.append(smBtn);
+    } else {
+      smOpen(false);
+      while (moved.length) { const [el, mark] = moved.pop(); mark.replaceWith(el); }
+      smBtn?.remove();
+    }
+    // плитка, таблетка и столбик — каждая своя панель (.panel), чтобы их оформляли стиль и темы
+    for (const el of document.querySelectorAll(".player > .pinfo, .player > .pcenter, .player > .pright")) {
+      if (on && !el.classList.contains("panel")) { el.classList.add("panel"); el.dataset.lyPanel = "1"; }
+      else if (!on && el.dataset.lyPanel) { el.classList.remove("panel"); delete el.dataset.lyPanel; }
+    }
+    tileTitle(on);
+  }
+  // название и автор — во всплывающей подсказке плитки (если не влезли целиком)
+  let tileObs = null;
+  function tileTitle(on) {
+    const tile = document.querySelector(".player .pinfo"), t = document.getElementById("pTitle"), a = document.getElementById("pArtist");
+    if (!tile || !t) return;
+    const upd = () => { tile.title = [t.textContent.trim(), a?.textContent.trim()].filter(Boolean).join(" — "); };
+    if (on) {
+      upd();
+      if (!tileObs && "MutationObserver" in window) {
+        tileObs = new MutationObserver(upd);
+        for (const n of [t, a]) if (n) tileObs.observe(n, { childList: true, characterData: true, subtree: true });
+      }
+    } else {
+      tileObs?.disconnect();
+      tileObs = null;
+      tile.removeAttribute("title");
+    }
+  }
+  function smOpen(v) {
+    root.classList.toggle("sm-open", !!v);
+    smBtn?.setAttribute("aria-expanded", v ? "true" : "false");
+  }
+  // столбик закрывается щелчком мимо него и Esc
+  document.addEventListener("pointerdown", (e) => {
+    if (!root.classList.contains("sm-open")) return;
+    if (e.target.closest?.(".player .pright, #smMore, .tmenu, .popup, .confirm-pop")) return;
+    smOpen(false);
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && root.classList.contains("sm-open")) smOpen(false); });
+
+  // Включить и выключить: Ctrl+Shift+M (не в полях ввода) или двойной щелчок по пустому месту боковой или нижней панели
+  let hintShown = false;
+  const say = (text, ms) => { if (typeof toast === "function") toast(T(text), null, null, ms); };
+  function toggleSuper() {
+    if (MOBILE) return;
+    if (locked) return say("Стиль задаёт расположение сам — мини-вид с ним не работает", 3500);
+    set("ui", isSuper() ? "normal" : "super");
+    if (isSuper() && !hintShown) {
+      hintShown = true;
+      say("Мини-вид: Ctrl+Shift+M или двойной щелчок по пустому месту панели — обычный вид", 5000);
+    }
+  }
+  document.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey && e.shiftKey && !e.altKey && e.code === "KeyM")) return;
+    if (e.target.closest?.("input, textarea, [contenteditable]")) return;
+    e.preventDefault();
+    toggleSuper();
+  });
+  const EMPTY_SKIP = "button, a, input, select, textarea, label, [role=button], .seekrow, .meta, .cover, .volpop, .sbox, .lyhandle, .roomline";
+  document.addEventListener("dblclick", (e) => {
+    const t = e.target;
+    if (!t.closest?.(".side, .player") || t.closest(EMPTY_SKIP)) return;
+    window.getSelection?.()?.removeAllRanges();
+    toggleSuper();
+  });
+
   apply();
 
   function set(k, v) {
@@ -204,7 +316,7 @@
       b.className = "nav sidefold";
       b.id = "sideFold";
       b.type = "button";
-      b.addEventListener("click", () => set("sb", ly.sb === "mini" ? "full" : "mini"));
+      b.addEventListener("click", () => (isSuper() ? set("ui", "normal") : set("sb", ly.sb === "mini" ? "full" : "mini")));
       side.append(b);
     }
     if (side && "ResizeObserver" in window) new ResizeObserver(() => measureSide()).observe(side);
@@ -223,6 +335,7 @@
       ["pl", "Нижняя панель", [["full", "Обычная"], ["mini", "Свёрнутая"]]],
       ["time", "Время трека", [["always", "Всегда"], ["hover", "При наведении"]]],
       ["dot", "Кружок на полосе трека", [["on", "Показывать"], ["off", "Скрывать"]]],
+      ["ui", "Вид", [["normal", "Обычный"], ["super", "Мини-вид"]]],
     ];
     for (const [k, label, opts] of ROWS) {
       const row = document.createElement("div");
@@ -251,7 +364,10 @@
     const lockNote = document.createElement("p");
     lockNote.className = "status lylock-note";
     lockNote.textContent = T("Расположение задаёт текущий стиль оформления.");
-    c.append(p, lockNote);
+    const superNote = document.createElement("p");
+    superNote.className = "status lysuper-note";
+    superNote.textContent = T("Мини-вид: панели — свои, Ctrl+Shift+M или двойной щелчок по пустому месту панели — обычный вид.");
+    c.append(p, lockNote, superNote);
     apply();
   }
   /** Тема задаёт расположение сама (applyHooks в app.js). */

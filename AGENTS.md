@@ -155,7 +155,11 @@ src/core/rust/…            Rust ядра через #[path]: whisper/ (арх�
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
 src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, PolyForm Noncommercial) — не править
 src/boot.js                до первой отрисовки: стиль прошлого запуска (vkm_boot), интерфейс скрыт до применения темы
-src/layout.js, layout.css  расположение (как у Whisper Yandex, без закреплённых): мини-режимы панелей, размер за край (vkm_layout)
+src/layout.js, layout.css  расположение (как у Whisper Yandex, без закреплённых): мини-режимы панелей, размер за край, мини-вид
+                           (`ui: super`, Ctrl+Shift+M / двойной щелчок по пустому месту панели: колонка значков + плитка и
+                           «таблетка», «⋮» — столбик кнопок; кнопки переезжают, на месте — метки-комментарии) (vkm_layout)
+src/mascot.js, mascot.css  маскот (как у Whisper Yandex, те же спрайты): кот на верхнем краю плеера, карточка в «Оформлении»
+                           (vkm_mascot, выключен по умолчанию); тема без него — `features.mascot: false`; на телефоне нет
 src/themeguard.js          защита от ломающих тем (как у Whisper Yandex): закрыть/свернуть/перетащить окно, пауза, настройки
                            должны оставаться доступны — иначе аварийная полоса; Ctrl+Shift+Backspace — «Неон» (vkm_tguard)
 src/userbg.js              свой фон стиля (как у Whisper Yandex): картинка, видео, папка Wallpaper Engine (video), обои рабочего
@@ -654,7 +658,7 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `.volpop` `#vol` `#pMore`), `#settingsPage.settings` (`.settabs .chip`, `.card[data-tab]`), `.simcard`, `.lastAlbum`,
   `#wavePage` (`.waveorbits`, `#waveBtn.wavebtn`), `#full`, `.titlebar`, `.tmenu`, `.toast`, `body.is-playing`.
   Свои элементы — дополнительными классами и внутри этих (`.lq`, `.lacts`, `.ldur` в строке). `whisper.css` не правится:
-  своё — в `app.css`. Возможности тем сверх CSS (`settings whisper-music`): `features.animations`, `controls.volume:
+  своё — в `app.css`. Возможности тем сверх CSS (`settings whisper-music`): `features.animations`, `features.mascot` (false — без маскота), `controls.volume:
   "knob"` (`data-vol-knob`, `--vol`), `buttons` (`#thBtns .thbtn`, действия — только `TH_ACTIONS`), `layout: "fixed"`
   (`Layout.lock`: действует расположение по умолчанию, своё не теряется; `#layoutCard.lylock`), `console` (`true` или
   `{ prompt, banner }` — стиль-консоль `cli.js`: `body.cli-on`, `.app` скрыт; команды — только свои, тема задаёт вид;

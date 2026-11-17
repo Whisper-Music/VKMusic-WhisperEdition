@@ -2390,6 +2390,7 @@ function renderSettings() {
   renderThemes();
   renderIntroCard();
   if (window.renderVizCard) renderVizCard(); // viz.js
+  if (window.renderMascotCard) renderMascotCard(); // mascot.js
   renderGeneral();
   renderLyricsSettings();
   // на телефоне трея и окна нет: плеер — в уведомлении, интерфейс — только в приложении
