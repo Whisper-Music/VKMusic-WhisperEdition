@@ -323,6 +323,18 @@ html:root[data-ly-ui="super"] .player #seek::-webkit-slider-runnable-track {
 html:root[data-ly-ui="super"] .player #seek:is(:hover, :active)::-webkit-slider-runnable-track {
   background: linear-gradient(90deg, color-mix(in srgb, var(--text) 19%, transparent) var(--p, 0%), color-mix(in srgb, var(--text) 4%, transparent) var(--p, 0%)) !important;
 }
+/* свой кружок полосы трека VK Music (.seekdot, app.css) — в мини-виде его нет: линия трека — сама таблетка */
+html:root[data-ly-ui="super"] .player .seekdot { display: none !important; }
+/* то же для Firefox (--host в Zen и т. п.; app.css повторяет ползунки через ::-moz-range-*): отдельными правилами —
+   незнакомый псевдоэлемент выбросил бы всё правило вместе с ::-webkit- */
+html:root[data-ly-ui="super"] .player #seek::-moz-range-track {
+  height: 100% !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--text) 13%, transparent) var(--p, 0%), transparent var(--p, 0%)) !important;
+}
+html:root[data-ly-ui="super"] .player #seek:is(:hover, :active)::-moz-range-track {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--text) 19%, transparent) var(--p, 0%), color-mix(in srgb, var(--text) 4%, transparent) var(--p, 0%)) !important;
+}
+html:root[data-ly-ui="super"] .player #seek::-moz-range-progress { background: transparent !important; }
 html:root[data-ly-ui="super"] .player #seek::-webkit-slider-thumb {
   width: 1px !important; height: 1px !important; margin: 0 !important; border: 0 !important; box-shadow: none !important; opacity: 0 !important;
 }
