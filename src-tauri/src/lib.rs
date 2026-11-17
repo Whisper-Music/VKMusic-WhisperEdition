@@ -57,7 +57,6 @@ mod notify;
 mod power;
 #[cfg(desktop)]
 mod thumbbar;
-#[cfg(desktop)]
 mod studio;
 #[cfg(desktop)]
 mod tray;
@@ -75,11 +74,10 @@ mod winstate;
 mod wmt;
 mod ytdlp;
 
-// Команды ядра, которые VK Music намеренно не регистрирует: ссылка на свой альбом архива и открытие чужого альбома
-// по приглашению нужны только «Студии» Whisper Yandex (поделиться своей версией трека). Ссылка здесь — чтобы они
+// Команды ядра, которые VK Music намеренно не регистрирует: открытие чужого альбома по приглашению (ссылка на версию
+// трека из «Студии» Whisper Yandex; своей версией VK Music делится — wa_album_share — но чужие по ссылке не открывает). Ссылка здесь — чтобы они
 // не давали dead_code (CI — с -D warnings), а не `allow` на весь модуль ядра.
 const _: () = {
-    let _ = whisper::wa_album_share;
     let _ = whisper::wa_invite_open;
 };
 
@@ -108,6 +106,8 @@ struct AppState {
     order: order::OrderStore,
     /// синхронизация библиотеки через Whisper Archive: путь файла → key записи
     libsync: Arc<libsync::Index>,
+    /// «Мои версии» студии (studio.json)
+    studio: studio::Store,
     player: Mutex<Option<Arc<player::Player>>>,
     player_error: Mutex<Option<String>>,
     dl_seq: AtomicU64,
@@ -653,6 +653,7 @@ pub fn run() {
         playlists,
         order: order::OrderStore::new(),
         libsync: Arc::new(libsync::Index::new()),
+        studio: studio::Store::new(),
         cfg: Mutex::new(cfg),
         player: Mutex::new(None),
         player_error: Mutex::new(None),
@@ -799,10 +800,13 @@ pub fn run() {
             notify::notify_layout,
             #[cfg(desktop)]
             notify::notify_ctl,
-            #[cfg(desktop)]
             studio::studio_source,
-            #[cfg(desktop)]
             studio::studio_save,
+            studio::studio_info,
+            studio::studio_list,
+            studio::studio_update,
+            studio::studio_delete,
+            whisper::wa_album_share,
             #[cfg(desktop)]
             desktop::desktop_wallpaper,
             #[cfg(desktop)]

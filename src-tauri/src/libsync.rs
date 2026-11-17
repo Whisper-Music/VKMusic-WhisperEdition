@@ -107,6 +107,8 @@ pub fn content_key(p: &Path) -> Option<String> {
 #[derive(Serialize)]
 pub struct LibLocal {
     key: String,
+    /// версия «Студии»: границы и трек ВК, из которого вырезана (запись — `kind: cut`)
+    cut: Option<crate::studio::CutMeta>,
     /// ключ трека в библиотеке интерфейса (путь файла) — чтобы поставить восстановленный трек на место
     lib: String,
     title: String,
@@ -121,18 +123,23 @@ pub struct LibLocal {
 pub async fn libsync_local(st: State<'_, AppState>) -> Res<Vec<LibLocal>> {
     let dir = st.music_dir();
     let index = st.libsync.clone();
+    let st_versions = st.studio.list();
     tauri::async_runtime::spawn_blocking(move || {
         if !dir.is_dir() {
             return Err("Папки музыки нет — синхронизация подождёт".to_string());
         }
         let old = index.load();
+        let versions = studio_paths(&st_versions);
         let mut map = HashMap::new();
         let mut out = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for t in library::scan(&dir) {
             let p = PathBuf::from(&t.path);
             let Some((size, mtime)) = stat(&p) else { continue };
+            // версия «Студии» — под своим номером studio-<id>, что бы ни было в файле (переименование меняет теги)
+            let ver = versions.get(&t.path);
             let key = match old.get(&t.path) {
+                _ if ver.is_some() => format!("studio-{}", ver.map(|v| v.id.as_str()).unwrap_or_default()),
                 Some(e) if e.size == size && e.mtime == mtime => e.key.clone(),
                 _ => match content_key(&p) {
                     Some(k) => k,
@@ -144,11 +151,13 @@ pub async fn libsync_local(st: State<'_, AppState>) -> Res<Vec<LibLocal>> {
             if !seen.insert(key.clone()) {
                 continue;
             }
+            let cut = ver.map(|v| crate::studio::CutMeta { replaces: v.replaces.clone(), start_ms: v.start_ms, end_ms: v.end_ms });
             out.push(LibLocal {
                 key,
+                cut,
                 lib: t.path,
-                title: t.title,
-                artist: t.artist,
+                title: ver.map(|v| v.title.clone()).unwrap_or(t.title),
+                artist: ver.map(|v| v.artist.clone()).filter(|a| !a.is_empty()).unwrap_or(t.artist),
                 duration_ms: t.duration * 1000,
                 added_ms: t.added * 1000,
             });
@@ -160,6 +169,10 @@ pub async fn libsync_local(st: State<'_, AppState>) -> Res<Vec<LibLocal>> {
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+fn studio_paths(list: &[crate::studio::Version]) -> HashMap<String, crate::studio::Version> {
+    list.iter().map(|v| (v.path.clone(), v.clone())).collect()
 }
 
 /// Отправить файл записи в архив (запись уже должна быть на сервере). Формат, который архив не берёт, —
@@ -181,7 +194,13 @@ pub async fn libsync_upload(st: State<'_, AppState>, key: String) -> Res<WaRespo
 /// Забрать файл записи из архива в папку музыки (имя — «Исполнитель - Название»). Уже есть — вернёт его.
 /// Возвращает ключ трека в библиотеке интерфейса (путь файла).
 #[tauri::command(rename_all = "snake_case")]
-pub async fn libsync_restore(st: State<'_, AppState>, key: String, artist: String, title: String) -> Res<String> {
+pub async fn libsync_restore(
+    st: State<'_, AppState>,
+    key: String,
+    artist: String,
+    title: String,
+    cut: Option<crate::studio::CutMeta>,
+) -> Res<String> {
     if !whisper::library::key_ok(&key) {
         return Err("Некорректный номер трека библиотеки".into());
     }
@@ -194,7 +213,8 @@ pub async fn libsync_restore(st: State<'_, AppState>, key: String, artist: Strin
     let index = st.libsync.clone();
     let clip = |s: &str| s.chars().filter(|c| !c.is_control()).take(200).collect::<String>();
     let stem = cache::file_name(&clip(&artist), &clip(&title));
-    tauri::async_runtime::spawn_blocking(move || -> Res<String> {
+    let (k2, t2, a2) = (key.clone(), clip(&title), clip(&artist));
+    let p = tauri::async_runtime::spawn_blocking(move || -> Res<String> {
         std::fs::create_dir_all(&dir).map_err(|e| format!("Не удалось создать папку музыки: {e}"))?;
         let path = cache::free_path(&dir, &stem, ext);
         let tmp = dir.join(format!(".{key}.part"));
@@ -212,7 +232,10 @@ pub async fn libsync_restore(st: State<'_, AppState>, key: String, artist: Strin
         Ok(p)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+    // версия «Студии» с другого устройства — и в «Мои версии»
+    crate::studio::adopt(&st, &k2, &p, &t2, &a2, cut.as_ref())?;
+    Ok(p)
 }
 
 /// Запись удалили на другом устройстве — удалить её файл из папки музыки (интерфейс проверил, что трек здесь
@@ -231,6 +254,7 @@ pub fn libsync_delete(st: State<'_, AppState>, key: String) -> Res<()> {
     m.remove(&p);
     st.libsync.store(m)?;
     st.order.retain(|k| k != p)?;
+    st.studio.remove_path(&p)?;
     if let Some(k) = ckey {
         st.cache.remove(&k);
     }

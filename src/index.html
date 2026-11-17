@@ -136,6 +136,8 @@
               <div class="stutx"><b id="stuTitle"></b><span id="stuArtist"></span></div>
               <button id="stuClose" type="button" class="round" title="Закрыть трек">✕</button>
             </div>
+            <!-- сводка о треке: темп, тональность, громкость (studioinfo.js), формат, битрейт, частота (studio_info) -->
+            <dl id="stuInfo" class="stuinfo" hidden></dl>
             <div id="stuWave" class="stuwave" title="Тяни границы мышью; колесо — точнее (с Shift — по секунде)">
               <canvas id="stuCanvas"></canvas>
               <div id="stuSel" class="stusel"></div>
@@ -145,7 +147,9 @@
             </div>
             <div class="sturow">
               <label class="stutime">Начало <input id="stuA" type="text" inputmode="decimal" spellcheck="false" /></label>
+              <button id="stuFromNow" type="button" class="nav" title="Начало — с того места, что звучит сейчас">⇤ отсюда</button>
               <span class="stulen">длина <b id="stuLen">0 с</b></span>
+              <button id="stuToNow" type="button" class="nav" title="Конец — на том месте, что звучит сейчас">досюда ⇥</button>
               <label class="stutime">Конец <input id="stuB" type="text" inputmode="decimal" spellcheck="false" /></label>
             </div>
             <div class="sturow">
@@ -155,6 +159,17 @@
               <button id="stuSave" type="button" class="nav active">Сохранить версию</button>
             </div>
           </div>
+        </div>
+        <div class="card stumine">
+          <div class="stuhead">
+            <h3>Мои версии</h3>
+            <div id="stuFilter" class="chips">
+              <button type="button" class="chip active" data-f="all">Все</button>
+              <button type="button" class="chip" data-f="liked">Любимые</button>
+            </div>
+          </div>
+          <ul id="stuList" class="list stulist"></ul>
+          <p id="stuNone" class="status">Пока ни одной версии. Обрежь трек выше — версия появится здесь и в библиотеке.</p>
         </div>
       </section>
     </main>
@@ -291,6 +306,7 @@
   <script src="core/obs.js"></script>
   <script src="core/together.js"></script>
   <script src="core/friends.js"></script>
+  <script src="studioinfo.js"></script>
   <script src="studio.js"></script>
   <script src="mascot.js"></script>
 </body>

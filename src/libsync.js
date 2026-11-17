@@ -51,21 +51,32 @@
   }
 
   const clip = (s, n) => String(s || "").replace(/[\u0000-\u001f]/g, "").trim().slice(0, n);
-  /** Запись сервера из файла папки музыки. */
+  /**
+   * Запись сервера из файла папки музыки. Версия «Студии», вырезанная из трека ВК, — обрезка трека площадки
+   * (`kind: cut`, `replaces` — id трека ВК, `meta.cut` — границы), как у Whisper Yandex; остальное — свой трек.
+   * Сервер не принял такой номер (st.noCut) — версии уходят обычными треками.
+   */
   function recOf(l) {
     const was = st.sent[l.key];
+    const cut = l.cut && l.cut.replaces && !st.noCut ? l.cut : null;
     return {
       key: l.key,
-      kind: "import",
+      kind: cut ? "cut" : "import",
       app: "whisper-vk",
       title: clip(l.title, 200) || "Без названия",
       artists: l.artist ? [clip(l.artist, 120)] : [],
       durationMs: Math.max(0, Math.round(l.duration_ms || 0)),
-      source: { site: "file" },
+      source: cut ? { site: "vk", id: cut.replaces } : { site: "file" },
+      ...(cut ? { replaces: cut.replaces } : {}),
+      ...(l.cut ? { meta: { cut: { startMs: l.cut.start_ms, endMs: l.cut.end_ms } } } : {}),
       liked: true,
       likedAt: (was && was.l) || l.added_ms || Date.now(),
     };
   }
+  const asImport = (r) => {
+    const { replaces, ...rest } = r;
+    return { ...rest, kind: "import", source: { site: "file" } };
+  };
   const sig = (r) => JSON.stringify([r.title, r.artists, r.durationMs, r.likedAt]);
 
   /** Восстановленные треки — на место по времени лайка среди остальных треков библиотеки (новые сверху). */
@@ -116,8 +127,8 @@
         delete st.sent[key];
         continue;
       }
-      // свои файлы вместо треков площадки (replace) и обрезки (cut) — у VK Music их нет
-      if (it.kind && it.kind !== "import") continue;
+      // свой файл вместо трека площадки (replace) — у VK Music такого нет; обрезка (cut) — версия «Студии»
+      if (it.kind && it.kind !== "import" && it.kind !== "cut") continue;
       const liked = Number(it.likedAt) || 0;
       if (have) {
         st.sent[key] = { ...(was || {}), f: it.file ? true : was && was.f, l: liked || (was && was.l) };
@@ -131,7 +142,11 @@
       }
       try {
         const artist = Array.isArray(it.artists) && it.artists.length ? String(it.artists[0]) : "";
-        const lib = await invoke("libsync_restore", { key, artist, title: String(it.title || "") });
+        const mc = it.meta && it.meta.cut;
+        const cut = /^studio-/.test(key)
+          ? { replaces: typeof it.replaces === "string" ? it.replaces : null, start_ms: Math.max(0, Math.round(Number(mc && mc.startMs) || 0)), end_ms: Math.max(0, Math.round(Number(mc && mc.endMs) || 0)) }
+          : null;
+        const lib = await invoke("libsync_restore", { key, artist, title: String(it.title || ""), cut });
         st.sent[key] = { s: null, f: true, l: liked };
         restored.push({ key, lib, liked });
       } catch (e) {
@@ -179,7 +194,13 @@
           full = true;
           break;
         }
-        throw e;
+        // сервер не принял обрезку трека ВК (формат номера) — эта пачка и дальше версии уходят своими треками
+        if (/^invalid_(replaces|kind|source)$/.test(e.type || "") && part.some((r) => r.kind === "cut")) {
+          st.noCut = true;
+          save();
+          for (let i = 0; i < part.length; i++) if (part[i].kind === "cut") part[i] = asImport(part[i]);
+          res = await api("wa_lib_changes", { service: SERVICE, changes: { ...body, items: part } });
+        } else throw e;
       }
       const back = new Map((Array.isArray(res && res.items) ? res.items : []).map((x) => [String(x.key), x]));
       for (const r of part) {

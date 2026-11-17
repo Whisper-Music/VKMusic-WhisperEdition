@@ -172,11 +172,14 @@ src/lsguard.js             до app.js: повреждённые JSON в localSt
 src/backup.js              карточка «Резервная копия» (Хранилище), автокопия при запуске
 src/libsync.js             синхронизация библиотеки через Whisper Archive: забрать / отправить / файлы, карточка в «Хранилище»
 src/studio.js, studio.css  «Студия» (как у Whisper Yandex, разметка #studioPage/.stu* — та же): обрезка трека библиотеки — волна
-                           и прослушивание отрезка (Web Audio по studio_source), сохранение — studio_save; страница — modulePage
+                           и прослушивание отрезка (Web Audio по studio_source), «⇤ отсюда / досюда ⇥», сводка (studio_info +
+                           studioinfo.js: темп, тональность, громкость), «Мои версии» (studio_list: играть, в редактор, переименовать,
+                           «любимая», «Поделиться через архив» — wa_save_track в приватный альбом + wa_album_share, vkm_studio_shared)
 src/notify.js              уведомления «Слушать вместе» (kit.notify → sysNotify): карточка «Уведомления» в «Общем» (vkm_notify), звук
 src-tauri/src/desktop.rs   обои рабочего стола (порт Whisper Yandex + Omarchy/~/.cache/current_wallpaper, swww): desktop_wallpaper
-src-tauri/src/studio.rs    «Студия»: studio_source (файл трека библиотеки байтами, до 200 МБ), studio_save (ffmpeg -c copy
-                           отрезка → новый файл «Исполнитель - Название (обрезка м.сс–м.сс)» в папке музыки); только компьютер
+src-tauri/src/studio.rs    «Студия»: studio_source (файл трека байтами, до 200 МБ), studio_info (lofty), studio_save (ffmpeg -c copy
+                           → файл в папке музыки), «Мои версии» — ~/.config/vkmusic/studio.json (studio-<32 hex>, исходник, границы,
+                           replaces — id трека ВК), studio_list/update (название — тегом через ffmpeg -c copy)/delete; интерфейс — только компьютер
 src-tauri/src/thumbbar.rs  кнопки под миниатюрой на панели задач Windows (порт Whisper Yandex): ♥ ⏮ ⏯ ⏭ → tray://ctl, значки —
                            icons/thumb/*.png, состояние — thumbbar_state из tray.js
 src-tauri/src/power.rs     экономия в трее (порт Whisper Yandex): Windows — WebView2 невидим, память LOW, без музыки 8 с — TrySuspend;
@@ -408,7 +411,8 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
 * Rust ядра: команды — в `generate_handler!` (`whisper::…`, `whisper::auth::…`, `whisper::stream::…`,
   `whisper::rooms::…`, `discord::…`, `obs::…`); `build.rs` и `capabilities` у нас без списка команд приложения, поэтому
   отдельно разрешать их не нужно. Команды ядра, которые нам не нужны, не регистрируются, а упоминаются в
-  `const _` в начале lib.rs (иначе dead_code): `wa_album_share`, `wa_invite_open` — для «Студии» Whisper Yandex.
+  `const _` в начале lib.rs (иначе dead_code): `wa_invite_open` (открыть чужую версию по приглашению). `wa_album_share`
+  с 2026-11-17 зарегистрирована — «Поделиться» версией из «Студии».
   После обновления ядра — сверить новые `#[tauri::command]` в `src/core/rust` с обработчиком. Протокол `wa` — только главному окну. Зависимости ядра: `tauri-plugin-http` (только
   реэкспорт reqwest, плагин не подключается), `getrandom`, `libc`, `tokio`; для ключа — `keyring` (Secret Service,
   vendored dbus); ссылки — `tauri-plugin-deep-link` (`plugins.deep-link.desktop.schemes` в `tauri.conf.json`) и
@@ -431,6 +435,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   → `playArchive`: треки `{ key: "wa:<uuid>", archive }` играют только из архива (`wa_play`), в библиотеку не входят.
 * Синхронизация библиотеки через Whisper Archive (просьба владельца, 2026-11-17; LIBRARY-SYNC.md архива, площадка
   `vk`): `libsync.js` + `libsync.rs`, выключатель — «Хранилище → Синхронизация библиотеки» (по умолчанию выключено).
+  Версия «Студии» — под своим номером `studio-<id>`; вырезанная из трека ВК — `kind: cut`, `replaces` — id трека ВК,
+  `meta.cut` — границы (как у Whisper Yandex); сервер не принял такой номер (`invalid_replaces` и т. п.) — пачка уходит
+  ещё раз с `import`, `vkm_libsync.noCut`. Пришедшая версия — и в «Мои версии» (`studio::adopt`).
   Синхронизируются только файлы папки музыки (запись `kind: import`, `source.site: file`, `app: whisper-vk`): треки
   ВК и SoundCloud синхронизируют сами сервисы. key — `f-` + 32 знака sha256 содержимого; восстановленный файл
   получает key записи (`libsync.json`, путь → key; не кэш — иначе восстановленные стали бы новыми записями). Пути
