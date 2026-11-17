@@ -19,6 +19,7 @@ mod host;
 #[cfg(desktop)]
 mod hotkeys;
 mod library;
+mod lrclib;
 mod libsync;
 // на телефоне не нужно: нет ffmpeg (loudness), Omarchy, обновления Windows и прокси (relay)
 #[cfg_attr(mobile, allow(dead_code))]

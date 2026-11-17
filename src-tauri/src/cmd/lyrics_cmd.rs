@@ -7,7 +7,14 @@ use crate::*;
 
 /// Текст песни для играющего трека: из кэша или поиск на Genius по исполнителю и названию.
 #[tauri::command(rename_all = "snake_case")]
-pub(crate) async fn lyrics_get(app: AppHandle, st: State<'_, AppState>, artist: String, title: String, vk_id: Option<String>) -> Res<lyrics::Lyrics> {
+pub(crate) async fn lyrics_get(
+    app: AppHandle,
+    st: State<'_, AppState>,
+    artist: String,
+    title: String,
+    vk_id: Option<String>,
+    duration: Option<f64>,
+) -> Res<lyrics::Lyrics> {
     if title.trim().is_empty() || artist.len() > 500 || title.len() > 500 {
         return Err("Нет названия трека".into());
     }
@@ -35,7 +42,34 @@ pub(crate) async fn lyrics_get(app: AppHandle, st: State<'_, AppState>, artist: 
     if let Some(l) = st.genius.old_vk(&artist, &title) {
         return Ok(l);
     }
-    st.genius.lyrics(&artist, &title).await
+    // LRCLIB (как у Whisper Yandex): синхронный текст — сразу, простой — только если Genius не нашёл.
+    // Ошибка LRCLIB поиск не обрывает: дальше Genius
+    let lrc = crate::lrclib::find(&artist, &title, duration, false).await.ok().flatten();
+    let from_lrc = |f: crate::lrclib::Found| lyrics::Lyrics {
+        status: if f.instrumental { "instrumental" } else { "found" }.into(),
+        text: f.text,
+        times: f.times,
+        source: "lrclib".into(),
+        meta: true,
+        ..lyrics::Lyrics::empty()
+    };
+    if let Some(f) = lrc.as_ref().filter(|f| !f.times.is_empty()) {
+        let l = from_lrc(crate::lrclib::Found { text: f.text.clone(), times: f.times.clone(), instrumental: false });
+        st.genius.store_for(&artist, &title, &l);
+        return Ok(l);
+    }
+    let g = st.genius.lyrics(&artist, &title).await;
+    if matches!(&g, Ok(l) if l.status != "none") {
+        return g;
+    }
+    match lrc {
+        Some(f) => {
+            let l = from_lrc(f);
+            st.genius.store_for(&artist, &title, &l);
+            Ok(l)
+        }
+        None => g,
+    }
 }
 
 

@@ -127,6 +127,7 @@ src-tauri/src/saved.rs     сохранённые треки сервисов: ~
 src-tauri/src/playlists.rs ваши плейлисты ВК на диске: ~/.config/vkmusic/playlists.json — список, треки открывавшихся, access_key
 src-tauri/src/lyrics.rs    тексты песен с Genius: чистка названий, поиск api/search/song, оценка похожести, текст со страницы,
                            кэш ~/.cache/vkmusic/lyrics
+src-tauri/src/lrclib.rs   тексты из LRCLIB (как у Whisper Yandex): /api/get, затем /api/search (±8 с, синхронный выше), LRC → строки + время
 src-tauri/src/loudness.rs  «Постоянный уровень громкости»: замер EBU R128 (ffmpeg ebur128) файлов на диске в фоне,
                            ~/.cache/vkmusic/loudness.json; фильтр mpv — усиление до −14 LUFS, незамеренный — loudnorm
 src-tauri/src/streams.rs   кэш ссылок на потоки треков сервисов: в памяти, срок — из expires ссылки (до часа)
@@ -568,6 +569,10 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   официального приложения Genius — такой токен не используем (выдавать себя за чужое приложение нельзя). Текст ВК одного трека:
   `VKM_COOKIES=… VKM_VK_ID=… cargo test live_vk_lyrics -- --ignored --nocapture`. Скрытие строк частей песни и
   пустых строк (`lyrics_hide_parts`, `lyrics_compact`) — только в интерфейсе (`tidyLyrics`), кэш не меняется.
+  LRCLIB (как у Whisper Yandex, просьба владельца 2026-11-17; `lrclib.rs`): после текста ВК — синхронный текст LRCLIB
+  (`source: "lrclib"`, `times` — как у ВК, показывается той же разметкой), иначе Genius, а если Genius не нашёл —
+  простой текст LRCLIB. Один запрос `find` на трек (точный, затем поиск), не чаще раза в секунду, свой клиент только к
+  lrclib.net; длительность трека — `lyrics_get { duration }`. Ошибка LRCLIB поиск не обрывает.
 * VK Микс и плейлисты (просьба владельца, 2026-11-01; раздел «Плейлисты» — до 2026-11-06 «Миксы и плейлисты»;
   VK Микс — только своей страницей, карточки в разделе у него нет): через API ВК с **web-токеном самого сайта** —
   `login.vk.ru/?act=web_token` (`version=1`, `app_id=6287487`, куки сессии, как браузер), методы

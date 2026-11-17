@@ -167,9 +167,7 @@ window.I18N_DICTS.en = {
   "Оригинал": "Original",
   "{0}: открыть на Genius": "{0}: open on Genius",
   "Текст недоступен: ": "Lyrics unavailable: ",
-  "Ищу текст на Genius…": "Looking for lyrics on Genius…",
   "Инструментал — без слов.": "Instrumental — no lyrics.",
-  "Текст не нашёлся на Genius.": "No lyrics found on Genius.",
   "Перевод недоступен: ": "Translation unavailable: ",
   "Загружаю перевод…": "Loading translation…",
   "Загружаю пояснение…": "Loading annotation…",
@@ -963,4 +961,8 @@ window.I18N_DICTS.en = {
   "Тебя зовут в комнату": "You're invited to a room",
   "Тебе подмигнули": "Someone winked at you",
   "Так выглядят уведомления": "This is how notifications look",
+  // ── тексты LRCLIB ──
+  "Текст из открытой базы LRCLIB": "Lyrics from the open LRCLIB database",
+  "Ищу текст…": "Looking for lyrics…",
+  "Текст не нашёлся ни в LRCLIB, ни на Genius.": "No lyrics found on LRCLIB or Genius.",
 };

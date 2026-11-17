@@ -4123,18 +4123,18 @@ function updateLyrics() {
         }
         // в кэше нет — к ВК / Genius, после задержки (пролистанные треки не ищем)
         const vkId = t.service === "vk" ? t.id : null;
-        lyr.timer = setTimeout(() => fetchLyrics(key, artist, title, vkId), LYRICS_DELAY);
+        lyr.timer = setTimeout(() => fetchLyrics(key, artist, title, vkId, t.duration), LYRICS_DELAY);
         renderLyrics();
       });
   }
   renderLyrics();
 }
 
-/** Текст с Genius (не было в кэше). */
-async function fetchLyrics(key, artist, title, vkId) {
+/** Текст (не было в кэше): ВК → синхронный LRCLIB → Genius → простой LRCLIB (lyrics_get). */
+async function fetchLyrics(key, artist, title, vkId, duration) {
   try {
-    // vk_id — для трека ВК: при поиске «как в VK MP3 Mod» сначала спрашивается текст самого ВК
-    const data = await invoke("lyrics_get", { artist, title, vk_id: vkId || null });
+    // vk_id — для трека ВК: сначала спрашивается текст самого ВК; длительность — LRCLIB выбирает по ней версию
+    const data = await invoke("lyrics_get", { artist, title, vk_id: vkId || null, duration: duration > 0 ? duration : null });
     if (lyr.key === key) lyr.data = data;
   } catch (e) {
     if (lyr.key === key) lyr.error = errMsg(e);
@@ -4293,9 +4293,15 @@ function renderLyrics() {
     sel.textContent = ((opts.find((o) => o[0] === cur) || opts[0])[1]) + " ▾";
     sel.onclick = () => window.openPickMenu(sel, opts.map(([v, label]) => ({ label, on: v === cur, fn: () => selectLyricsLang(v || null) })));
   }
-  src.hidden = !(d && (d.url || d.source === "vk"));
+  src.hidden = !(d && (d.url || d.source === "vk" || d.source === "lrclib"));
   src.disabled = false;
-  if (d && d.source === "vk") {
+  if (d && d.source === "lrclib") {
+    // открытая база LRCLIB (как у Whisper Yandex): ссылки на страницу нет — только подпись
+    src.textContent = "LRCLIB";
+    src.title = L("Текст из открытой базы LRCLIB");
+    src.onclick = null;
+    src.disabled = true;
+  } else if (d && d.source === "vk") {
     // текст от самого ВК: ссылки нет — только подпись (и правообладатель, если ВК его назвал)
     src.textContent = L("ВКонтакте");
     src.title = d.credits ? L("Текст предоставлен {0}", d.credits) : L("Текст из ВКонтакте");
@@ -4310,9 +4316,9 @@ function renderLyrics() {
   }
   let body = null;
   if (lyr.error) body = L("Текст недоступен: ") + lyr.error;
-  else if (!d) body = lyr.checking || !npShown() ? "" : L("Ищу текст на Genius…");
+  else if (!d) body = lyr.checking || !npShown() ? "" : L("Ищу текст…");
   else if (d.status === "instrumental") body = L("Инструментал — без слов.");
-  else if (d.status !== "found") body = L("Текст не нашёлся на Genius.");
+  else if (d.status !== "found") body = L("Текст не нашёлся ни в LRCLIB, ни на Genius.");
   else if (lyr.lang && lyr.transError) body = L("Перевод недоступен: ") + lyr.transError;
   else if (lyr.lang && !lyr.trans.has(lyr.lang)) body = L("Загружаю перевод…");
   text.classList.toggle("note", body != null);
