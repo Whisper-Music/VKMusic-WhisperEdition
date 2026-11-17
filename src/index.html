@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="core/queue.css" />
   <link rel="stylesheet" href="core/discord.css" />
   <link rel="stylesheet" href="core/obs.css" />
+  <link rel="stylesheet" href="core/friends.css" />
   <!-- CSS темы: @@ css whisper-core (роли) → @@ css whisper-music → @@ css whisper-vk → tokens; привязан к стилю
        (:root[data-style="<id>"]) движком тем ядра -->
   <style id="theme-css"></style>
@@ -64,6 +65,8 @@
       <button class="nav active" id="likes" data-page="library">Библиотека<span class="nav-badge" id="dlBadge" hidden></span></button>
       <button class="nav" id="mixes" data-page="vk">Плейлисты</button>
       <button class="nav" id="statsBtn" data-page="stats">Статистика</button>
+      <!-- «Друзья» (core/friends.js): кнопку показывает kit.page модуля -->
+      <button class="nav" id="friendsBtn" data-page="friends" hidden>Друзья</button>
       <button class="nav" id="settingsBtn" data-page="settings">Настройки</button>
       <div class="spacer"></div>
       <p class="status queue-mini" id="queueInfo"></p>
@@ -113,6 +116,9 @@
           <button type="button" class="chip" data-tab="int" role="tab">Интеграции</button>
         </nav>
       </section>
+
+      <!-- страницы модулей ядра (kit.page): «Друзья» — постоянный узел, модуль сам рисует в нём -->
+      <section id="friendsPage" class="modpage" hidden></section>
     </main>
 
     <footer class="panel player">
@@ -243,5 +249,6 @@
   <script src="core/discord.js"></script>
   <script src="core/obs.js"></script>
   <script src="core/together.js"></script>
+  <script src="core/friends.js"></script>
 </body>
 </html>

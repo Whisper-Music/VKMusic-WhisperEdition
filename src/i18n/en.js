@@ -31,6 +31,7 @@ window.I18N_DICTS.en = {
   // ── навигация ──
   "Библиотека": "Library",
   "Статистика": "Statistics",
+  "Друзья": "Friends",
   "Настройки": "Settings",
   "Общее": "General",
   "Сервисы": "Services",

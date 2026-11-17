@@ -77,7 +77,7 @@
   }
 
   // ---------- нижняя полоса разделов: значки ----------
-  const NAV_ICONS = { wave: "mix", library: "library", vk: "playlist", stats: "chart", settings: "gear" };
+  const NAV_ICONS = { wave: "mix", library: "library", vk: "playlist", stats: "chart", friends: "user", settings: "gear" };
   for (const b of document.querySelectorAll(".side .nav[data-page]")) {
     const icon = NAV_ICONS[b.dataset.page];
     if (!icon) continue;

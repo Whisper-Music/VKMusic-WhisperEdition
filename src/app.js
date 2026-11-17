@@ -59,7 +59,21 @@ const PAGES = {
   services: "Сервисы",
   settings: "Настройки",
   store: "Магазин тем",
+  friends: "Друзья",
 };
+
+/**
+ * Страницы модулей ядра (`kit.page`, сейчас — «Друзья» из core/friends.js): кнопка `#<id>Btn` в боковой панели и
+ * постоянный узел `#<id>Page` есть в index.html, модуль рисует в нём сам (`render` — при каждом показе).
+ */
+const MODPAGES = {};
+function modulePage(id, o) {
+  const btn = document.getElementById(id + "Btn"), box = document.getElementById(id + "Page");
+  if (!btn || !box || !o || typeof o.render !== "function") return null;
+  MODPAGES[id] = { render: o.render, box };
+  btn.hidden = false;
+  return { el: box, open: () => go(id), shown: () => S.page === id };
+}
 
 const SERVICES = {
   // название — на языке интерфейса (VK по-английски)
@@ -732,10 +746,11 @@ function go(page, keepPopups) {
   $("#wavePage").hidden = page !== "wave";
   $("#waveInfo").hidden = page !== "wave";
   $("#settingsPage").hidden = page !== "settings";
-  $("#content").hidden = page === "wave" || page === "settings";
+  for (const [id, m] of Object.entries(MODPAGES)) m.box.hidden = page !== id;
+  $("#content").hidden = page === "wave" || page === "settings" || !!MODPAGES[page];
   rerender();
   // новая страница проявляется (анимация перезапускается)
-  const c = page === "settings" ? $("#settingsPage") : $("#content");
+  const c = page === "settings" ? $("#settingsPage") : MODPAGES[page] ? MODPAGES[page].box : $("#content");
   c.classList.remove("page-in");
   void c.offsetWidth;
   c.classList.add("page-in");
@@ -781,6 +796,13 @@ function rerender() {
   else if (S.page === "services") renderServices();
   else if (S.page === "settings") renderSettings();
   else if (S.page === "store") renderStore();
+  else if (MODPAGES[S.page]) {
+    try {
+      MODPAGES[S.page].render();
+    } catch (e) {
+      console.error(e);
+    }
+  }
 }
 
 // всплывающие окошки (подтверждение, выбор плейлиста)
@@ -3746,6 +3768,29 @@ if (HOST) {
 
 // ───────────────────────── плеер ─────────────────────────
 
+/**
+ * Альбом Whisper Archive (друг в core/friends.js → kit.playArchive): треки архива — `archive` (uuid), играют через
+ * `wa_play` (файл — во временную папку архива), в библиотеку не входят. false — играть нечего.
+ */
+function playArchive(tracks, start, o) {
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const author = String((o && o.author) || "").slice(0, 300) || "Whisper Archive";
+  const items = (Array.isArray(tracks) ? tracks : [])
+    .filter((x) => x && UUID.test(String(x.id || "")))
+    .map((x) => ({
+      key: "wa:" + String(x.id).toLowerCase(),
+      archive: String(x.id).toLowerCase(),
+      title: String(x.title || "").slice(0, 300) || L("Без названия"),
+      artist: author,
+      duration: Math.max(0, Number(x.durationMs) || 0) / 1000,
+      cover: null,
+      added: 0,
+    }));
+  if (!items.length) return false;
+  playList(items, Math.min(Math.max(0, Math.floor(Number(start) || 0)), items.length - 1));
+  return true;
+}
+
 function playList(items, i) {
   S.queue = items.slice();
   S.history = [];
@@ -3829,6 +3874,13 @@ async function playAt(i, fresh, opts) {
   try {
     const title = `${t.artist} — ${t.title}`;
     if (at > 0 || hold) await invoke("player_cue", { at, hold });
+    // трек альбома Whisper Archive (playArchive) — только из архива
+    if (t.archive) {
+      await invoke("wa_play", { id: t.archive, title });
+      settlePlay(seq);
+      Whisper.player.report({ source: "archive" });
+      return;
+    }
     const nx = S.queue[upcoming()];
     const hit = await Whisper.sources.resolve(t, nx && nx !== t ? nx : null).catch(() => null);
     if (seq !== S.playSeq) return;

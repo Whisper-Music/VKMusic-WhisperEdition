@@ -180,7 +180,7 @@
       download: true,
     },
     toTrack: (t) => ({
-      provider: t.path ? "local" : t.service || "vk",
+      provider: t.path || t.archive ? "local" : t.service || "vk",
       id: trackId(t.roomId || t.key),
       title: t.title,
       artists: t.artist ? [{ id: "", name: t.artist }] : [],
@@ -694,6 +694,9 @@
   W.ui.provide({
     toast: (text, ms, opts) => toast(text, opts && opts.kind === "err" ? "error" : opts && opts.kind === "ok" ? "ok" : null, opts && opts.action, ms),
     confirm: (o) => askConfirm(o),
+    // страница модуля в боковой панели (core/friends.js — «Друзья») и альбом архива друга
+    page: (id, o) => modulePage(id, o),
+    playArchive: (tracks, start, o) => playArchive(tracks, start, o),
     themeExport,
     themeImport,
     closeMenu: () => { closeTrackMenu(); closePopups(); closeConfirm(); },
