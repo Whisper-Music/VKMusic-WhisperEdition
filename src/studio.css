@@ -1,0 +1,93 @@
+/* «Студия» (studio.js, как у Whisper Yandex — те же классы и id, темы оформляют их так же): редактор обрезки.
+   Карточки — обычные .card стиля, цвета — из переменных. */
+#studioPage { display: flex; flex-direction: column; gap: 16px; max-width: 980px; padding-bottom: 24px; }
+#studioPage[hidden], #studioPage [hidden] { display: none !important; }
+#studioPage .card { padding: 16px 18px; }
+#studioPage h3 { margin: 0; }
+.stuhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.stuhead > .nav, .stuhead > .chips { margin-left: auto; }
+.stuhead > .chips { margin-top: 0; margin-bottom: 0; }
+.stuhint { margin: 0; color: var(--muted); line-height: 1.5; max-width: 70ch; }
+/* карточка обрезки: слева заголовок и подсказка, справа — «Обрезать играющий трек» по центру их высоты;
+   редактор — третьей строкой на всю ширину */
+.stucut { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 20px; }
+.stucut > .stuhead { grid-column: 1; grid-row: 1; }
+.stucut > .stuhint { grid-column: 1; grid-row: 2; }
+.stucut > .stutake { grid-column: 2; grid-row: 1 / span 2; align-self: center; white-space: nowrap; }
+.stucut > #stuEditor { grid-column: 1 / -1; grid-row: 3; }
+/* узкое окно — кнопка под подсказкой */
+@media (max-width: 720px) {
+  .stucut > .stutake { grid-column: 1; grid-row: 3; justify-self: start; margin-top: 12px; }
+  .stucut > #stuEditor { grid-row: 4; }
+}
+
+/* трек в редакторе */
+.stutrack { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.stutrack img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: none; }
+:root[data-style="royal"] .stutrack img, :root[data-style="steam"] .stutrack img { border-radius: 2px; }
+.stutx { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.stutx b, .stutx span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stutx b { color: var(--text); }
+.stutx span { color: var(--muted); font-size: 13px; }
+.stutrack .round { flex: none; }
+
+/* сводка о треке: плитки «подпись — значение — пояснение», сколько влезет в ряд */
+.stuinfo {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 0 0 12px;
+}
+.stuinfo-i {
+  min-width: 0; padding: 9px 11px; border-radius: 10px;
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+:root[data-style="royal"] .stuinfo-i, :root[data-style="steam"] .stuinfo-i { border-radius: 2px; }
+.stuinfo dt { color: var(--muted); font-size: 11.5px; letter-spacing: .02em; }
+.stuinfo dd { margin: 2px 0 0; color: var(--text); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stuinfo dd.wait { color: var(--muted); font-weight: 400; }
+:root[data-anim="on"] .stuinfo dd.wait { animation: stuWait 1.2s ease-in-out infinite; }
+@keyframes stuWait { 50% { opacity: .45; } }
+.stuinfo small { display: block; margin-top: 2px; color: var(--muted); font-size: 11.5px; line-height: 1.35;
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* волна: столбцы рисует canvas, выделение и ручки — поверх */
+.stuwave {
+  position: relative; height: 120px; border-radius: 10px; cursor: ew-resize; touch-action: none; user-select: none;
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  overflow: hidden;
+}
+:root[data-style="royal"] .stuwave, :root[data-style="steam"] .stuwave { border-radius: 2px; }
+.stuwave.busy { cursor: default; }
+.stuwave canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.stusel {
+  position: absolute; top: 0; bottom: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  border-left: 2px solid var(--accent); border-right: 2px solid var(--accent);
+}
+.stuwave.busy .stusel, .stuwave.busy .stuh { display: none; }
+.stuh {
+  position: absolute; top: 0; bottom: 0; width: 16px; margin-left: -8px; cursor: ew-resize; z-index: 2;
+}
+.stuh::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 8px; height: 28px; transform: translate(-50%, -50%);
+  border-radius: 4px; background: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 30%, transparent);
+}
+.stuplay { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); pointer-events: none; z-index: 1; }
+.stustate { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: var(--muted); padding: 0 16px; text-align: center; }
+
+/* строки управления */
+.sturow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.stutime { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.stutime input {
+  width: 84px; padding: 7px 10px; font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; text-align: center;
+  color: var(--text); background: color-mix(in srgb, var(--text) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, transparent); border-radius: 8px;
+}
+.stutime input:focus { outline: none; border-color: var(--accent); }
+.stulen { margin: 0 auto; color: var(--muted); font-size: 13px; }
+.stulen b { color: var(--text); font-variant-numeric: tabular-nums; }
+.sturow .nav { padding: 8px 14px; }
+.sturow .nav:disabled { opacity: .45; cursor: default; }
+.stuplaybtn { display: inline-flex; align-items: center; gap: 6px; }
+.stuplaybtn svg { width: 18px; height: 18px; }

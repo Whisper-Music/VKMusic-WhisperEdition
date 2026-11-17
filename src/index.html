@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="core/discord.css" />
   <link rel="stylesheet" href="core/obs.css" />
   <link rel="stylesheet" href="core/friends.css" />
+  <link rel="stylesheet" href="studio.css" />
   <!-- CSS темы: @@ css whisper-core (роли) → @@ css whisper-music → @@ css whisper-vk → tokens; привязан к стилю
        (:root[data-style="<id>"]) движком тем ядра -->
   <style id="theme-css"></style>
@@ -68,6 +69,8 @@
       <!-- «Друзья» (core/friends.js): кнопку показывает kit.page модуля -->
       <button class="nav" id="friendsBtn" data-page="friends" hidden>Друзья</button>
       <button class="nav" id="settingsBtn" data-page="settings">Настройки</button>
+      <!-- «Студия» (studio.js): своя версия трека — обрезка; на телефоне нет (нет ffmpeg) -->
+      <button class="nav" id="studioBtn" data-page="studio" hidden>Студия</button>
       <div class="spacer"></div>
       <p class="status queue-mini" id="queueInfo"></p>
       <button class="nav" id="profile" data-page="services">Сервисы</button>
@@ -119,6 +122,40 @@
 
       <!-- страницы модулей ядра (kit.page): «Друзья» — постоянный узел, модуль сам рисует в нём -->
       <section id="friendsPage" class="modpage" hidden></section>
+
+      <!-- «Студия» (studio.js; разметка — как у Whisper Yandex): обрезка трека библиотеки, версия — в папку музыки -->
+      <section id="studioPage" class="studio modpage" hidden>
+        <div class="card stucut">
+          <div class="stuhead"><h3>Обрезать трек</h3></div>
+          <button id="stuTake" type="button" class="nav active stutake" hidden>Обрезать играющий трек</button>
+          <p id="stuEmpty" class="stuhint">Включи трек библиотеки и нажми «Обрезать играющий трек» — или выбери «Обрезать в студии» в меню «⋯» трека. Версия сохранится в папку музыки без перекодирования и появится в библиотеке.</p>
+          <div id="stuEditor" hidden>
+            <div class="stutrack">
+              <img id="stuCover" alt="" />
+              <div class="stutx"><b id="stuTitle"></b><span id="stuArtist"></span></div>
+              <button id="stuClose" type="button" class="round" title="Закрыть трек">✕</button>
+            </div>
+            <div id="stuWave" class="stuwave" title="Тяни границы мышью; колесо — точнее (с Shift — по секунде)">
+              <canvas id="stuCanvas"></canvas>
+              <div id="stuSel" class="stusel"></div>
+              <i class="stuh" data-h="a"></i><i class="stuh" data-h="b"></i>
+              <i id="stuHead" class="stuplay" hidden></i>
+              <p id="stuState" class="stustate" hidden></p>
+            </div>
+            <div class="sturow">
+              <label class="stutime">Начало <input id="stuA" type="text" inputmode="decimal" spellcheck="false" /></label>
+              <span class="stulen">длина <b id="stuLen">0 с</b></span>
+              <label class="stutime">Конец <input id="stuB" type="text" inputmode="decimal" spellcheck="false" /></label>
+            </div>
+            <div class="sturow">
+              <button id="stuPlay" type="button" class="nav stuplaybtn">▶ Послушать отрезок</button>
+              <button id="stuTail" type="button" class="nav" title="Последние 3 секунды отрезка — проверить, где он кончается">Конец отрезка</button>
+              <input id="stuName" class="field stuname" type="text" maxlength="200" placeholder="Название версии" spellcheck="false" />
+              <button id="stuSave" type="button" class="nav active">Сохранить версию</button>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
     <footer class="panel player">
@@ -252,5 +289,6 @@
   <script src="core/obs.js"></script>
   <script src="core/together.js"></script>
   <script src="core/friends.js"></script>
+  <script src="studio.js"></script>
 </body>
 </html>

@@ -52,6 +52,8 @@ mod themes;
 #[cfg(desktop)]
 mod notify;
 #[cfg(desktop)]
+mod studio;
+#[cfg(desktop)]
 mod tray;
 mod update;
 // визуализатор VK Микса на компьютере: анализ в mpv, замеры через FIFO (unix; на Android — VkmPlugin)
@@ -782,6 +784,10 @@ pub fn run() {
             notify::notify_layout,
             #[cfg(desktop)]
             notify::notify_ctl,
+            #[cfg(desktop)]
+            studio::studio_source,
+            #[cfg(desktop)]
+            studio::studio_save,
             cmd::local_cmd::cover_bytes,
             update::update_install,
             app_info,

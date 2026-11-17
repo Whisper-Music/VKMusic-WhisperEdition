@@ -60,6 +60,7 @@ const PAGES = {
   settings: "Настройки",
   store: "Магазин тем",
   friends: "Друзья",
+  studio: "Студия",
 };
 
 /**

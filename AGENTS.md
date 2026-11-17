@@ -165,7 +165,11 @@ src/errinfo.js             понятные ошибки воспроизвед�
 src/lsguard.js             до app.js: повреждённые JSON в localStorage → window.__lsBroken (backup.js предложит автокопию)
 src/backup.js              карточка «Резервная копия» (Хранилище), автокопия при запуске
 src/libsync.js             синхронизация библиотеки через Whisper Archive: забрать / отправить / файлы, карточка в «Хранилище»
+src/studio.js, studio.css  «Студия» (как у Whisper Yandex, разметка #studioPage/.stu* — та же): обрезка трека библиотеки — волна
+                           и прослушивание отрезка (Web Audio по studio_source), сохранение — studio_save; страница — modulePage
 src/notify.js              уведомления «Слушать вместе» (kit.notify → sysNotify): карточка «Уведомления» в «Общем» (vkm_notify), звук
+src-tauri/src/studio.rs    «Студия»: studio_source (файл трека библиотеки байтами, до 200 МБ), studio_save (ffmpeg -c copy
+                           отрезка → новый файл «Исполнитель - Название (обрезка м.сс–м.сс)» в папке музыки); только компьютер
 src-tauri/src/notify.rs    уведомления: Linux — org.freedesktop.Notifications (D-Bus, нажатие → открыть), Windows — окно `notify`
                            (notifywin.html/js/css, как у Whisper Yandex: в углу рабочей области, без фокуса, стопка до трёх)
 src/tray.js                что играет — трею и мини-плееру (mini_state / tray_state), карточка «Трей» в «Общем»
