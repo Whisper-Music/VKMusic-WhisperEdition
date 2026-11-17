@@ -751,6 +751,8 @@ window.I18N_DICTS.en = {
   "Для тёмной панели": "For a dark panel",
   "Для светлой панели": "For a light panel",
   "Цветом текущего стиля оформления": "In the current style's color",
+  "Значок в трее недоступен: нет библиотеки libayatana-appindicator3. Установите пакет libayatana-appindicator (Arch) или libayatana-appindicator3-1 (Debian, Ubuntu) и перезапустите VK Music.":
+    "Tray icon unavailable: libayatana-appindicator3 is missing. Install libayatana-appindicator (Arch) or libayatana-appindicator3-1 (Debian, Ubuntu) and restart VK Music.",
   "В меню значка — «Мини-плеер»: маленькое окно с обложкой и кнопками поверх остальных. В GNOME значок виден только с расширением AppIndicator.":
     "The icon menu has “Mini player”: a small always-on-top window with the cover and buttons. In GNOME the icon only shows with the AppIndicator extension.",
   // ── консоль (cli.js), расположение темы (layout.js) ──

@@ -101,7 +101,7 @@ src-tauri/src/cmd/         команды интерфейса по раздел
                            резервные копии), themes_cmd (темы, библиотека тем). Всё общее — через `use crate::*`
 src-tauri/src/winstate.rs  окно помнит размер, положение и развёрнутость (config.json → window); окно создаётся скрытым
 src-tauri/src/tray.rs      значок в трее (меню; Linux — только если есть libayatana-appindicator3 / libappindicator3,
-                           `tray::available`), «Закрывать в трей», мини-плеер — окно `mini` (mini.html); вид значка
+                           `tray::available`; нет — карточка «Трей» пишет, какой пакет поставить), «Закрывать в трей», мини-плеер — окно `mini` (mini.html); вид значка
                            (`Config::tray_icon`: цветной / светлый / тёмный / цвет темы — полоски логотипа без подложки, `tray::bars`)
 src-tauri/src/backup.rs    резервные копии .vkmbak: настройки, library/order/playlists/stats, свои темы, localStorage;
                            автокопии раз в день (~/.config/vkmusic/backups, 5 шт.), восстановление — при перезапуске

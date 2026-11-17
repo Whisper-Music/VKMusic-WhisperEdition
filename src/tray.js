@@ -93,8 +93,12 @@
 
   /** Карточка «Трей» во вкладке «Общее» (renderSettings в app.js). */
   window.renderTraySettings = function renderTraySettings() {
-    if (!trayInfo.available) return;
     const c = setCard("ui", L("Трей"));
+    // Linux без libappindicator: значка нет — скажем почему (без карточки было непонятно, куда он пропал)
+    if (!trayInfo.available) {
+      c.append(el("p", "status", L("Значок в трее недоступен: нет библиотеки libayatana-appindicator3. Установите пакет libayatana-appindicator (Arch) или libayatana-appindicator3-1 (Debian, Ubuntu) и перезапустите VK Music.")));
+      return;
+    }
     if (!HOST) c.append(switchRow(L("Значок в трее"), trayInfo.tray, async (on) => {
       try {
         await invoke("tray_prefs", { tray: on });
