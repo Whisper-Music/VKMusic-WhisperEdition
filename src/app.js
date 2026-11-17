@@ -498,7 +498,7 @@ function renderSyncStatus() {
 
 /** «Мои треки» ВК / лайки SoundCloud → библиотека. Без входа сервис молча пропускается. */
 async function syncService(id, quiet) {
-  if (S.syncing.has(id)) return;
+  if (S.syncing.has(id) || !navigator.onLine) return; // без сети — не пробуем (офлайн-режим)
   S.syncing.add(id);
   renderSyncStatus();
   try {
@@ -1073,9 +1073,40 @@ function renderLibraryList() {
     );
     return;
   }
-  box.append(renderTracks(visibleTracks(), true));
+  let items = visibleTracks();
+  // офлайн-режим: только то, что играет без сети — файлы и уже скачанные в кэш треки сервисов
+  if (S.offline) {
+    items = items.filter(offlineOk);
+    box.append(el("p", "status offnote", L("Нет сети — показаны треки, которые играют без интернета: {0} из {1}.", items.length, all.length)));
+  }
+  box.append(renderTracks(items, !S.offline));
   scroller().scrollTop = keep;
 }
+
+// ───────────────────────── офлайн-режим (как у Whisper Yandex) ─────────────────────────
+// Нет сети (navigator.onLine) — библиотека показывает только треки, которые играют без запросов: файлы папки музыки и
+// треки сервисов, уже лежащие в кэше (cache_keys). Синхронизация с сервисами в это время не запускается.
+S.offline = !navigator.onLine;
+S.cachedKeys = null;
+const offlineOk = (t) => !!t.path || !!(S.cachedKeys && S.cachedKeys.has(t.key));
+async function refreshOffline(say) {
+  S.offline = !navigator.onLine;
+  if (S.offline) {
+    try {
+      S.cachedKeys = new Set(await invoke("cache_keys"));
+    } catch {
+      S.cachedKeys = new Set();
+    }
+  }
+  if (say) toast(S.offline ? L("Нет сети — в библиотеке только то, что играет без интернета") : L("Сеть вернулась"));
+  if (S.page === "library" && S.localLoaded && !(S.vkPl && S.vkPl.from === "library")) renderLibraryList();
+}
+addEventListener("offline", () => refreshOffline(true));
+addEventListener("online", () => {
+  refreshOffline(true);
+  syncAll();
+});
+if (S.offline) refreshOffline(false);
 
 /** Карточка «Сейчас играет» рядом со списком: обложка, название, сколько слушали; нажатие — текст на весь экран. */
 function renderNowCard() {
@@ -1149,14 +1180,43 @@ function pushSearchHist(q) {
   saveSearchHist();
 }
 /** Пустое поле поиска — страница истории. */
+// «Недавно открытые» в поиске (как у Whisper Yandex): треки, включённые со страницы поиска, — лентой с обложками
+// над историей запросов. Из localStorage — не доверенные: проверяет Rust, когда трек включают (vk_play, sc_play…).
+const SEEN_KEY = "vkm_search_seen", SEEN_MAX = 30;
+let searchSeen = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(SEEN_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x) => x && (x.service === "vk" || x.service === "sc") && typeof x.id === "string" && typeof x.title === "string").slice(0, SEEN_MAX) : [];
+  } catch {
+    return [];
+  }
+})();
+const saveSeen = () => { try { localStorage.setItem(SEEN_KEY, JSON.stringify(searchSeen)); } catch {} };
+function rememberSeen(t) {
+  if (!t || !t.service || t.room || t.archive || t.unavailable) return;
+  const pick = (({ service, id, reload, url, api, artist, title, duration, cover }) => ({ service, id: String(id), reload, url, api, artist, title, duration, cover }))(t);
+  searchSeen = [pick, ...searchSeen.filter((x) => !(x.service === pick.service && x.id === pick.id))].slice(0, SEEN_MAX);
+  saveSeen();
+}
+
 function showSearchHistory() {
   S.sr = { kind: "history", q: "", lib: [] };
   if (S.page !== "search") go("search");
   else rerender();
 }
 function renderSearchHist(c) {
+  if (searchSeen.length) {
+    const head = el("div", "seenhead");
+    head.append(el("h3", null, L("Недавно открытые")), button(null, L("Очистить"), "nav", () => {
+      searchSeen = [];
+      saveSeen();
+      rerender();
+    }));
+    c.append(head, renderTracks(searchSeen.map((x) => svcTrack(x.service, x))));
+    if (searchHist.length) c.append(el("h3", "seenhead", L("Запросы")));
+  }
   if (!searchHist.length) {
-    c.append(el("p", "status", L("История поиска пуста.")));
+    if (!searchSeen.length) c.append(el("p", "status", L("История поиска пуста.")));
     return;
   }
   const list = el("ul", "list");
@@ -3816,6 +3876,7 @@ function playArchive(tracks, start, o) {
 }
 
 function playList(items, i) {
+  if (S.page === "search") rememberSeen(items[i]);
   S.queue = items.slice();
   S.history = [];
   S.shuffleNext = null;
@@ -5019,6 +5080,7 @@ function initPlayer() {
   // фоновое кэширование закончилось: если это включённый трек — кэшируем следующий
   listen("cache://event", (ev) => {
     const e = ev.payload;
+    if (e.type === "cached" && S.cachedKeys) S.cachedKeys.add(e.key);
     if (S.current && e.key === S.current.key) prefetchNext();
   });
 

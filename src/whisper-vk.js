@@ -489,6 +489,7 @@
     if (canAddToVk(t)) menuItem(Icons.svg("vk"), L("Добавить в мои треки ВК"), () => saveTrack(t));
     if (window.Studio && Studio.can(t)) menuItem(Icons.svg("edit"), L("Обрезать в студии"), () => Studio.open(t));
     if (canAddToPlaylist(t)) menuItem(Icons.svg("listadd"), L("В плейлист ВК"), () => addToPlaylistMenu(anchor, t));
+    if (!t.room && !t.archive) menuItem(Icons.svg("link"), L("Поделиться"), () => shareMenu(t), { keep: true, arrow: true });
     W.ui.trackMenu.build(t, null);                                    // «Сохранить в архив» (core/archive.js)
     if (MOBILE && anchor) rowActionItems(anchor);
     if (anchor && anchor.id === "pMore") playerMenuItems();
@@ -509,6 +510,26 @@
       const icon = b.querySelector("i[data-icon]")?.dataset.icon || "";
       menuItem(icon ? Icons.svg(icon) : "", b.getAttribute("aria-label") || "", () => b.click(), { danger: icon === "trash" });
     }
+  }
+
+  // ---------- «Поделиться» (как у Whisper Yandex): ссылка на трек сервиса и «Исполнитель — Название» ----------
+  // SoundCloud понимает «с этого момента» (#t=м:сс) — для играющего трека есть такой пункт. У ВК времени в ссылке нет.
+  function shareMenu(t) {
+    menuReset();
+    menuHead(L("Поделиться"), () => trackMenuMain(t));
+    const copy = (text, what) => {
+      navigator.clipboard.writeText(text).then(() => toast(L("Скопировано: {0}", what), "ok")).catch(() => toast(L("Не удалось скопировать"), "error"));
+      closeTrackMenu();
+    };
+    const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+    if (t.service === "vk" && /^-?\d+_\d+$/.test(String(t.id))) menuItem(Icons.svg("vk"), L("Ссылка ВКонтакте"), () => copy("https://vk.com/audio" + t.id, L("ссылка ВКонтакте")));
+    if (t.service === "sc" && /^https:\/\/soundcloud\.com\//.test(t.url || "")) {
+      menuItem(Icons.svg("sc"), L("Ссылка SoundCloud"), () => copy(t.url, L("ссылка SoundCloud")));
+      const at = S.current && S.current.key === t.key ? Math.floor(S.pl.pos || 0) : 0;
+      if (at > 0) menuItem(Icons.svg("sc"), L("С {0}", mmss(at)), () => copy(`${t.url}#t=${mmss(at)}`, L("ссылка SoundCloud с {0}", mmss(at))));
+    }
+    menuItem(Icons.svg("note"), L("Исполнитель — Название"), () => copy(t.artist ? `${t.artist} — ${t.title}` : t.title, L("название")));
+    placeMenu();
   }
 
   // ---------- «⋯» плеера: скорость, устройство вывода, эквалайзер (как у Whisper Yandex — подменю того же .tmenu) ----------

@@ -560,3 +560,10 @@ input[type=range]::-moz-range-thumb {
 /* свой фон стиля (userbg.js): кнопки переносятся, а не сжимаются в столбики */
 .ubgrow { flex-wrap: wrap; }
 .ubgrow > .nav { flex: 0 1 auto; white-space: nowrap; }
+
+/* «Недавно открытые» в истории поиска (app.js, renderSearchHist) */
+.seenhead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 8px 4px; }
+h3.seenhead { margin-top: 16px; }
+.seenhead h3 { margin: 0; }
+/* офлайн-режим: пояснение над списком библиотеки */
+.offnote { margin: 0 8px 8px; }

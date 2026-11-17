@@ -122,6 +122,19 @@ pub(crate) struct CacheInfo {
     bytes: u64,
 }
 
+/// Офлайн-режим (как у Whisper Yandex, 2026-11-17): ключи треков сервисов библиотеки, которые уже в кэше —
+/// играют без сети. Файлы папки музыки интерфейс считает доступными и так.
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) async fn cache_keys(st: State<'_, AppState>) -> Res<Vec<String>> {
+    let list = st.saved.list();
+    let cache = st.cache.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        list.iter().filter(|s| cache.get(&cache::service_key(&s.service, &s.id)).is_some()).map(saved_key).collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub(crate) async fn cache_info(st: State<'_, AppState>) -> Res<CacheInfo> {
     let cache = st.cache.clone();

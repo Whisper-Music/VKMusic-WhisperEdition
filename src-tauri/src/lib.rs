@@ -884,6 +884,7 @@ pub fn run() {
             cmd::local_cmd::library_move,
             cmd::storage_cmd::track_download,
             cmd::storage_cmd::cache_info,
+            cmd::storage_cmd::cache_keys,
             cmd::storage_cmd::cache_clear,
             cmd::storage_cmd::cache_prefetch,
             cmd::storage_cmd::stats_get,
