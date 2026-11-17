@@ -156,6 +156,31 @@ impl SavedStore {
         Ok(s)
     }
 
+    /// Трек добавлен в аккаунт сервиса («Мои треки» ВК): его копия встаёт в библиотеку синхронизированной
+    /// (`sync` — следующая синхронизация заменит её версией из аккаунта, а не задвоит), прежняя запись `old`
+    /// (трек из микса, плейлиста, поиска) убирается. Время добавления — прежнее.
+    pub fn adopt(&self, old: Option<&str>, copy: Saved) -> Res<Saved> {
+        let mut s = copy.validate()?;
+        s.sync = true;
+        let mut items = self.items.lock().unwrap();
+        let was = |x: &Saved| x.service == s.service && (x.id == s.id || old == Some(x.id.as_str()));
+        s.added = items
+            .iter()
+            .filter(|x| was(x))
+            .map(|x| x.added)
+            .find(|&a| a > 0)
+            .unwrap_or_else(|| {
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+            });
+        items.retain(|x| !was(x));
+        if items.len() >= MAX_ITEMS {
+            return Err("В библиотеке слишком много треков".into());
+        }
+        items.push(s.clone());
+        self.save(&items)?;
+        Ok(s)
+    }
+
     /// Заменить синхронизированные треки сервиса новым списком (в порядке сервиса: новые сначала).
     /// Добавленные вручную не трогаем; у уже знакомых треков сохраняется время добавления.
     pub fn replace_synced(&self, service: &str, fresh: Vec<Saved>) -> Res<()> {
@@ -265,6 +290,31 @@ mod tests {
         assert_eq!(ids(&store), [("1".into(), false), ("4".into(), true)]);
         store.clear_synced("sc").unwrap();
         assert_eq!(ids(&store), [("1".into(), false)]);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn adopt_replaces_original() {
+        let dir = std::env::temp_dir().join(format!("vkmusic-saved-adopt-{}", std::process::id()));
+        let store = SavedStore::at(dir.join("library.json"));
+        let mut mix = s("vk", "-5_7");
+        mix.reload = None;
+        mix.api = true;
+        mix.access_key = Some("abc".into());
+        let orig = store.add(mix.clone()).unwrap();
+        let mut copy = mix.clone();
+        copy.id = "42_9".into();
+        copy.access_key = None;
+        let c = store.adopt(Some("-5_7"), copy).unwrap();
+        assert!(c.sync && c.api && c.added == orig.added);
+        let l = store.list();
+        assert_eq!(l.iter().map(|x| x.id.as_str()).collect::<Vec<_>>(), ["42_9"]);
+        // синхронизация приносит ту же запись из аккаунта — заменяет, а не задваивает
+        let mut synced = s("vk", "42_9");
+        synced.del = Some("abc".into());
+        store.replace_synced("vk", vec![synced]).unwrap();
+        let l = store.list();
+        assert!(l.len() == 1 && l[0].reload.is_some() && l[0].del.is_some() && l[0].added == orig.added);
         let _ = std::fs::remove_dir_all(dir);
     }
 

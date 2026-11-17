@@ -398,17 +398,23 @@ function matches(t, q) {
   return (t.artist + " " + t.title + " " + (t.file || "")).toLowerCase().includes(q);
 }
 
+/**
+ * В библиотеку. Трек ВК — ещё и в «Мои треки» ВК (`vk_add`, просьба владельца 2026-11-17): в библиотеке тогда
+ * встаёт ваша копия с другим ключом (`<ваш id>_<новый id>`) вместо прежней записи.
+ */
 async function saveTrack(t) {
+  const vk = t.service === "vk";
   try {
-    const s = await invoke("saved_add", {
+    const s = await invoke(vk ? "vk_add" : "saved_add", {
       track: {
         service: t.service, id: t.id, reload: t.reload, url: t.url, api: t.api && !t.reload,
         artist: t.artist, title: t.title, duration: t.duration, cover: t.cover, added: 0,
       },
     });
-    S.saved = S.saved.filter((x) => x.key !== t.key).concat([svcTrack(s.service, s)]);
+    const copy = svcTrack(s.service, s);
+    S.saved = S.saved.filter((x) => x.key !== t.key && x.key !== copy.key).concat([copy]);
     await loadOrder();
-    toast(L("Добавлено в библиотеку: {0}", t.title));
+    toast(vk ? L("Добавлено в ваши аудиозаписи ВКонтакте: {0}", t.title) : L("Добавлено в библиотеку: {0}", t.title));
     const keep = scroller().scrollTop;
     rerender();
     scroller().scrollTop = keep;
@@ -1588,6 +1594,12 @@ function renderMyPlaylists() {
 const editablePlaylists = () => ((S.myPl && S.myPl.list) || []).filter((pl) => pl.editable);
 
 /** Трек ВК можно положить в свой плейлист (вход есть — список плейлистов загружен). */
+/** Трек ВК в библиотеке, но не в ваших аудиозаписях ВК (добавлен «сердцем» до 2026-11-17) — «Добавить в мои треки ВК». */
+function canAddToVk(t) {
+  const lib = t && t.service === "vk" && !t.unavailable ? libraryByKey(t.key) : null;
+  return !!lib && !lib.sync;
+}
+
 function canAddToPlaylist(t) {
   return !!t && t.service === "vk" && !t.unavailable && /^-?\d+_\d+$/.test(t.id) && !!(S.myPl && S.myPl.list);
 }

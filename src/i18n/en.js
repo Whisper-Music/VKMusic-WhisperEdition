@@ -46,6 +46,7 @@ window.I18N_DICTS.en = {
 
   // ── треки и библиотека ──
   "Добавлено в библиотеку: {0}": "Added to library: {0}",
+  "Добавлено в ваши аудиозаписи ВКонтакте: {0}": "Added to your VK audio: {0}",
   "Удалено из ВКонтакте: {0}": "Deleted from VK: {0}",
   "Сохранено: {0}": "Saved: {0}",
   "Скачать в {0}": "Download to {0}",
@@ -359,6 +360,7 @@ window.I18N_DICTS.en = {
   "#{0} из {1} по времени прослушивания": "#{0} of {1} by listening time",
   "Последний раз — {0}": "Last time — {0}",
   "В плейлист ВК": "Add to VK playlist",
+  "Добавить в мои треки ВК": "Add to my VK tracks",
   "Неон": "Neon",
   "Свечение, стекло, прозрачные панели": "Glow, glass, translucent panels",
   "Королевский": "Royal",
@@ -548,6 +550,8 @@ window.I18N_DICTS.en = {
   "Слишком длинная ссылка": "The link is too long",
   "Вы не вошли в SoundCloud": "You are not logged in to SoundCloud",
   "Этого трека нет среди ваших аудиозаписей": "This track is not in your VK audio",
+  "Этот трек уже в ваших аудиозаписях ВКонтакте": "This track is already in your VK audio",
+  "ВКонтакте не добавил трек в ваши аудиозаписи": "VK didn't add the track to your audio",
   "ВКонтакте не разрешает удалить этот трек": "VK doesn't allow deleting this track",
   "Неверный трек": "Invalid track",
   "Нет названия трека": "No track title",

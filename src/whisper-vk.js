@@ -486,6 +486,7 @@
     menuReset();
     if (W.ui.trackMenu.build(t, null, "top") > 0) menuSep();       // «Слушать вместе · КОД» (core/together.js)
     if (!t.room && !t.unavailable && !(S.current && S.current.key === t.key)) menuItem(Icons.svg("playnext"), L("Играть следующим"), () => window.playNext(t));
+    if (canAddToVk(t)) menuItem(Icons.svg("vk"), L("Добавить в мои треки ВК"), () => saveTrack(t));
     if (canAddToPlaylist(t)) menuItem(Icons.svg("listadd"), L("В плейлист ВК"), () => addToPlaylistMenu(anchor, t));
     W.ui.trackMenu.build(t, null);                                    // «Сохранить в архив» (core/archive.js)
     if (MOBILE && anchor) rowActionItems(anchor);

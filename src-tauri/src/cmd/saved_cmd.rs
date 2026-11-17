@@ -19,6 +19,30 @@ pub(crate) fn saved_add(st: State<'_, AppState>, mut track: saved::Saved) -> Res
     Ok(s)
 }
 
+/// Трек ВК — в «Мои треки» ВК и в библиотеку («сердце», просьба владельца 2026-11-17). В библиотеке встаёт ваша
+/// копия (как пришла бы синхронизацией) вместо прежней записи (микс, плейлист, поиск): на том же месте в порядке
+/// и с тем же файлом в кэше. Трек уже в библиотеке — его данные из library.json, а не из интерфейса.
+#[tauri::command(rename_all = "snake_case")]
+pub(crate) async fn vk_add(app: AppHandle, st: State<'_, AppState>, track: saved::Saved) -> Res<saved::Saved> {
+    if track.service != "vk" || !valid_vk_id(&track.id) {
+        return Err("Неверный id трека ВК".into());
+    }
+    let old = st.saved("vk", &track.id);
+    if old.as_ref().is_some_and(|o| o.sync) {
+        return Err("Этот трек уже в ваших аудиозаписях ВКонтакте".into());
+    }
+    let base = old.clone().unwrap_or(track);
+    let session = vk_session(&app).await?;
+    let id = st.vk.add_audio(&session, &base.id, base.access_key.as_deref()).await?;
+    let copy = saved::Saved { id: id.clone(), reload: None, api: true, access_key: None, del: None, ..base.clone() };
+    let s = st.saved.adopt(old.as_ref().map(|o| o.id.as_str()), copy)?;
+    if id != base.id {
+        st.cache.rename(&cache::service_key("vk", &base.id), &cache::service_key("vk", &id));
+    }
+    st.order.rename(&format!("vk:{}", base.id), &saved_key(&s))?;
+    Ok(s)
+}
+
 /// Синхронизация с аккаунтом: «Мои треки» ВК / лайки SoundCloud → библиотека. Без входа — ошибка
 /// «не вошли» (без сетевых запросов). Возвращает библиотеку целиком.
 #[tauri::command(rename_all = "snake_case")]

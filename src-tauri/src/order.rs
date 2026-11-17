@@ -83,6 +83,24 @@ impl OrderStore {
         Ok(())
     }
 
+    /// Трек сменил ключ (запись из микса стала вашей копией в ВК): `new` — на место `old`; `old` не было — первым.
+    pub fn rename(&self, old: &str, new: &str) -> Res<()> {
+        let mut g = self.keys.lock().unwrap();
+        let Some(keys) = g.as_mut() else { return Ok(()) };
+        if old == new {
+            return Ok(());
+        }
+        keys.retain(|k| k != new);
+        match keys.iter().position(|k| k == old) {
+            Some(i) => keys[i] = new.to_string(),
+            None => {
+                keys.insert(0, new.to_string());
+                keys.truncate(MAX_KEYS);
+            }
+        }
+        self.save(keys)
+    }
+
     /// Перетаскивание в библиотеке: поставить `key` перед `before` (None — в конец). До `init` — ошибка.
     pub fn move_before(&self, key: &str, before: Option<&str>) -> Res<()> {
         let mut g = self.keys.lock().unwrap();
@@ -154,6 +172,14 @@ mod tests {
         o.move_before("sc:5", Some("vk:1_1")).unwrap();
         assert_eq!(o.list(), s(&["/m/a.opus", "vk:1_8", "sc:5", "vk:1_1", "vk:1_9"]));
         o.retain(|k| k != "sc:5").unwrap();
+        // трек сменил ключ (копия в «Моих треках» ВК) — на том же месте; незнакомый — первым
+        o.rename("vk:1_8", "vk:42_1").unwrap();
+        assert_eq!(o.list(), s(&["/m/a.opus", "vk:42_1", "vk:1_1", "vk:1_9"]));
+        o.rename("vk:-5_5", "vk:42_2").unwrap();
+        assert_eq!(o.list(), s(&["vk:42_2", "/m/a.opus", "vk:42_1", "vk:1_1", "vk:1_9"]));
+        o.rename("vk:42_2", "vk:42_2").unwrap();
+        assert_eq!(o.list()[0], "vk:42_2");
+        o.retain(|k| k.starts_with("vk:1_") || k == "/m/a.opus").unwrap();
         // сохранено на диск
         let back: Vec<String> = serde_json::from_slice(&std::fs::read(dir.join("order.json")).unwrap()).unwrap();
         assert_eq!(back, o.list());

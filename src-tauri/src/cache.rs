@@ -224,6 +224,18 @@ impl TrackCache {
         AUDIO_EXT.iter().map(|x| self.dir.join(format!("{key}.{x}"))).find(|p| p.is_file())
     }
 
+    /// Трек библиотеки сменил ключ — файл кэша переходит к новому (не выкачивать трек заново).
+    pub fn rename(&self, old: &str, new: &str) {
+        if !valid_key(new) || self.get(new).is_some() {
+            return;
+        }
+        if let Some(p) = self.get(old) {
+            if let Some(ext) = p.extension().and_then(|x| x.to_str()) {
+                let _ = std::fs::rename(&p, self.dir.join(format!("{new}.{ext}")));
+            }
+        }
+    }
+
     pub fn remove(&self, key: &str) {
         while let Some(p) = self.get(key) {
             if std::fs::remove_file(p).is_err() {

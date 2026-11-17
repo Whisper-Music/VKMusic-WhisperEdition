@@ -852,6 +852,7 @@ pub fn run() {
             cmd::sc_cmd::sc_play,
             cmd::saved_cmd::saved_list,
             cmd::saved_cmd::saved_add,
+            cmd::saved_cmd::vk_add,
             cmd::saved_cmd::saved_sync,
             cmd::saved_cmd::saved_remove,
             cmd::local_cmd::library_order,

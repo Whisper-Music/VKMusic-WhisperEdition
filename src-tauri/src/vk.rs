@@ -949,6 +949,12 @@ pub fn parse_home(r: &Value) -> (Home, Vec<(String, String)>) {
     (Home { mixes, groups }, keys)
 }
 
+/// Ответ `audio.add` — id новой аудиозаписи (число; бывает строкой) → id копии `<uid>_<id>`.
+fn added_id(r: &Value, uid: i64) -> Option<String> {
+    let id = r.as_u64().or_else(|| r.as_str().and_then(|s| s.parse().ok())).filter(|&id| id > 0)?;
+    Some(format!("{uid}_{id}"))
+}
+
 fn api_hosts(base: &str) -> (&'static str, &'static str) {
     if base.ends_with("vk.com") { ("https://login.vk.com", "https://api.vk.com") } else { ("https://login.vk.ru", "https://api.vk.ru") }
 }
@@ -1174,6 +1180,29 @@ impl Vk {
             .api(s, "audio.followPlaylist", &[("owner_id", owner.to_string()), ("playlist_id", id.to_string()), ("access_key", key)])
             .await?;
         Self::done(&r, "добавил плейлист")
+    }
+
+    /// Трек — в «Мои треки» ВК (`audio.add`, как «+» на сайте; просьба владельца, 2026-11-17). Возвращает id
+    /// вашей копии (`<ваш id>_<новый id>`): так трек придёт и синхронизацией. Ваш собственный трек не добавляется
+    /// второй раз — вернётся его id. saved_key — access_key из библиотеки, если в памяти его нет.
+    pub async fn add_audio(&self, s: &Session, track: &str, saved_key: Option<&str>) -> Res<String> {
+        let (owner, aid) = track.split_once('_').ok_or("Неверный id трека")?;
+        if owner.trim_start_matches('-').parse::<u64>().is_err() || aid.parse::<u64>().is_err() {
+            return Err("Неверный id трека".into());
+        }
+        let (_, uid) = self.web_token(s).await?;
+        if uid == 0 {
+            return Err(ERR_SESSION.into());
+        }
+        if owner == uid.to_string() {
+            return Ok(track.to_string());
+        }
+        let mut params = vec![("owner_id", owner.to_string()), ("audio_id", aid.to_string())];
+        if let Some(k) = self.access_key(track).or_else(|| saved_key.filter(|k| valid_hash(k)).map(str::to_string)) {
+            params.push(("access_key", k));
+        }
+        let r = self.api(s, "audio.add", &params).await?;
+        added_id(&r, uid).ok_or_else(|| "ВКонтакте не добавил трек в ваши аудиозаписи".to_string())
     }
 
     /// access_key трека из последних ответов API (для трека, который добавляют в библиотеку).
@@ -1611,12 +1640,22 @@ mod tests {
             ("audio.addToPlaylist", vec![o("owner_id", "1"), o("playlist_id", "1"), o("audio_ids", "1_1")]),
             ("audio.removeFromPlaylist", vec![o("owner_id", "1"), o("playlist_id", "1"), o("audio_ids", "1_1")]),
             ("audio.followPlaylist", vec![o("owner_id", "1"), o("playlist_id", "999999999")]),
+            // несуществующая запись: ничего не добавится, ответ — ошибка id, а не «Unknown method»
+            ("audio.add", vec![o("owner_id", "1"), o("audio_id", "0")]),
         ] {
             let r = tauri::async_runtime::block_on(vk.api(&s, m, &params));
             println!("{m}: {:?}", r.map(|v| v.to_string().chars().take(80).collect::<String>()));
         }
     }
 
+
+    #[test]
+    fn audio_add_answer() {
+        assert_eq!(added_id(&serde_json::json!(456239017), 42).as_deref(), Some("42_456239017"));
+        assert_eq!(added_id(&serde_json::json!("456239017"), 42).as_deref(), Some("42_456239017"));
+        assert_eq!(added_id(&serde_json::json!(0), 42), None);
+        assert_eq!(added_id(&serde_json::json!({ "id": 1 }), 42), None);
+    }
 
     #[test]
     fn lyrics_with_timestamps() {
