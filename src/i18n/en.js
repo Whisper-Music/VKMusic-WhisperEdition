@@ -1148,4 +1148,6 @@ window.I18N_DICTS.en = {
   "Показать в меню": "Show in the menu",
   "Показать все": "Show all",
   "Цвета этого места (по правому щелчку)": "Colors of this spot (on right-click)",
+  // ── профиль Whisper Archive ──
+  "Профиль": "Profile",
 };

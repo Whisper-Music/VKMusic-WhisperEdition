@@ -24,6 +24,7 @@
   <link rel="stylesheet" href="core/discord.css" />
   <link rel="stylesheet" href="core/obs.css" />
   <link rel="stylesheet" href="core/friends.css" />
+  <link rel="stylesheet" href="core/profile.css" />
   <link rel="stylesheet" href="studio.css" />
   <link rel="stylesheet" href="mascot.css" />
   <!-- CSS темы: @@ css whisper-core (роли) → @@ css whisper-music → @@ css whisper-vk → tokens; привязан к стилю
@@ -74,9 +75,9 @@
       <button class="nav" id="studioBtn" data-page="studio" hidden>Студия</button>
       <div class="spacer"></div>
       <p class="status queue-mini" id="queueInfo"></p>
-      <!-- «Сервисы» — теперь «Настройки → Интеграции»; кнопка осталась скрытой для тем Whisper (на неё ссылаются
-           их кнопки и украшения) и ведёт туда же -->
-      <button class="nav" id="profile" data-page="services" hidden>Сервисы</button>
+      <!-- «Профиль» Whisper Archive (core/profile.js; кнопку показывает kit.page модуля). «Сервисы» — во вкладке
+           «Настройки → Интеграции» -->
+      <button class="nav" id="profile" data-page="waprofile" hidden>Профиль</button>
     </aside>
 
     <main class="main">
@@ -125,6 +126,7 @@
 
       <!-- страницы модулей ядра (kit.page): «Друзья» — постоянный узел, модуль сам рисует в нём -->
       <section id="friendsPage" class="modpage" hidden></section>
+      <section id="waprofilePage" class="kitpage modpage" hidden></section>
 
       <!-- «Студия» (studio.js; разметка — как у Whisper Yandex): обрезка трека библиотеки, версия — в папку музыки -->
       <section id="studioPage" class="studio modpage" hidden>
@@ -308,6 +310,7 @@
   <script src="core/obs.js"></script>
   <script src="core/together.js"></script>
   <script src="core/friends.js"></script>
+  <script src="core/profile.js"></script>
   <script src="studioinfo.js"></script>
   <script src="studio.js"></script>
   <script src="mascot.js"></script>

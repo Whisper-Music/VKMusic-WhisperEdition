@@ -439,6 +439,10 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   узел `#friendsPage` есть в index.html (кнопка скрыта, пока модуль не зарегистрировал страницу), `go()` прячет и
   показывает узлы `MODPAGES`, `rerender()` зовёт `render`. Альбом друга — `kit.playArchive(tracks, start, { author })`
   → `playArchive`: треки `{ key: "wa:<uuid>", archive }` играют только из архива (`wa_play`), в библиотеку не входят.
+* «Профиль Whisper Archive» (ядро 4b32974, 2026-11-18; `core/profile.js`, `profile.css`, Rust — `whisper::profile::*`):
+  ник, аватар, место, свои и лайкнутые альбомы, друзья. Страница — `kit.page("waprofile", { btn, bind: false })` →
+  `modulePage` (узел `#waprofilePage.kitpage`); кнопка — `#profile` в боковой панели (`kit.profileButton` → "profile",
+  как «Профиль» у Whisper Yandex). «Сервисы» на эту кнопку больше не ведут — они во вкладке «Интеграции».
 * Синхронизация библиотеки через Whisper Archive (просьба владельца, 2026-11-17; LIBRARY-SYNC.md архива, площадка
   `vk`): `libsync.js` + `libsync.rs`, выключатель — «Хранилище → Синхронизация библиотеки» (по умолчанию выключено).
   Версия «Студии» — под своим номером `studio-<id>`; вырезанная из трека ВК — `kind: cut`, `replaces` — id трека ВК,

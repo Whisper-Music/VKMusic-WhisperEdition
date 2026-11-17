@@ -59,16 +59,18 @@ const PAGES = {
   settings: "Настройки",
   store: "Магазин тем",
   friends: "Друзья",
+  waprofile: "Профиль",
   studio: "Студия",
 };
 
 /**
- * Страницы модулей ядра (`kit.page`, сейчас — «Друзья» из core/friends.js): кнопка `#<id>Btn` в боковой панели и
- * постоянный узел `#<id>Page` есть в index.html, модуль рисует в нём сам (`render` — при каждом показе).
+ * Страницы модулей ядра (`kit.page`: «Друзья» — core/friends.js, «Профиль Whisper Archive» — core/profile.js): кнопка
+ * в боковой панели (`#<id>Btn` или `o.btn` — id, который отдал `kit.profileButton`) и постоянный узел `#<id>Page` есть
+ * в index.html, модуль рисует в нём сам (`render` — при каждом показе). Кнопка ведёт на страницу через data-page.
  */
 const MODPAGES = {};
 function modulePage(id, o) {
-  const btn = document.getElementById(id + "Btn"), box = document.getElementById(id + "Page");
+  const btn = document.getElementById(o && typeof o.btn === "string" ? o.btn : id + "Btn"), box = document.getElementById(id + "Page");
   if (!btn || !box || !o || typeof o.render !== "function") return null;
   MODPAGES[id] = { render: o.render, box };
   btn.hidden = false;
@@ -3284,7 +3286,7 @@ const TH_ACTIONS = {
   like: ["#likeBtn", "В библиотеку"], mute: ["#volBtn", "Выключить звук"], shuffle: ["#shuffleBtn", "Перемешать"],
   repeat: ["#repeatBtn", "Повтор"], full: ["#cover", "Обложка и текст на весь экран"], more: ["#pMore", "Ещё"],
   "page:wave": ["#wave", "VK Микс"], "page:likes": ["#likes", "Библиотека"], "page:stats": ["#statsBtn", "Статистика"],
-  "page:settings": ["#settingsBtn", "Настройки"], "page:profile": ["#profile", "Сервисы и интеграции"],
+  "page:settings": ["#settingsBtn", "Настройки"], "page:profile": ["#profile", "Профиль"],
   "vol-up": [null, "Громче"], "vol-down": [null, "Тише"],
   close: ["#wClose", "Закрыть"], minimize: ["#wMin", "Свернуть"], maximize: ["#wMax", "Развернуть"], drag: [null, "Перетащить окно"],
 };
