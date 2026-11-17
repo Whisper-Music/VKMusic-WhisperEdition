@@ -117,6 +117,13 @@ pub(crate) async fn saved_sync(app: AppHandle, st: State<'_, AppState>, service:
         }
         _ => return Err("Неизвестный сервис".into()),
     };
+    // трек из микса, который уже есть в «Моих треках» вашей копией, — заменяется ею: на своём месте и с тем же файлом в кэше
+    if service == "vk" {
+        for (old, new) in st.saved.merge_into_synced(&fresh)? {
+            st.order.rename(&format!("vk:{old}"), &format!("vk:{new}"))?;
+            st.cache.rename(&cache::service_key("vk", &old), &cache::service_key("vk", &new));
+        }
+    }
     // ключи в порядке сервиса (новые сначала) — новые для библиотеки встанут первыми
     let keys: Vec<String> = fresh.iter().map(saved_key).collect();
     st.saved.replace_synced(&service, fresh)?;

@@ -214,6 +214,31 @@ impl SavedStore {
         self.save(&items)
     }
 
+    /// Трек ВК из микса или плейлиста (`api`, добавлен в библиотеку вручную), у которого в «Моих треках» есть ваша
+    /// копия (`fresh` — что пришло синхронизацией): тот же исполнитель и название, длительность ±3 с. Такие записи
+    /// убираются — их заменит копия (иначе трек в библиотеке дважды: так было с треками, добавленными в ВК, пока
+    /// приложение не понимало ответ audio.add, 2026-11-17). Возвращает пары (прежний id, id копии).
+    pub fn merge_into_synced(&self, fresh: &[Saved]) -> Res<Vec<(String, String)>> {
+        let norm = |s: &str| s.trim().to_lowercase().replace('ё', "е").split_whitespace().collect::<Vec<_>>().join(" ");
+        let same = |a: &Saved, b: &Saved| {
+            norm(&a.artist) == norm(&b.artist)
+                && norm(&a.title) == norm(&b.title)
+                && (a.duration <= 0.0 || b.duration <= 0.0 || (a.duration - b.duration).abs() <= 3.0)
+        };
+        let mut items = self.items.lock().unwrap();
+        let mut pairs = Vec::new();
+        for x in items.iter().filter(|x| x.service == "vk" && !x.sync && x.api) {
+            if let Some(f) = fresh.iter().find(|f| f.service == "vk" && f.id != x.id && same(x, f)) {
+                pairs.push((x.id.clone(), f.id.clone()));
+            }
+        }
+        if !pairs.is_empty() {
+            items.retain(|x| !(x.service == "vk" && pairs.iter().any(|(old, _)| *old == x.id)));
+            self.save(&items)?;
+        }
+        Ok(pairs)
+    }
+
     /// Выход из сервиса: убрать его синхронизированные треки.
     pub fn clear_synced(&self, service: &str) -> Res<()> {
         let mut items = self.items.lock().unwrap();
@@ -315,6 +340,32 @@ mod tests {
         store.replace_synced("vk", vec![synced]).unwrap();
         let l = store.list();
         assert!(l.len() == 1 && l[0].reload.is_some() && l[0].del.is_some() && l[0].added == orig.added);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn mix_copy_merged_into_synced() {
+        let dir = std::env::temp_dir().join(format!("vkmusic-saved-merge-{}", std::process::id()));
+        let store = SavedStore::at(dir.join("library.json"));
+        let mut mix = s("vk", "-2001_5");
+        mix.reload = None;
+        mix.api = true;
+        mix.artist = "Иван Дорн".into();
+        mix.title = "Стыцамен".into();
+        mix.duration = 233.0;
+        store.add(mix.clone()).unwrap();
+        let mut other = mix.clone();
+        other.id = "-2001_6".into();
+        other.title = "Другой".into();
+        store.add(other).unwrap();
+        let mut copy = s("vk", "42_9");
+        copy.artist = "иван  дорн".into();
+        copy.title = "Стыцамен".into();
+        copy.duration = 234.0;
+        let pairs = store.merge_into_synced(std::slice::from_ref(&copy)).unwrap();
+        assert_eq!(pairs, vec![("-2001_5".to_string(), "42_9".to_string())]);
+        let ids: Vec<String> = store.list().into_iter().map(|x| x.id).collect();
+        assert_eq!(ids, ["-2001_6"]);
         let _ = std::fs::remove_dir_all(dir);
     }
 
