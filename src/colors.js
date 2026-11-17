@@ -358,5 +358,13 @@
 
   /** Тонкая настройка стиля целиком (из файла темы и своя) — для «Экспорт стиля». */
   const ccOf = (st = style()) => ({ ...themeCc(st), ...of(st).cc });
-  window.Colors = { main, card, apply, ccOf };
+  /** Основной и второй цвета стиля — разом (подбор палитры по своему фону, userbg.js). */
+  function setMain(st, c) {
+    const o = of(st);
+    const ok = (v) => (/^#[0-9a-f]{6}$/i.test(v || "") ? v.toLowerCase() : null);
+    if (ok(c && c.accent)) o.accent = ok(c.accent);
+    if (ok(c && c.accent2)) o.accent2 = ok(c.accent2);
+    save();
+  }
+  window.Colors = { main, card, apply, ccOf, setMain };
 })();

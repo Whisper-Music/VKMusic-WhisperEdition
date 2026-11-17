@@ -50,6 +50,8 @@ mod streams;
 mod themelib;
 mod themes;
 #[cfg(desktop)]
+mod desktop;
+#[cfg(desktop)]
 mod notify;
 #[cfg(desktop)]
 mod studio;
@@ -788,6 +790,8 @@ pub fn run() {
             studio::studio_source,
             #[cfg(desktop)]
             studio::studio_save,
+            #[cfg(desktop)]
+            desktop::desktop_wallpaper,
             cmd::local_cmd::cover_bytes,
             update::update_install,
             app_info,

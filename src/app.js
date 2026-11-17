@@ -2787,18 +2787,7 @@ async function applyTheme(r, { intro = false } = {}) {
   root.dataset.style = r.file ? r.id : base;
   root.dataset.base = base;
   root.dataset.theme = r.id;
-  // фон: картинка — переменной --bg-image на #bg (так его рисуют темы), видео — #bgVideo внутри
-  const v = $("#bgVideo");
-  if (r.background && r.background.video) {
-    if (v.getAttribute("src") !== r.background.url) v.src = r.background.url;
-    v.hidden = false;
-    if (!dynOn && !(window.Power && Power.active())) v.play().catch(() => {}); // при фоне по обложке видео не видно; энергосбережение — на паузе
-  } else {
-    v.pause();
-    v.removeAttribute("src");
-    v.hidden = true;
-  }
-  applyStyleVars();
+  applyStyleVars(); // и фон (applyBg)
   saveBoot();
   if (intro && th) playIntro(r.id, { th });
 }
@@ -2930,6 +2919,36 @@ function saveBoot() {
 }
 window.saveBoot = saveBoot;
 
+/** Фон темы: { url, kind } или null. */
+function themeBg() {
+  const b = S.theme && S.theme.background;
+  return b && b.url ? { url: b.url, kind: b.video ? "video" : "image" } : null;
+}
+/** Фон стиля: свой (userbg.js — картинка, видео, обои) главнее фона темы. */
+function bgSource() {
+  return (window.UserBg && UserBg.of(document.documentElement.dataset.style)) || themeBg();
+}
+/**
+ * Фон: картинка — переменной --bg-image на #bg (так его рисуют темы), видео — #bgVideo внутри. Видео играет, только
+ * когда его видно: не при фоне по обложке, не в энергосбережении, не в свёрнутом окне.
+ */
+function applyBg() {
+  const b = bgSource(), v = $("#bgVideo");
+  document.documentElement.style.setProperty("--bg-image", b && b.kind === "image" ? `url("${b.url}")` : "none");
+  if (b && b.kind === "video") {
+    if (v.getAttribute("src") !== b.url) v.src = b.url;
+    v.hidden = false;
+    if (dynOn || document.hidden || (window.Power && Power.active())) v.pause();
+    else if (v.paused) v.play().catch(() => {});
+  } else if (v.getAttribute("src")) {
+    v.pause();
+    v.removeAttribute("src");
+    v.load(); // отпустить декодер
+    v.hidden = true;
+  } else v.hidden = true;
+}
+document.addEventListener("visibilitychange", () => applyBg());
+
 /** Переменные основы из tokens темы (или значения основы), поверх — «тонкая настройка» пользователя. */
 function applyStyleVars() {
   const r = document.documentElement.style, th = S.theme || {}, base = document.documentElement.dataset.base || "neon";
@@ -2952,8 +2971,7 @@ function applyStyleVars() {
   r.setProperty("--panel-a", String(o.panel ?? num(fx.panelOpacity, 0.2, 1) ?? def.panel));
   r.setProperty("--dim", String(o.dim ?? num(fx.dim, 0, 0.85) ?? def.dim));
   r.setProperty("--bgblur", (o.blur ?? num(fx.backgroundBlur, 0, 64) ?? 6) + "px");
-  const bg = th.background && !th.background.video ? `url("${th.background.url}")` : "none";
-  r.setProperty("--bg-image", bg);
+  applyBg();
   // тема без анимаций (settings whisper-music → features.animations = false) — как у Whisper
   const f = (S.themeSettings && S.themeSettings.features) || {};
   // энергосбережение (power.js) — тоже без анимаций
@@ -3448,6 +3466,7 @@ function renderThemes() {
   renderFontPicker(setCard("look", L("Шрифт")));
 
   const bc = setCard("look", L("Фон и панели"), "colbreak");
+  if (window.UserBg) UserBg.card(bc); // свой фон стиля: картинка, видео, Wallpaper Engine, обои стола, цвета по фону
   bc.append(switchRow(L("Фон по обложке трека"), dynOn, (on) => {
     dynOn = on;
     try { localStorage.setItem(DYN_KEY, on ? "1" : "0"); } catch {}
@@ -5259,6 +5278,7 @@ async function boot() {
   S.normalize = !!info.normalize;
   S.eq = info.eq || null;
   try {
+    if (window.UserBg) await UserBg.ready; // свой фон стиля — сразу в первой отрисовке
     await applyTheme(await invoke("theme_render", { id: null }), { intro: true });
   } catch (e) {
     toast(L("Тема не загрузилась: ") + errMsg(e), "error");

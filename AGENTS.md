@@ -158,6 +158,8 @@ src/boot.js                до первой отрисовки: стиль пр
 src/layout.js, layout.css  расположение (как у Whisper Yandex, без закреплённых): мини-режимы панелей, размер за край (vkm_layout)
 src/themeguard.js          защита от ломающих тем (как у Whisper Yandex): закрыть/свернуть/перетащить окно, пауза, настройки
                            должны оставаться доступны — иначе аварийная полоса; Ctrl+Shift+Backspace — «Неон» (vkm_tguard)
+src/userbg.js              свой фон стиля (как у Whisper Yandex): картинка, видео, папка Wallpaper Engine (video), обои рабочего
+                           стола, «Цвета по фону» (Colors.setMain); файлы — IndexedDB «vkmusic» (bg:<стиль>), применяет applyBg
 src/colors.js              цвета темы: основной/второй и «Тонкая настройка…» по местам, для каждого стиля (vkm_colors), <style id="cc-css">
 src/hotkeys.js             горячие клавиши: карточка в «Общем», окно назначения, сочетания — localStorage vkm_hotkeys
 src/keynav.js              клавиатура внутри окна (как у Whisper Yandex): стрелки по спискам и меню, Enter, Menu, F1 — список
@@ -168,6 +170,7 @@ src/libsync.js             синхронизация библиотеки че�
 src/studio.js, studio.css  «Студия» (как у Whisper Yandex, разметка #studioPage/.stu* — та же): обрезка трека библиотеки — волна
                            и прослушивание отрезка (Web Audio по studio_source), сохранение — studio_save; страница — modulePage
 src/notify.js              уведомления «Слушать вместе» (kit.notify → sysNotify): карточка «Уведомления» в «Общем» (vkm_notify), звук
+src-tauri/src/desktop.rs   обои рабочего стола (порт Whisper Yandex + Omarchy/~/.cache/current_wallpaper, swww): desktop_wallpaper
 src-tauri/src/studio.rs    «Студия»: studio_source (файл трека библиотеки байтами, до 200 МБ), studio_save (ffmpeg -c copy
                            отрезка → новый файл «Исполнитель - Название (обрезка м.сс–м.сс)» в папке музыки); только компьютер
 src-tauri/src/notify.rs    уведомления: Linux — org.freedesktop.Notifications (D-Bus, нажатие → открыть), Windows — окно `notify`
@@ -440,6 +443,9 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `vkm_boot`, `wa_index_v3` и `vkm_libsync` (`backup::storage_key_ok`).
 * Кэш треков: предел — `Config::cache_limit_mb` (0 — без ограничения, «Хранилище»); сверх него `TrackCache::prune`
   удаляет давно не игравшие (по времени изменения файла; включение из кэша — `touch`), кроме только что докачанного.
+* Фон стиля — `bgSource()` в app.js: свой (userbg.js, у каждого стиля свой) главнее фона темы; картинка — `--bg-image`
+  на `#bg`, видео — `#bgVideo` (играет, только когда видно: не при фоне по обложке, не в энергосбережении, не в
+  свёрнутом окне — `applyBg`). Свой фон в резервную копию не входит (IndexedDB, а не localStorage).
 * Фон по обложке (как у Whisper Yandex; CSS — `.dynbg` в whisper.css, разметка `#dynBg` внутри `#bg`): обложку
   с CDN холст не прочитал бы — её отдаёт `cover_bytes` (только `whisper_host::cover_ok`, до 10 МБ), обложка файла —
   `fetch` по `vkm://` (там `Access-Control-Allow-Origin`).
