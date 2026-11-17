@@ -10,22 +10,6 @@
   // id — имя секции темы (@@ css whisper-vk); storage — приставка ключей localStorage модулей ядра (история очереди)
   W.setApp({ id: "whisper-vk", name: "VK Music", version: "0.1.0", storage: "vkm_" });
 
-  // Ошибка ядра 408b0b6 (core/together.js; поправить можно только в whisper-core): модуль задаёт
-  // Whisper.modules.together дважды — сначала { invite, inRoom, status, refresh } для «Друзей», в конце файла — свой
-  // api, который первый объект целиком заменяет. «Друзья» → «Позвать» тогда пишет «„Слушать вместе“ недоступно в
-  // этом приложении». Пока ядро не исправлено, повторная запись не заменяет, а дополняет прежний объект.
-  {
-    let together = null;
-    Object.defineProperty(W.modules, "together", {
-      configurable: true,
-      enumerable: true,
-      get: () => together,
-      set: (v) => {
-        together = together && v && typeof v === "object" ? Object.assign({}, together, v) : v;
-      },
-    });
-  }
-
   // ---------- роли интерфейса: [data-w="…"] в темах → наши селекторы ----------
   // Разметка — как у Whisper Yandex, поэтому и роли те же (yandex.js там). Публичный контракт с темами
   // (docs/THEMES.md): меняются вместе с ним.
