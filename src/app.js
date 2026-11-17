@@ -804,6 +804,7 @@ function rerender() {
       console.error(e);
     }
   }
+  renderTabs();
 }
 
 // всплывающие окошки (подтверждение, выбор плейлиста)
@@ -1955,6 +1956,68 @@ function renderVk() {
 
 const samePl = (a, b) => a.owner_id === b.owner_id && a.id === b.id;
 
+// ───────────────────────── закреплённые (как у Whisper Yandex) ─────────────────────────
+// Плейлисты ВК закладками сверху (#tabs > .tab — разметка Whisper Yandex, её оформляют стили и темы): первая —
+// «Библиотека», дальше закреплённые; ✕ — открепить. localStorage vkm_pins: { owner_id, id, title, cover, mine, editable }.
+// Чужой плейлист после перезапуска может не открыться без access_key (ВК его не сохраняет) — тогда ошибка в плейлисте.
+const PINS_KEY = "vkm_pins";
+let pins = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(PINS_KEY) || "[]");
+    return (Array.isArray(v) ? v : [])
+      .filter((p) => p && Number.isInteger(p.owner_id) && Number.isInteger(p.id) && typeof p.title === "string")
+      .slice(0, 50)
+      .map((p) => ({ owner_id: p.owner_id, id: p.id, title: p.title.slice(0, 200), cover: /^https:\/\//.test(p.cover || "") ? p.cover : null, mine: !!p.mine, editable: !!p.editable }));
+  } catch {
+    return [];
+  }
+})();
+const savePins = () => { try { localStorage.setItem(PINS_KEY, JSON.stringify(pins)); } catch {} };
+const isPinned = (pl) => pins.some((p) => samePl(p, pl));
+function togglePin(pl) {
+  if (isPinned(pl)) pins = pins.filter((p) => !samePl(p, pl));
+  else pins.push({ owner_id: pl.owner_id, id: pl.id, title: String(pl.title || L("Без названия")).slice(0, 200), cover: pl.cover || null, mine: !!pl.mine, editable: !!pl.editable });
+  savePins();
+  rerender();
+}
+function renderTabs() {
+  const box = $("#tabs");
+  if (!box) return;
+  box.replaceChildren();
+  box.classList.toggle("pins", pins.length > 0);
+  if (!pins.length) return;
+  const mk = (label, active, open, unpin, glyph) => {
+    const d = el("div", "tab" + (active ? " active" : ""));
+    d.append(el("span", null, label), el("small", null, glyph));
+    if (unpin) {
+      const x = el("i", null, "✕");
+      x.title = L("Открепить");
+      x.addEventListener("click", (e) => { e.stopPropagation(); unpin(); });
+      d.append(x);
+    }
+    d.addEventListener("click", open);
+    box.append(d);
+  };
+  const cur = S.vkPl && S.vkPl.from === S.page ? S.vkPl.pl : null;
+  mk(L(PAGES.library), S.page === "library" && !cur, () => { S.vkPl = null; go("library"); }, null, "♥");
+  for (const p of pins) {
+    mk(p.title, !!cur && samePl(cur, p), () => { go("vk"); openVkPlaylist(p); }, () => {
+      pins = pins.filter((x) => !samePl(x, p));
+      savePins();
+      rerender();
+    }, "♫");
+  }
+  const on = box.querySelector(".tab.active");
+  if (on) on.scrollIntoView({ block: "nearest", inline: "nearest" });
+}
+// закладок больше, чем помещается: их листает колесо мыши
+$("#tabs").addEventListener("wheel", (e) => {
+  const box = e.currentTarget;
+  if (box.scrollWidth <= box.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+  e.preventDefault();
+  box.scrollLeft += e.deltaMode === 1 ? e.deltaY * 32 : e.deltaY;
+}, { passive: false });
+
 /** Открыть плейлист. Ваш, уже открывавшийся, — сразу с диска; первая страница из ВК потом заменяет его. */
 async function openVkPlaylist(pl) {
   const v = { pl, tracks: [], next: 0, busy: false, error: null, from: S.page };
@@ -2023,6 +2086,9 @@ function renderVkPlaylist() {
   const play = button(null, "▶ " + L("Слушать"), "primary", () => playable().length && playList(playable(), 0));
   play.disabled = !playable().length;
   bar.append(play, ...playlistActions(v));
+  // «Закрепить» (как у Whisper Yandex): закладкой сверху, рядом с «Библиотекой»
+  const pinned = isPinned(v.pl);
+  bar.append(button(null, pinned ? L("✓ Закреплён") : L("Закрепить"), pinned ? "on" : "", () => togglePin(v.pl)));
   // свой плейлист: «Добавить треки» — список из библиотеки с поиском (у пустого открыт сразу)
   const empty = !v.tracks.length && !v.busy && !v.error && v.next == null;
   if (v.pl.editable) {

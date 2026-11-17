@@ -1052,4 +1052,8 @@ window.I18N_DICTS.en = {
   "ссылка SoundCloud с {0}": "SoundCloud link from {0}",
   "Исполнитель — Название": "Artist — Title",
   "название": "the name",
+  // ── закреплённые ──
+  "Открепить": "Unpin",
+  "✓ Закреплён": "✓ Pinned",
+  "Закрепить": "Pin",
 };

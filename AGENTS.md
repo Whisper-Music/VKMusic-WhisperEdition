@@ -155,7 +155,7 @@ src/core/rust/…            Rust ядра через #[path]: whisper/ (арх�
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
 src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, PolyForm Noncommercial) — не править
 src/boot.js                до первой отрисовки: стиль прошлого запуска (vkm_boot), интерфейс скрыт до применения темы
-src/layout.js, layout.css  расположение (как у Whisper Yandex, без закреплённых): мини-режимы панелей, размер за край, мини-вид
+src/layout.js, layout.css  расположение (как у Whisper Yandex; закреплённые — только закладками сверху, renderTabs в app.js): мини-режимы панелей, размер за край, мини-вид
                            (`ui: super`, Ctrl+Shift+M / двойной щелчок по пустому месту панели: колонка значков + плитка и
                            «таблетка», «⋮» — столбик кнопок; кнопки переезжают, на месте — метки-комментарии) (vkm_layout)
 src/mascot.js, mascot.css  маскот (как у Whisper Yandex, те же спрайты): кот на верхнем краю плеера, карточка в «Оформлении»
@@ -442,7 +442,8 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   8 с) и раз в 5 минут. Состояние — `vkm_libsync` (не в резервной копии); другой аккаунт архива (`wa_me`) — с нуля.
 * Строки очереди и истории ядра — с «сердцем» (`kit.likeButton` → наш `likeButton`). `fromCore` и `fromRoom` ищут трек
   по ключу через `libraryByKey` (индекс `libIndex`), а не перебором: их зовут на каждую строку.
-* Своё в `localStorage` (не модули): `vkm_boot` (снимок стиля для boot.js), `vkm_dyn` (фон по обложке), `vkm_search_seen` ("Недавно открытые" в поиске —
+* Своё в `localStorage` (не модули): `vkm_boot` (снимок стиля для boot.js), `vkm_dyn` (фон по обложке), `vkm_pins` (закреплённые плейлисты ВК — закладки `#tabs > .tab` сверху, «Закрепить» в плейлисте, ✕ —
+  открепить; `renderTabs` в конце `rerender`), `vkm_search_seen` ("Недавно открытые" в поиске —
   треки, включённые со страницы поиска, 30), `vkm_notify`, `vkm_mascot`,
   `vkm_style_view` (компактный вид стилей), `vkm_search_hist` (история поиска, 30), `vkm_hotkeys`, `vkm_layout`,
   `vkm_colors` (цвета пользователя по стилям: в CSS попадают только `#rrggbb(aa)`), `vkm_cli_hist` (история команд
