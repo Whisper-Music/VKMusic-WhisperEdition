@@ -567,3 +567,7 @@ h3.seenhead { margin-top: 16px; }
 .seenhead h3 { margin: 0; }
 /* офлайн-режим: пояснение над списком библиотеки */
 .offnote { margin: 0 8px 8px; }
+
+/* вкладки настроек — на всю ширину над столбцами (в whisper.css это правило теперь на .settop — шапке с поиском
+   у Whisper Yandex; у VK Music её нет, вкладки .settabs стоят сами) */
+.settings > .settabs { column-span: all; }

@@ -741,6 +741,9 @@ function go(page, keepPopups) {
   if (page === "settings" && S.setTab === "out") S.cacheInfo = null; // кэш растёт, пока играет музыка
   const navPage = page === "store" ? "settings" : page;
   document.querySelectorAll(".side .nav[data-page]").forEach((n) => n.classList.toggle("active", n.dataset.page === navPage));
+  // страница — на .main (как у Whisper Yandex: id кнопки раздела); по нему темы и themefx.js (ev-page) узнают о переходе
+  const nb = document.querySelector(`.side .nav[data-page="${navPage}"]`);
+  scroller().dataset.page = nb ? nb.id : page;
   if (!keepPopups) closePopups();
   scroller().scrollTop = 0;
   scroller().classList.toggle("wavemode", page === "wave");
@@ -2515,6 +2518,7 @@ function renderSettings() {
   const mods = [...page.querySelectorAll(":scope > .card:not(.own)")];
   renderThemes();
   renderIntroCard();
+  renderFxCard();
   if (window.renderVizCard) renderVizCard(); // viz.js
   if (window.renderMascotCard) renderMascotCard(); // mascot.js
   renderGeneral();
@@ -2882,7 +2886,7 @@ async function applyTheme(r, { intro = false } = {}) {
   const seq = ++themeSeq;
   introStop();
   const base = BASES.includes(r.base) ? r.base : "neon";
-  let css = "", urls = [], tokens = {}, settings = {}, th = null;
+  let css = "", urls = [], tokens = {}, settings = {}, th = null, rawCss = "";
   if (r.file) {
     try {
       th = await WMT.open(new Uint8Array(await invoke("theme_file", { id: r.id })));
@@ -2890,6 +2894,7 @@ async function applyTheme(r, { intro = false } = {}) {
       ({ css, urls } = out);
       tokens = th.tokens || {};
       settings = th.settings("whisper-music") || {};
+      rawCss = ["whisper-core", "whisper-music", "whisper-vk"].map((k) => th.css(k) || "").join("\n");
       // Телефон (просьба владельца, 2026-11-15: «полный функционал тем вроде „Терминал“ или „Телевизор“ не нужен»):
       // тема, которая сама перестраивает раскладку («layout": "fixed" — телевизор, консоль, страница соцсети…),
       // рассчитана на окно компьютера — от неё остаются цвета, фон и шрифт (tokens), без её CSS; ручка громкости,
@@ -2897,6 +2902,7 @@ async function applyTheme(r, { intro = false } = {}) {
       if (MOBILE) {
         if (settings.layout === "fixed" || settings.console) css = "";
         settings = settings.features ? { features: settings.features } : {};
+        rawCss = css ? rawCss : "";
       }
     } catch (e) {
       toast(L("Тема не загрузилась: ") + errMsg(e), "error");
@@ -2908,6 +2914,11 @@ async function applyTheme(r, { intro = false } = {}) {
   S.theme = r;
   S.themeTokens = tokens;
   S.themeSettings = settings;
+  // «живые» темы (themefx.js): эффекты, события, курсор, слой украшений, частицы; картинки частиц — из файла темы
+  S.themeHooks = themeHooksOf(settings, rawCss);
+  themeAssets.forEach((u) => u && URL.revokeObjectURL(u));
+  themeAssets.clear();
+  S.themeWmt = th;
   $("#theme-css").textContent = css;
   const root = document.documentElement;
   // своя тема — свой стиль (её правила привязаны к нему); основа — для правил whisper.css, которые зависят от неё
@@ -2917,6 +2928,143 @@ async function applyTheme(r, { intro = false } = {}) {
   applyStyleVars(); // и фон (applyBg)
   saveBoot();
   if (intro && th) playIntro(r.id, { th });
+}
+
+// ───────────────────────── «живые» темы и эффекты (как у Whisper Yandex) ─────────────────────────
+// settings whisper-music темы: "effects" (выключатели: снег, гирлянда…; пометка в CSS — :root[data-fx-<имя>="on"]),
+// "layer" (слой украшений #fxLayer), "particles" (частицы на холсте); события (.ev-…, .w-tap) и курсор (--mx…) —
+// если CSS темы ими пользуется. Разбор — как theme.js → setHooks у Whisper Yandex, рисует themefx.js. Выбор
+// пользователя — localStorage vkm_fx { "<стиль>": { "<эффект>": true|false } }, на <html> — data-fx-<имя>="on|off".
+const FX_KEY = "vkm_fx";
+const FX_NAME = /^[a-z][a-z0-9-]{0,23}$/;
+const FX_NAMES = { snow: "Снег", rain: "Дождь", lights: "Гирлянда", garland: "Гирлянда", stars: "Звёзды", sparkles: "Искры",
+  leaves: "Листопад", fog: "Туман", glow: "Свечение", shine: "Блики", particles: "Частицы", hearts: "Сердечки",
+  petals: "Лепестки", fire: "Огонь", bats: "Летучие мыши", noise: "Шум", scanlines: "Полосы развёртки", flicker: "Мерцание" };
+const fxLabel = (k) => (FX_NAMES[k] ? L(FX_NAMES[k]) : k.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase()));
+const P_ON = ["tap", "like", "dislike", "play", "pause", "track", "start", "page", "beat", "always"];
+const P_FROM = ["tap", "center", "top", "bottom", "screen", "cover", "play", "like", "wave"];
+const P_SHAPES = ["dot", "square", "star", "heart", "snow", "confetti", "ring", "spark"];
+const P_COLOR = /^(accent|accent2|text|muted|#[0-9a-f]{3,8})$/i;
+/** Стайка частиц темы — в безопасных границах (тема не может попросить тысячи частиц или бесконечную жизнь). */
+function particleSpec(v) {
+  const on = P_ON.includes(v.on) ? v.on : null;
+  if (!on) return null;
+  const num = (x, d, lo, hi) => (Number.isFinite(+x) ? Math.min(hi, Math.max(lo, +x)) : d);
+  const rng = (x, d, lo, hi) => {
+    const a = Array.isArray(x) ? x : [x, x];
+    const p = num(a[0], d[0], lo, hi), q = num(a[1], d[1], lo, hi);
+    return [Math.min(p, q), Math.max(p, q)];
+  };
+  const img = typeof v.shape === "string" && /^asset:[A-Za-z0-9._-]{1,100}$/.test(v.shape) ? v.shape.slice(6) : "";
+  const colors = (Array.isArray(v.colors) ? v.colors : [v.colors]).filter((c) => typeof c === "string" && P_COLOR.test(c)).slice(0, 6);
+  const always = on === "always";
+  return {
+    on, img,
+    shape: img ? "image" : P_SHAPES.includes(v.shape) ? v.shape : "dot",
+    from: P_FROM.includes(v.from) ? v.from : always ? "top" : "",
+    count: Math.round(num(v.count, 24, 1, 120)),
+    rate: num(v.rate, 12, 0.5, 60),
+    colors: colors.length ? colors : ["accent", "accent2"],
+    size: rng(v.size, [4, 9], 1, 64),
+    speed: rng(v.speed, always ? [30, 80] : [160, 420], 0, 2000),
+    dir: num(v.direction, always ? 90 : -90, -360, 360),
+    spread: num(v.spread, always ? 30 : 360, 0, 360),
+    gravity: num(v.gravity, always ? 0 : 520, -3000, 3000),
+    drag: num(v.drag, 1.2, 0, 10),
+    life: num(v.life, always ? 8 : 1.1, 0.2, 20),
+    spin: num(v.spin, v.shape === "confetti" ? 360 : 0, 0, 1440),
+    sway: num(v.sway, v.shape === "snow" ? 18 : 0, 0, 200),
+    fade: v.fade !== false,
+    glow: num(v.glow, 0, 0, 30),
+    blend: v.blend === "add" ? "lighter" : "source-over",
+  };
+}
+function themeHooksOf(settings, css) {
+  const h = {};
+  const fx = new Map();
+  for (const src of [settings && settings.options, settings && settings.effects]) {
+    if (!src || typeof src !== "object" || Array.isArray(src)) continue;
+    for (const [k, v] of Object.entries(src)) {
+      if (!FX_NAME.test(k)) continue;
+      const o = v && typeof v === "object" ? v : {};
+      const label = typeof o.label === "string" && o.label.trim() ? o.label.trim().slice(0, 40) : fxLabel(k);
+      fx.set(k, { k, label, hint: typeof o.hint === "string" ? o.hint.trim().slice(0, 200) : "", def: v !== false && o.default !== false });
+    }
+  }
+  const text = String(css || "");
+  for (const m of text.matchAll(/data-fx-([a-z][a-z0-9-]{0,23})/g)) if (!fx.has(m[1])) fx.set(m[1], { k: m[1], label: fxLabel(m[1]), hint: "", def: true });
+  if (/\.ev-[a-z]|\.w-tap\b|--tap-[xy]\b|--tap-l[xy]\b/.test(text)) h.events = true;
+  if (/--mp?[xy]\b/.test(text)) h.pointer = true;
+  const Ly = settings && settings.layer;
+  const lc = typeof Ly === "number" ? Ly : Ly && typeof Ly === "object" ? Ly.count : 0;
+  if (Number.isFinite(lc) && lc >= 1) h.layer = { count: Math.min(64, Math.round(lc)), place: Ly && Ly.place === "back" ? "back" : "front" };
+  const P = settings && settings.particles;
+  if (P && typeof P === "object" && !Array.isArray(P)) {
+    const list = [];
+    for (const [k, v] of Object.entries(P)) {
+      if (!FX_NAME.test(k) || !v || typeof v !== "object" || list.length >= 8) continue;
+      const sp = particleSpec(v);
+      if (!sp) continue;
+      list.push({ k, ...sp });
+      if (!fx.has(k)) fx.set(k, { k, label: typeof v.label === "string" && v.label.trim() ? v.label.trim().slice(0, 40) : fxLabel(k), hint: typeof v.hint === "string" ? v.hint.trim().slice(0, 200) : "", def: v.default !== false });
+    }
+    if (list.length) h.particles = list;
+  }
+  if (fx.size) h.effects = [...fx.values()].slice(0, 12);
+  return h;
+}
+const fxStore = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(FX_KEY) || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+})();
+window.themeHook = (k) => (S.themeHooks || {})[k] || null;
+window.themeFx = (k, def, st = document.documentElement.dataset.style) => {
+  const v = fxStore[st] && fxStore[st][k];
+  return typeof v === "boolean" ? v : def;
+};
+function themeFxSet(st, k, on) {
+  (fxStore[st] && typeof fxStore[st] === "object" ? fxStore[st] : (fxStore[st] = {}))[k] = !!on;
+  try { localStorage.setItem(FX_KEY, JSON.stringify(fxStore)); } catch {}
+  applyHooks();
+}
+/** На <html> — data-fx-<имя>="on|off" (атрибуты трогаем, только когда они меняются). */
+function applyThemeEffects(list) {
+  const de = document.documentElement;
+  const want = new Map(list.map((o) => ["data-fx-" + o.k, window.themeFx(o.k, o.def) ? "on" : "off"]));
+  for (const a of [...de.attributes]) if (/^data-(fx|opt)-/.test(a.name) && !want.has(a.name)) de.removeAttribute(a.name);
+  for (const [n, v] of want) if (de.getAttribute(n) !== v) de.setAttribute(n, v);
+}
+// картинка из файла текущей темы для частиц ("shape": "asset:star.svg") — blob: адрес, один на файл
+const themeAssets = new Map();
+window.wmtAssetUrl = async (id, name) => {
+  if (id !== document.documentElement.dataset.style || !S.themeWmt) return "";
+  if (themeAssets.has(name)) return themeAssets.get(name);
+  let url = "";
+  try {
+    const a = S.themeWmt.asset("asset:" + name);
+    if (a && /^image\//.test(a.mime)) url = URL.createObjectURL(new Blob([a.bytes], { type: a.mime }));
+  } catch {}
+  themeAssets.set(name, url);
+  return url;
+};
+
+/** Карточка «Эффекты темы» во вкладке «Оформление»: выключатели эффектов текущей темы (снег, частицы…). */
+function renderFxCard() {
+  const list = window.themeHook("effects") || [];
+  if (!list.length) return;
+  const st = document.documentElement.dataset.style;
+  const c = setCard("look", L("Эффекты темы"));
+  c.append(el("p", "status", L("Украшения текущей темы: каждое можно выключить отдельно, остальное оформление останется.")));
+  for (const o of list) {
+    const row = switchRow(o.label, window.themeFx(o.k, o.def, st), (on) => themeFxSet(st, o.k, on));
+    if (o.hint) row.title = o.hint;
+    c.append(row);
+  }
+  if (document.documentElement.dataset.anim === "off") c.append(el("p", "status", L("Анимации выключены — эффекты стоят неподвижно (если тема это умеет).")));
 }
 
 // ───────────────────────── интро тем (как у Whisper Yandex) ─────────────────────────
@@ -3135,6 +3283,8 @@ let thKey = "";
 function applyHooks() {
   const de = document.documentElement, vb = $("#volBtn");
   const ts = S.themeSettings || {};
+  applyThemeEffects(window.themeHook("effects") || []);
+  if (window.themeFxApply) window.themeFxApply(); // события, курсор, слой украшений и частицы темы (themefx.js)
   // "layout": "fixed" — тема задаёт расположение сама (layout.js); "console" — стиль-консоль (cli.js)
   if (window.Layout && window.Layout.lock) window.Layout.lock(ts.layout === "fixed");
   const con = ts.console;
@@ -4021,7 +4171,7 @@ async function playAt(i, fresh, opts) {
   updateNowPlaying();
   markPlaying();
   // ядру Whisper: новый трек (повтор со свежей ссылкой — не новое включение, в историю не идёт)
-  Whisper.player.report({ track: t, queue: true, ...(fresh ? {} : { started: t }) });
+  Whisper.player.report({ track: t, queue: true, liked: !!libraryMatch(t), ...(fresh ? {} : { started: t }) });
   try {
     const title = `${t.artist} — ${t.title}`;
     if (at > 0 || hold) await invoke("player_cue", { at, hold });
@@ -4891,6 +5041,8 @@ function updateQueueInfo() {
  *  (просьба владельца, 2026-11-06; убрать — кнопкой в строке библиотеки); «⋯». */
 function syncNpAdd() {
   const t = S.current;
+  // ядру — «в библиотеке ли» играющий трек (событие like: темы, виджеты; при смене трека оно приходит вместе с ним)
+  if (t) Whisper.player.report({ liked: !!libraryMatch(t) });
   $("#pMore").disabled = !t;
   for (const b of [$("#likeBtn"), $("#fLike")]) {
     b.hidden = !t || !t.service || t.unavailable || !!libraryMatch(t);

@@ -175,7 +175,7 @@
     if (isLive) {
       const e = (lv[0] + lv[1] + lv[2] + lv[3] + lv[4]) / 5;
       viz.eAvg += (e - viz.eAvg) * (1 - Math.pow(0.95, k60));
-      if (e > viz.eAvg * 1.18 + 0.03 && e - viz.ePrev > 0.015 && ts - viz.lastBeat > 200) { viz.kick = 1; viz.lastBeat = ts; viz.beatNow = true; }
+      if (e > viz.eAvg * 1.18 + 0.03 && e - viz.ePrev > 0.015 && ts - viz.lastBeat > 200) { viz.kick = 1; viz.lastBeat = ts; viz.beatNow = true; window.themeFxBeat?.(); }
       viz.ePrev = e;
     }
     viz.kick *= Math.exp(-dt * 6.5);

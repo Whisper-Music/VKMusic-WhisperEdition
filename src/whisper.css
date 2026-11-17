@@ -1,6 +1,6 @@
 /* Основа оформления Whisper — «Неон», «Королевский», «Стимпанк», «Lolitta» и общая разметка, на которую написаны темы
    Whisper (секция «@@ css whisper-music» в .wmt). Перенесено без изменений из Whisper Yandex
-   (https://github.com/Whisper-Music/YandexMusic-WhisperEdition, src/styles.css, коммит 3f42536), чтобы темы Whisper
+   (https://github.com/Whisper-Music/YandexMusic-WhisperEdition, src/styles.css, коммит 119e13d, 2026-11-17), чтобы темы Whisper
    применялись в VK Music целиком. Правки VK Music — не здесь, а в app.css (подключается после).
 
    Required Notice: Copyright (c) 2026 Whisper Music (https://github.com/Whisper-Music/yandex-desktop)
@@ -120,6 +120,10 @@ button { font: inherit; color: var(--text); cursor: pointer; border: 0; backgrou
 .list li { display: flex; align-items: center; gap: 14px; padding: 7px 10px; border-radius: 14px; cursor: pointer; transition: background .12s; }
 .list li:hover { background: rgba(255,255,255,.08); }
 .list li.playing { background: rgba(255,255,255,.1); }
+/* длинный список (больше 300 строк, main.js renderList): строки вне экрана не раскладываются и не рисуются —
+   прокрутка тысяч лайков не тормозит. auto — запоминает настоящую высоту строки, когда та хоть раз показалась.
+   Играющая и подсвеченная строки — как обычно: у тем на них бывает свечение за краями строки */
+.list.biglist > li:not(.playing):not(.flash):not(.dragging):not(:hover) { content-visibility: auto; contain-intrinsic-size: auto 62px; }
 .list li.playing .t { color: var(--accent); text-shadow: 0 0 12px color-mix(in srgb, var(--glow-c) 70%, transparent); }
 .list img, .cover { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: rgba(255,255,255,.08); }
 .t { display: block; font-weight: 500; }
@@ -153,6 +157,10 @@ button { font: inherit; color: var(--text); cursor: pointer; border: 0; backgrou
 .volpop { transition: opacity .15s .3s, transform .15s .3s, visibility 0s .45s; }
 .volwrap:hover .volpop, .volwrap:focus-within .volpop { transition-delay: 0s; }
 .volpop::after { content: ""; position: absolute; left: -16px; right: -16px; top: 100%; height: 16px; }
+/* Открытая «Очередь и история» (.qpanel, z-index 9) стоит над плеером, и ползунок громкости уходил под неё.
+   Пока ползунок открыт — плеер выше панели. .volwrap — для тем, где плеер разобран (display: contents, retro-tv). */
+html:has(.player .volwrap:hover, .player .volwrap:focus-within) .player,
+.player .volwrap:hover, .player .volwrap:focus-within { z-index: 10 !important; }
 .volval { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .volbox { position: relative; width: 28px; height: 110px; }
 .volbox input { position: absolute; left: 50%; top: 50%; width: 110px; transform: translate(-50%, -50%) rotate(-90deg); }
@@ -172,6 +180,10 @@ input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 14px; height: 14px; margin-top: -4px; border-radius: 50%;
   background: #fff; box-shadow: 0 0 10px var(--glow-c);
 }
+/* Firefox (браузерная версия): свои рамка бегунка и заливка — убрать; оформление копирует main.js (mozRange) */
+input[type=range]::-moz-range-thumb { border: 0; }
+input[type=range]::-moz-range-progress { background: transparent; }
+input[type=range]::-moz-focus-outer { border: 0; }
 
 .main.wavemode { overflow: hidden; display: flex; flex-direction: column; }
 .main.wavemode .head { flex: none; }
@@ -186,7 +198,7 @@ input[type=range]::-webkit-slider-thumb {
 }
 .wavebtn:hover { transform: scale(1.05); }
 .wavebtn svg { width: 54px; height: 54px; }
-.wavebtn.playing { animation: ring 2.4s ease-out infinite; }
+.wavebtn.playing { animation: ring 2.4s steps(40) infinite; }
 @keyframes ring {
   from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent), 0 0 calc(var(--glow) * 2) color-mix(in srgb, var(--accent) 65%, transparent); }
   to   { box-shadow: 0 0 0 46px transparent, 0 0 calc(var(--glow) * 2) color-mix(in srgb, var(--accent) 65%, transparent); }
@@ -209,8 +221,11 @@ input[type=range]::-webkit-slider-thumb {
 .settings[data-tab="play"] > .card:not([data-tab="play"]),
 .settings[data-tab="out"] > .card:not([data-tab="out"]),
 .settings[data-tab="app"] > .card:not([data-tab="app"]),
-.settings[data-tab="int"] > .card:not([data-tab="int"]) { display: none; }
-.settabs { column-span: all; display: flex; flex-wrap: wrap; gap: 8px; }
+.settings[data-tab="int"] > .card:not([data-tab="int"]),
+.settings[data-tab="data"] > .card:not([data-tab="data"]) { display: none; }
+/* шапка настроек (поиск + вкладки) и строка «ничего не нашлось» — на всю ширину, над столбцами (setpage.css) */
+.settings > .settop, .settings > .sfempty { column-span: all; }
+.settabs { display: flex; flex-wrap: wrap; gap: 8px; }
 .settabs .chip { padding: 8px 16px; font-size: 14px; }
 .card { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); border-radius: 18px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
 .card h3 { margin: 0; font-size: 15px; font-weight: 600; }
@@ -555,7 +570,7 @@ a { color: var(--accent); }
 :root[data-style="neon"] .tab.active {
   color: color-mix(in srgb, var(--accent) 40%, #fff); background: color-mix(in srgb, var(--accent) 38%, #07040f);
   text-shadow: 0 0 10px color-mix(in srgb, var(--glow-c) 60%, transparent);
-  animation: neonBreath 3.2s ease-in-out infinite;
+  animation: neonBreath 3.2s steps(48) infinite;
 }
 @keyframes neonBreath {
   0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--glow-c) 38%, transparent), inset 0 0 8px color-mix(in srgb, var(--glow-c) 14%, transparent); }
@@ -565,7 +580,7 @@ a { color: var(--accent); }
 :root[data-style="neon"] .nav { transition: background .15s, transform .18s cubic-bezier(.2, .8, .2, 1), box-shadow .2s; }
 :root[data-style="neon"] .nav:hover:not(:disabled):not(.active) { transform: translateX(3px); box-shadow: 0 0 14px color-mix(in srgb, var(--glow-c) 35%, transparent); }
 :root[data-style="neon"] .nav:active:not(:disabled) { transform: scale(.98); }
-:root[data-style="neon"] .nav.active { background-size: 220% 100%; animation: neonSheen 7s ease-in-out infinite alternate; }
+:root[data-style="neon"] .nav.active { background-size: 220% 100%; animation: neonSheen 7s steps(105) infinite alternate; }
 @keyframes neonSheen { from { background-position: 0% 50%; } to { background-position: 100% 50%; } }
 
 :root[data-style="neon"] .list li {
@@ -593,17 +608,19 @@ a { color: var(--accent); }
 :root[data-style="neon"] .list li:hover img { transform: scale(1.06); box-shadow: 0 0 14px color-mix(in srgb, var(--glow-c) 45%, transparent); }
 @keyframes neonRise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
-:root[data-style="neon"] .head h2 { animation: neonTitle 5s ease-in-out infinite; }
+:root[data-style="neon"] .head h2 { animation: neonTitle 5s steps(60) infinite; }   /* крупная тень 22–34 px — дорогая */
 @keyframes neonTitle {
   0%, 100% { text-shadow: 0 0 22px color-mix(in srgb, var(--accent) 50%, transparent); }
   50%      { text-shadow: 0 0 34px color-mix(in srgb, var(--accent) 78%, transparent); }
 }
-:root[data-style="neon"] body.is-playing .player .cover { animation: neonCover 2.6s ease-in-out infinite; }
+/* Медленное «дыхание» свечения (box-shadow / text-shadow) видеокарта не делает — каждый кадр это перерисовка
+   на основном потоке. Ступеньками ~15 раз в секунду: глазу не видно, а работы в разы меньше. */
+:root[data-style="neon"] body.is-playing .player .cover { animation: neonCover 2.6s steps(39) infinite; }
 @keyframes neonCover {
   0%, 100% { box-shadow: 0 0 0 0 transparent; }
   50%      { box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 55%, transparent); }
 }
-:root[data-style="neon"] body.is-playing .player .playbtn { animation: neonPlay 2.2s ease-out infinite; }
+:root[data-style="neon"] body.is-playing .player .playbtn { animation: neonPlay 2.2s steps(33) infinite; }
 @keyframes neonPlay {
   0%   { box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 60%, transparent), 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent); }
   70%  { box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 60%, transparent), 0 0 0 12px transparent; }
@@ -652,7 +669,10 @@ a { color: var(--accent); }
   -webkit-mask-composite: xor; mask-composite: exclude;
   filter: blur(1px); opacity: 0; transition: opacity .9s ease;
 }
-:root[data-style="neon"] body.is-playing .player::before { opacity: .9; animation: neonRun 9s linear infinite; }
+/* Огоньки — анимация зарегистрированного свойства: её считает не видеокарта, а основной поток, и каждый кадр
+   перерисовывается вся рамка плеера (маска + blur) вместе со стеклом панели. На 60 кадрах это и были «просадки,
+   пока играет трек»: наведение и прокрутка ждали отрисовку. 20 шагов в секунду на глаз почти не отличить. */
+:root[data-style="neon"] body.is-playing .player::before { opacity: .9; animation: neonRun 9s steps(180) infinite; }
 @keyframes neonRun { to { --neon-run: 360deg; } }
 
 /* ---------- Неон: орбиты вокруг кнопки «Моя волна» ----------
@@ -715,7 +735,7 @@ a { color: var(--accent); }
   100% { opacity: 0; scale: 1.85; border-width: .5px; }
 }
 /* сама кнопка: вместо общего «кольца» — дыхание свечения; с визуализатором — вспышка на каждый удар */
-:root[data-style="neon"] .stage:not(.viz) .wavebtn.playing { animation: neonCore 2.6s ease-in-out infinite; }
+:root[data-style="neon"] .stage:not(.viz) .wavebtn.playing { animation: neonCore 2.6s steps(39) infinite; }
 @keyframes neonCore {
   0%, 100% { box-shadow: 0 0 calc(var(--glow) * 2) color-mix(in srgb, var(--btn-glow) 60%, transparent); }
   50%      { box-shadow: 0 0 calc(var(--glow) * 3) color-mix(in srgb, var(--btn-glow) 85%, transparent); }
@@ -785,6 +805,21 @@ a { color: var(--accent); }
 }
 
 .stgrid { min-height: 96px; }
+/* закрепить жанр: звёздочка в углу пункта — при наведении, у закреплённого всегда */
+.stgrid { padding: 6px 6px 2px 0; }
+.stgrid .pill { position: relative; }
+.stgrid .ststar {
+  position: absolute; top: -7px; right: -7px; z-index: 1; width: 19px; height: 19px; border-radius: 50%;
+  display: grid; place-items: center; font-style: normal; font-size: 12px; line-height: 1; cursor: pointer;
+  color: var(--on-accent, #0b0618); background: var(--accent2); text-shadow: none;
+  opacity: 0; transform: scale(.6); transition: opacity .12s, transform .12s; pointer-events: none;
+}
+.stgrid .pill:hover .ststar, .stgrid .pill:focus-visible .ststar { opacity: 1; transform: none; pointer-events: auto; }
+.stgrid .ststar.on { opacity: 1; transform: none; pointer-events: auto; width: 15px; height: 15px; top: -5px; right: -5px; font-size: 10px; }
+.stgrid .pill:hover .ststar.on { width: 19px; height: 19px; top: -7px; right: -7px; font-size: 12px; }
+.stgrid .ststar:hover { filter: brightness(1.2); }
+.stgrid .stbreak { flex: 1 0 100%; height: 1px; margin: 3px 0; background: rgba(255,255,255,.1); }
+:root[data-anim="off"] .stgrid .ststar { transition: none; }
 .stmsg { flex: 1 0 100%; margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* кнопки справа в шапке («Моя волна по артисту», «Скачать», «Закрепить») — одной группой у правого края:
@@ -1108,6 +1143,7 @@ a { color: var(--accent); }
 :root[data-style="steam"] #likes { --ic: var(--i-heart); }
 :root[data-style="steam"] #statsBtn { --ic: var(--i-stats); }
 :root[data-style="steam"] #settingsBtn { --ic: var(--gear); }
+:root[data-style="steam"] #studioBtn { --ic: var(--ly-i-studio); }
 :root[data-style="steam"] #profile { --ic: var(--i-user); }
 :root[data-style="steam"] .search, :root[data-style="steam"] input[type=password], :root[data-style="steam"] .field {
   border-radius: 3px; border: 1px solid var(--ln); font-family: inherit;
@@ -1221,7 +1257,7 @@ a { color: var(--accent); }
   mask-composite: intersect;
 }
 :root[data-style="steam"] .wavebtn::after { inset: -20px; border: 1px solid var(--a2-ls); }
-:root[data-style="steam"] .wavebtn.playing { animation: steamBreath 2.6s ease-in-out infinite; }
+:root[data-style="steam"] .wavebtn.playing { animation: steamBreath 2.6s steps(39) infinite; }
 :root[data-style="steam"] .wavebtn.playing::before {
   background: conic-gradient(from var(--ang), var(--a2-lo) 0deg, var(--a2-ls) 200deg, var(--a2) 300deg, var(--a2-hi) 352deg, #fff3dc 358deg, var(--a2-lo) 360deg);
   animation: steamSweep 4s steps(36) infinite;
@@ -1370,6 +1406,7 @@ a { color: var(--accent); }
 :root[data-style="lolitta"] #likes { --ic: var(--i-heart); }
 :root[data-style="lolitta"] #statsBtn { --ic: var(--i-stats); }
 :root[data-style="lolitta"] #settingsBtn { --ic: var(--i-gear); }
+:root[data-style="lolitta"] #studioBtn { --ic: var(--ly-i-studio); }
 :root[data-style="lolitta"] #profile { --ic: var(--i-user); }
 :root[data-style="lolitta"] #profile::before { width: 22px; height: 22px; }
 
@@ -1675,9 +1712,12 @@ a { color: var(--accent); }
 .tmenu button svg { width: 18px; height: 18px; flex: none; color: var(--accent); }
 .tmenu button:hover { background: rgba(255,255,255,.1); }
 
+/* место — во внутреннем углу между нижней и боковой панелью: --toast-* ставит placeToast() в main.js
+   (по замеру .side и .player); без замера (панели спрятаны темой) — по центру над плеером, как раньше */
 .toast {
-  position: fixed; z-index: 70; left: 50%; bottom: 120px; transform: translateX(-50%);
-  max-width: min(640px, calc(100vw - 32px)); padding: 10px 16px; border-radius: 12px;
+  position: fixed; z-index: 70; left: var(--toast-l, 50%); right: var(--toast-r, auto); bottom: var(--toast-b, 120px);
+  transform: var(--toast-t, translateX(-50%));
+  max-width: var(--toast-w, min(640px, calc(100vw - 32px))); padding: 10px 16px; border-radius: 12px;
   font-size: 13px; color: var(--text); overflow-wrap: anywhere; text-align: center;
   background: rgba(18, 12, 38, 0.96); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
@@ -1753,6 +1793,9 @@ a { color: var(--accent); }
 .tmenu .mback { width: 28px; height: 28px; padding: 0; justify-content: center; border-radius: 50%; flex: none; color: var(--muted); }
 .tmenu .msep { border: 0; border-top: 1px solid rgba(255,255,255,.1); margin: 4px 6px; }
 .tmenu .mnote { margin: 4px 10px 6px; font-size: 12px; line-height: 1.45; color: var(--muted); }
+/* подзаголовок группы сам её отделяет: линия перед ним лишняя, вместо неё — небольшой отступ */
+.tmenu .msep:has(+ .mnote) { display: none; }
+.tmenu > :not(.msep) + .mnote { margin-top: 10px; }
 .tmenu .mscroll { max-height: min(46vh, 330px); overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin-top: 2px; }
 .tmenu .mpl { padding: 6px 10px; }
 .tmenu .mpl small { flex: none; font-size: 11px; color: var(--muted); }
@@ -1990,6 +2033,44 @@ body.vizfull-on #dim { opacity: .4; }
 .list li.histclear { justify-content: center; padding-top: 14px; cursor: default; border-bottom: 0; }
 .list li.histclear:hover { background: none; }
 
+/* «Открывал» (лента карточек над запросами) и подписи «Открывал» / «Искал» */
+.list li.histpicks, .list li.histhead-li {
+  display: block; padding: 0; cursor: default; border-bottom: 0; background: none !important;
+  box-shadow: none !important; transform: none !important; outline: 0;
+}
+.list li.histpicks::before, .list li.histpicks::after, .list li.histhead-li::before, .list li.histhead-li::after { display: none; }
+.list li.histhead-li { padding: 14px 12px 4px; }
+.histhead { display: block; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; }
+.list li.histpicks .histhead { padding: 4px 12px 8px; }
+.spicks {
+  display: flex; gap: 12px; overflow-x: auto; overflow-y: hidden; padding: 2px 12px 12px;
+  scroll-snap-type: x proximity; scrollbar-width: thin;
+}
+.spick {
+  position: relative; flex: none; width: 132px; display: flex; flex-direction: column; gap: 4px; padding: 8px;
+  border-radius: 12px; cursor: pointer; scroll-snap-align: start; transition: background .15s, transform .15s;
+}
+.spick:hover, .spick:focus-visible { background: rgba(255,255,255,.07); }
+.spick:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.spick img { display: block; width: 116px; height: 116px; border-radius: 10px; object-fit: cover; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+.spick img.rnd { border-radius: 50%; }
+.spick .spt { margin-top: 4px; font-size: 13.5px; font-weight: 600; color: var(--text); line-height: 1.25;
+  overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.spick .sps { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spick.artist { align-items: center; text-align: center; }
+.spick .spx {
+  position: absolute; top: 12px; right: 12px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 10px; color: #fff; background: rgba(10, 6, 22, .82); opacity: 0; transition: opacity .15s;
+}
+.spick:hover .spx, .spick .spx:focus-visible { opacity: .85; }
+.spick .spx:hover { opacity: 1; background: rgba(10, 6, 22, .95); }
+:root[data-anim="on"] .spick:hover { transform: translateY(-2px); }
+:root[data-style="royal"] .spick, :root[data-style="steam"] .spick { border-radius: 4px; }
+:root[data-style="royal"] .spick img:not(.rnd), :root[data-style="steam"] .spick img:not(.rnd) { border-radius: 3px; }
+:root[data-style="lolitta"] .spick .spt { color: var(--l-ink, var(--text)); }
+:root[data-style="lolitta"] .spick .sps { color: var(--l-ink2, var(--muted)); }
+:root[data-style="lolitta"] .spick:hover { background: rgba(255,255,255,.35); }
+
 @media (max-width: 880px) {
   .list li.best img { width: 64px; height: 64px; }
   .best .t { font-size: 18px; }
@@ -2057,6 +2138,23 @@ body.vizfull-on #dim { opacity: .4; }
 .ccgrp.ccbulk > summary { flex-wrap: wrap; row-gap: 2px; }
 .ccgrp.ccbulk > summary small { flex-basis: 100%; order: 3; }
 .ccrow.mixed > small { display: inline; font-style: italic; }
+/* «живые» темы (themefx.js): слой украшений и холст частиц — никогда не мешают щелчкам.
+   Сзади — сразу после #dim (над обоями, под окном), спереди — над окном, но под меню (60), подсказками (70) и окнами (80) */
+.fxlayer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; contain: strict; }
+.fxlayer[data-place="front"] { z-index: 50; }
+.fxlayer i { position: absolute; display: block; }
+.fxcanvas { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 55; pointer-events: none; }
+/* окно «Настроить тему…» (theme.js → openThemeSetup): выбор темы сверху, ниже — эффекты и интро */
+.thsetpick { margin: 0 0 14px; flex-wrap: wrap; gap: 6px; }
+.thsetsec { display: flex; flex-direction: column; gap: 10px; }
+.thsetsec + .thsetsec { margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); }
+.thsetsec h4 { margin: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.thsetsec .status { margin: 0; }
+.thsetrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.thsetempty { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+/* строка, на которой окно открыли правым щелчком по элементу («Цвета этого места…») */
+.ccrow.ccflash { animation: ccFlash 1.6s ease-out; box-shadow: inset 2px 0 0 var(--accent2); }
+@keyframes ccFlash { from { background: color-mix(in srgb, var(--accent2) 42%, transparent); } to { background: transparent; } }
 .ccrow.mixed input[type=color] { opacity: .8; }
 
 /* ---------- маленькое окно: верхняя, боковая и нижняя панели видны целиком в любом стиле ---------- */
@@ -2165,7 +2263,12 @@ body.vizfull-on .thbtns { visibility: hidden; }
    крупная полупрозрачная копия обложки, отражённая в углу, аура из цветов обложки, зерно и виньетка. */
 @property --accent { syntax: "<color>"; inherits: true; initial-value: #a66bff; }
 @property --accent2 { syntax: "<color>"; inherits: true; initial-value: #e060ff; }
-:root:has(body.dyn-on) { transition: --accent 1.2s ease, --accent2 1.2s ease; }
+/* --accent наследуется всеми элементами окна: плавный переход на 60 кадрах — это пересчёт стилей ВСЕГО окна
+   каждый кадр (длинный список лайков — тысячи элементов), отсюда фриз на смене трека. 12 шагов за 1,2 с —
+   цвет так же перетекает, а пересчётов в 6 раз меньше. */
+:root:has(body.dyn-on) { transition: --accent 1.2s steps(12), --accent2 1.2s steps(12); }
+/* цвет выбирают в пипетке (main.js, класс cpick) — переход не нужен, иначе цвет отстаёт от курсора */
+:root.cpick:has(body.dyn-on) { transition: none; }
 
 /* #dynBg лежит внутри #bg: место и форму (inset, border-radius) задаёт тема через #bg, поэтому фон по обложке
    не вылезает за экран «Телевизора» и не закрывает корпус. Свою картинку и размытие #bg на это время убирает. */
@@ -2345,6 +2448,57 @@ body.room-guest #seek, body.room-guest #fSeek { cursor: default; }
 .lsday { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
 .lsday i { width: 100%; border-radius: 4px 4px 0 0; background: linear-gradient(var(--accent), color-mix(in srgb, var(--accent2) 60%, transparent)); }
 .lsday small { font-size: 10px; color: var(--muted); white-space: nowrap; }
+/* исполнители: имя, «треков · прослушиваний», полоска; справа — время и доля */
+.lsartist { padding: 5px 6px; }
+.lsartist img { width: 40px; height: 40px; }
+.lsartist img.rnd { border-radius: 50%; }
+.lsval2 b { color: var(--text); }
+.lsartist .lsmid { gap: 2px; }
+.lsartist .lsmid > span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lsartist .lsbar { height: 3px; margin-top: 3px; }
+.lsval2 { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex: none; line-height: 1.15; }
+.lsval2 b { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.lsval2 small { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* кольца (жанры, время суток): слева кольцо с подписью в середине, справа легенда */
+.lsperiod .lsexport { margin-left: auto; }
+.lspie { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 20px; align-items: center; margin-top: 6px; }
+.lsring { position: relative; width: 150px; aspect-ratio: 1; }
+.lsring svg { display: block; width: 100%; height: 100%; }
+.lsring circle { transition: stroke-width .18s ease; }
+.lsring circle:not(.lsringbg):hover { stroke-width: 6.4; }
+.lsringbg { stroke: rgba(255,255,255,.07); }
+.lsringmid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+.lsringmid b { font-size: 22px; font-weight: 700; line-height: 1.1; }
+.lsringmid small { font-size: 11.5px; color: var(--muted); }
+.lspielegend { grid-template-columns: minmax(0, 1fr); gap: 7px; }
+.lsleg.click { cursor: pointer; border-radius: 8px; margin: -3px -6px; padding: 3px 6px; }
+.lsleg.click:hover { background: rgba(255,255,255,.06); }
+@media (max-width: 620px) { .lspie { grid-template-columns: minmax(0, 1fr); justify-items: center; } .lspielegend { width: 100%; } }
+/* «кто ты по жанрам» — над кольцом жанров */
+.lswho { display: flex; flex-direction: column; gap: 3px; padding: 12px 14px; margin: 2px 0 8px; border-radius: 12px; background: linear-gradient(100deg, color-mix(in srgb, var(--accent) 26%, transparent), color-mix(in srgb, var(--accent2) 14%, transparent)); }
+.lswho small { font-size: 12px; color: var(--muted); }
+.lswho b { font-size: 21px; font-weight: 800; line-height: 1.2; }
+.lswho em { font-style: normal; font-size: 12.5px; color: var(--muted); }
+.lswho.locked { background: rgba(255,255,255,.05); }
+.lswho.locked b { font-size: 15px; font-weight: 600; }
+.lswho.locked .lsbar { margin: 5px 0 2px; }
+/* по дням / по месяцам: плитки, время — цифрами на каждой; чем больше слушалось, тем плитка ярче (--k 0…1) */
+.lstiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 6px; margin-top: 8px; }
+.lstiles.week { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.lstiles.months { grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); }
+.lstile {
+  aspect-ratio: 1; min-width: 0; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  background: color-mix(in srgb, var(--accent) calc(var(--k, 0) * 62% + 10%), rgba(255,255,255,.04));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+}
+.lstiles.week .lstile, .lstiles.months .lstile { aspect-ratio: auto; height: 64px; }
+.lstile small { font-size: 10.5px; line-height: 1; color: color-mix(in srgb, var(--text) 68%, transparent); white-space: nowrap; }
+.lstile b { font-size: 14px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lstile.zero { background: rgba(255,255,255,.03); }
+.lstile.zero b { font-weight: 400; color: var(--muted); }
+.lstile:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent2) 70%, transparent); }
+:root[data-style="royal"] :is(.lstile, .lswho), :root[data-style="steam"] :is(.lstile, .lswho) { border-radius: 3px; }
+:root[data-anim="off"] .lsring circle { transition: none; }
 @media (max-width: 1100px) { .lsfav { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .lshero { grid-column: 1 / -1; } }
 :root[data-style="royal"] :is(.lshero img, .lsmini img:not(.rnd), .lsgicon, .lsrow, .lsstack), :root[data-style="steam"] :is(.lshero img, .lsmini img:not(.rnd), .lsgicon, .lsrow, .lsstack) { border-radius: 3px; }
 
@@ -2396,6 +2550,7 @@ body.cli-on .cli {
 
 /* ---------- аватарка артиста / обложка альбома на весь экран (imgview.js) ---------- */
 .headimg.zoomable { cursor: zoom-in; transition: transform .15s, filter .15s; }
+#fCover.zoomable { cursor: zoom-in; }
 .headimg.zoomable:hover { transform: scale(1.04); filter: brightness(1.08); }
 .imgview {
   position: fixed; inset: 0; z-index: 9000; display: grid; place-items: center; cursor: zoom-out;
@@ -2431,6 +2586,14 @@ body.cli-on .cli {
 .fontitem.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent); }
 #fontCard .switch { margin-top: 10px; }
 #fontCard .status:empty { display: none; }
+/* «Цвета и шрифт»: два столбца «цвет + кнопка под ним», под ними — широкая кнопка шрифта с названием текущего */
+.swgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+.swcol { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; min-width: 0; }
+.swcol > .nav { width: 100%; text-align: center; }
+.swcol #colorReset:disabled { opacity: .45; cursor: default; }
+.fontsec { display: flex; flex-direction: column; }
+.fontcur .fontpick { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; }
+.fontpick .fontname { flex: 0 1 auto; font-size: 14px; color: var(--muted); }
 
 /* ---- из src/theme.css Whisper Yandex: карточки своих стилей ---- */
 .stylecard.custom { position: relative; }

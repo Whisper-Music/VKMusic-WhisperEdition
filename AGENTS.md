@@ -153,7 +153,10 @@ src-tauri/gen/android/     проект Android (Tauri android init); своё �
                            манифест, Media3 в app/build.gradle.kts, BuildTask.kt (Tauri CLI через npx)
 src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
-src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, PolyForm Noncommercial) — не править
+src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, коммит в заголовке; PolyForm Noncommercial) — не
+                           править, обновлять целиком из Whisper Yandex (хвост «карточки своих стилей» сохранять)
+src/themefx.js             «живые» темы (порт Whisper Yandex): события .ev-… / .w-tap, курсор --mx…, слой #fxLayer, частицы
+                           (холст #fxCanvas); разбор настроек — themeHooksOf в app.js, выключатели эффектов — vkm_fx, data-fx-<имя>
 src/boot.js                до первой отрисовки: стиль прошлого запуска (vkm_boot), интерфейс скрыт до применения темы
 src/layout.js, layout.css  расположение (как у Whisper Yandex; закреплённые — только закладками сверху, renderTabs в app.js): мини-режимы панелей, размер за край, мини-вид
                            (`ui: super`, Ctrl+Shift+M / двойной щелчок по пустому месту панели: колонка значков + плитка и
@@ -711,6 +714,12 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   темы — `omarchy::watch` (раз в секунду отпечаток без чтения файлов, пока выбран стиль; событие `theme://omarchy` после
   двух одинаковых отпечатков подряд) → `applyTheme` в app.js. Проверка на этой машине:
   `cargo test live_omarchy -- --ignored --nocapture`.
+* Эффекты и «живые» темы (как у Whisper Yandex, 2026-11-17; THEMES.md Whisper Yandex, «Эффекты» и «Живые темы»):
+  settings whisper-music темы → `effects` (и пометки `data-fx-<имя>` в CSS) — выключатели в карточке «Эффекты темы»
+  («Оформление»), выбор — `vkm_fx` по стилям, на `<html>` — `data-fx-<имя>="on|off"`; `layer`, `particles`, события
+  и курсор рисует themefx.js (`window.themeHook`, `window.themeFx`, картинки частиц — `wmtAssetUrl` из файла темы).
+  Страница — `.main[data-page]` (id кнопки раздела, как у Whisper Yandex); бит визуализатора — `themeFxBeat`.
+  Ядру сообщается «в библиотеке ли» играющий трек (`report({ liked })`) — по нему событие `like` (частицы, виджеты).
 * Интро тем (как у Whisper Yandex, 2026-11-13; раздел 5б WMT-FORMAT.md ядра): `@@ css whisper-intro` +
   `@@ settings whisper-intro { name, duration }`. Какие стили с интро — `ThemeInfo.intro` (`themes::intro_of`, те же
   правила, что `introInfo` ядра); CSS — `WhisperThemeCss.introCss` (через движок тем, как остальной CSS темы) в
