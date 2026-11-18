@@ -59,7 +59,7 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   секреты `VKM_KEYSTORE_B64` (`base64 -w0` файла .jks), `VKM_KEYSTORE_PASS`, `VKM_KEY_ALIAS` — если не `vkmusic`;
   ключ один навсегда: APK с другим ключом Android поверх установленного не поставит; `versionCode` Tauri считает из версии). Автообновление Windows (просьба владельца,
   2026-11-05; `update.rs`, tauri-plugin-updater только в `cfg(windows)`): `latest.json` последнего выпуска, установщик
-  подписан minisign — открытый ключ в `tauri.windows.conf.json` (`plugins.updater`), закрытый — секреты репозитория
+  подписан minisign (подпись — в `latest.json`; файл `.sig` из черновика удаляет `release.yml`) — открытый ключ в `tauri.windows.conf.json` (`plugins.updater`), закрытый — секреты репозитория
   `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD` (у владельца — `~/.tauri/vkmusic-whisper.key`; потерять ключ = выпущенные
   копии больше не обновятся). Интерфейс проверяет раз при запуске (`checkUpdate`), ставит — по кнопке в подсказке.
   Автообновление Android (просьба владельца, 2026-11-15; `update.rs`, `cfg(target_os = "android")`): плагин на телефоне

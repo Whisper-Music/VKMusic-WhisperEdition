@@ -148,6 +148,22 @@ jobs:
           releaseDraft: true
           prerelease: false
 
+      # подпись установщика уже внутри latest.json (поле signature) — отдельный .sig в выпуске не нужен;
+      # у tauri-action нет настройки, чтобы его не загружать, поэтому убираем после
+      - name: Убрать .sig из черновика (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.guard.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name | select(endswith(".sig"))' |
+            while read -r sig; do
+              gh release delete-asset "$tag" "$sig" --repo "$GITHUB_REPOSITORY" --yes
+            done
+
   # Android: подписанный APK (arm64, armv7, x86_64, x86 в одном файле) — в тот же черновик. После сборок для компьютера:
   # черновик к тому времени уже создан tauri-action (а если они упали — создаётся здесь), гонки за него нет.
   android:
