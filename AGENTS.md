@@ -194,7 +194,9 @@ src/eq.js                  эквалайзер (как у Whisper Yandex): ок
 src/viz.js                 визуализатор VK Микса (как у Whisper Yandex): #viz на .stage, весь экран — #vizFull, карточка
                            «Визуализатор» в «Оформлении» (vkm_viz); замеры — `player_viz { enabled, live }`, пока его видно
 src/power.js               энергосбережение: карточка в «Общем» (vkm_power: выключено / всегда / при заряде ниже порога),
-                           класс eco на <html>; заряд — navigator.getBattery, иначе `battery_status` (Linux sysfs)
+                           класс eco на <html>; заряд — navigator.getBattery, иначе `battery_status` (Linux sysfs); эффекты
+                           темы в экономии выключены, включённые вручную — свой выбор `vkm_fx_eco` (`themeFx` в app.js;
+                           частицы — только такие, если тема не запрещает анимации; просьба владельца, 2026-11-18)
 src/sleep.js               режим сна: луна #sleepBtn в .pright, карточка «Режим сна» в «Общем» (vkm_sleep), sleep://event
 src/cli.js                 стиль-консоль («console» в settings темы, тема «Терминал»): команды VK Music, разметка #cli Whisper
 src/mini.html, mini.js, mini.css  мини-плеер (окно `mini`): данные — только textContent, обложки — https и vkm /cover
@@ -473,7 +475,8 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `vkm_style_view` (компактный вид стилей), `vkm_search_hist` (история поиска, 30), `vkm_hotkeys`, `vkm_layout`,
   `vkm_colors` (цвета пользователя по стилям: в CSS попадают только `#rrggbb(aa)`), `vkm_cli_hist` (история команд
   консоли), `vkm_cli_prev_style` (к какому стилю вернёт `gui`), `vkm_sleep` (режим сна: `{ min, off }` — минуты и
-  «выключить компьютер»), `vkm_intro` (интро тем: `{ on, off: [id стилей] }`), `vkm_rotate` (телефон: поворот экрана, `"0"` — только вертикально). Эквалайзер — не здесь, а в config.json
+  «выключить компьютер»), `vkm_intro` (интро тем: `{ on, off: [id стилей] }`), `vkm_rotate` (телефон: поворот экрана, `"0"` — только вертикально), `vkm_fx_eco` (эффекты тем, включённые в
+  энергосбережении: `{ "<стиль>": { "<эффект>": true|false } }`, как `vkm_fx`). Эквалайзер — не здесь, а в config.json
   (`Config::eq`): фильтр mpv нужен при запуске, до интерфейса. В резервную копию входит весь localStorage, кроме
   `vkm_boot`, `wa_index_v3` и `vkm_libsync` (`backup::storage_key_ok`).
 * Офлайн-режим (как у Whisper Yandex, 2026-11-17): `navigator.onLine` = false — библиотека показывает только файлы и

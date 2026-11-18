@@ -880,7 +880,7 @@ window.I18N_DICTS.en = {
   "Через заданное время музыка плавно затихнет (последние 3 минуты) и встанет на паузу. Луна на экране «Сейчас играет» включает и выключает режим.": "After the set time the music fades out (over the last 3 minutes) and pauses. The moon on the Now Playing screen turns the timer on and off.",
   "Куда кнопка со стрелкой сохраняет треки. Пусто — «Загрузки» телефона.": "Where the arrow button saves tracks. Empty — the phone's Downloads.",
   "Энергосбережение": "Power saving",
-  "Без анимаций, размытия, фона по обложке, видеообоев и визуализатора — музыка играет как обычно.": "No animations, blur, cover background, video wallpapers or visualizer — the music plays as usual.",
+  "Без анимаций, размытия, эффектов темы, фона по обложке, видеообоев и визуализатора — музыка играет как обычно.": "No animations, blur, theme effects, cover background, video wallpapers or visualizer — the music plays as usual.",
   "Выключено": "Off",
   "При низком заряде": "On low battery",
   "Включать": "Turn on",
@@ -1118,6 +1118,7 @@ window.I18N_DICTS.en = {
   // ── эффекты тем (themefx.js) ──
   "Эффекты темы": "Theme effects",
   "Украшения текущей темы: каждое можно выключить отдельно, остальное оформление останется.": "Decorations of the current theme: switch off any of them, the rest of the look stays.",
+  "Включено энергосбережение — эффекты выключены. Включённые здесь работают, пока оно действует; обычный выбор вернётся после.": "Power saving is on — effects are off. Those you turn on here work while it lasts; your usual choice comes back afterwards.",
   "Анимации выключены — эффекты стоят неподвижно (если тема это умеет).": "Animations are off — effects stay still (if the theme supports it).",
   "Снег": "Snow",
   "Дождь": "Rain",

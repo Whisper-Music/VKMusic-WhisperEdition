@@ -14,12 +14,14 @@
 //      (у каждого --i — номер и --r1…--r3 — постоянные «случайные» 0…1, чтобы раскидать их одним правилом).
 //   4. Частицы: settings "particles": { … } — рисует приложение на одном холсте поверх окна (не мешает щелчкам).
 //      Каждая стайка — эффект темы: выключается в «Настроить тему…». Выключены анимации или система просит меньше
-//      движения — частиц нет. Окно скрыто — холст стоит.
+//      движения — частиц нет (в энергосбережении — только включённые вручную). Окно скрыто — холст стоит.
 (() => {
   const de = document.documentElement;
   const W = window.Whisper;
   const reduce = matchMedia?.("(prefers-reduced-motion: reduce)");
-  const animOk = () => de.dataset.anim !== "off" && !reduce?.matches;
+  // в энергосбережении (power.js) анимации выключены, но стайку, которую включили вручную (эффекты темы в экономии
+  // выключены — themeFx в app.js), рисуем, если сама тема анимации не запрещает
+  const animOk = () => !reduce?.matches && (de.dataset.anim !== "off" || (!!window.Power?.active() && !!window.themeAnimations?.()));
   let st = { id: "", events: false, pointer: false, layer: null, particles: [] };
   let booted = false;
 

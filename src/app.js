@@ -3045,14 +3045,32 @@ const fxStore = (() => {
     return {};
   }
 })();
+// Энергосбережение (power.js) выключает все эффекты темы; включённые вручную, пока оно действует, — свой выбор
+// (vkm_fx_eco, так же по стилям): обычный выбор он не трогает и после выхода из экономии снова действует обычный
+const FX_ECO_KEY = "vkm_fx_eco";
+const fxEcoStore = (() => {
+  try {
+    const v = JSON.parse(localStorage.getItem(FX_ECO_KEY) || "{}");
+    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  } catch {
+    return {};
+  }
+})();
+const fxEco = () => !!(window.Power && Power.active());
 window.themeHook = (k) => (S.themeHooks || {})[k] || null;
 window.themeFx = (k, def, st = document.documentElement.dataset.style) => {
-  const v = fxStore[st] && fxStore[st][k];
-  return typeof v === "boolean" ? v : def;
+  const eco = fxEco();
+  const store = eco ? fxEcoStore : fxStore;
+  const v = store[st] && store[st][k];
+  return typeof v === "boolean" ? v : eco ? false : def;
 };
+/** Анимации разрешает сама тема (features.animations) — энергосбережение здесь не в счёт (частицы, themefx.js). */
+window.themeAnimations = () => !(S.themeSettings && S.themeSettings.features && S.themeSettings.features.animations === false);
 function themeFxSet(st, k, on) {
-  (fxStore[st] && typeof fxStore[st] === "object" ? fxStore[st] : (fxStore[st] = {}))[k] = !!on;
-  try { localStorage.setItem(FX_KEY, JSON.stringify(fxStore)); } catch {}
+  const eco = fxEco();
+  const store = eco ? fxEcoStore : fxStore;
+  (store[st] && typeof store[st] === "object" ? store[st] : (store[st] = {}))[k] = !!on;
+  try { localStorage.setItem(eco ? FX_ECO_KEY : FX_KEY, JSON.stringify(store)); } catch {}
   applyHooks();
 }
 /** На <html> — data-fx-<имя>="on|off" (атрибуты трогаем, только когда они меняются). */
@@ -3077,18 +3095,24 @@ window.wmtAssetUrl = async (id, name) => {
 };
 
 /** Карточка «Эффекты темы» во вкладке «Оформление»: выключатели эффектов текущей темы (снег, частицы…). */
+let fxCard = null;
 function renderFxCard() {
+  const old = fxCard && fxCard.isConnected ? fxCard : null;
+  fxCard = null;
   const list = window.themeHook("effects") || [];
-  if (!list.length) return;
+  if (!list.length) return old && old.remove();
   const st = document.documentElement.dataset.style;
-  const c = setCard("look", L("Эффекты темы"));
+  const c = setCard("look", L("Эффекты темы"), "fxcard");
   c.append(el("p", "status", L("Украшения текущей темы: каждое можно выключить отдельно, остальное оформление останется.")));
+  if (fxEco()) c.append(el("p", "status", L("Включено энергосбережение — эффекты выключены. Включённые здесь работают, пока оно действует; обычный выбор вернётся после.")));
   for (const o of list) {
     const row = switchRow(o.label, window.themeFx(o.k, o.def, st), (on) => themeFxSet(st, o.k, on));
     if (o.hint) row.title = o.hint;
     c.append(row);
   }
   if (document.documentElement.dataset.anim === "off") c.append(el("p", "status", L("Анимации выключены — эффекты стоят неподвижно (если тема это умеет).")));
+  if (old) old.replaceWith(c);
+  fxCard = c;
 }
 
 // ───────────────────────── интро тем (как у Whisper Yandex) ─────────────────────────

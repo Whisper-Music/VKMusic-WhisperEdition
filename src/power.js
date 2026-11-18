@@ -2,7 +2,8 @@
 // Энергосбережение (просьба владельца, 2026-11-15): «Настройки → Общее → Энергосбережение» — выключено, всегда или
 // при заряде ниже порога (не на зарядке — как экономия заряда у Android). Пока действует (класс eco на <html>):
 // анимации выключены (data-anim="off", как у темы без анимаций), нет размытия под панелями и фона по обложке,
-// видеообои на паузе, визуализатор VK Микса не рисует (viz.js). Музыка, плеер и всё остальное — как обычно.
+// видеообои на паузе, визуализатор VK Микса не рисует (viz.js), эффекты темы выключены (включить можно вручную —
+// «Эффекты темы», свой выбор на время экономии: vkm_fx_eco в app.js). Музыка, плеер и всё остальное — как обычно.
 // Заряд: navigator.getBattery (телефон), иначе battery_status из Rust (Linux, /sys/class/power_supply); нет ни того,
 // ни другого (настольный компьютер) — работает только «Всегда». Настройка — localStorage vkm_power { mode, at }.
 (() => {
@@ -30,9 +31,14 @@
     on = next;
     const root = document.documentElement;
     root.classList.toggle("eco", on);
-    // анимации: при выходе из экономии — как задаёт тема (applyStyleVars в app.js); при входе — выключены
-    if (on) root.dataset.anim = "off";
-    else if (typeof applyStyleVars === "function") applyStyleVars();
+    // анимации: при выходе из экономии — как задаёт тема (applyStyleVars в app.js); при входе — выключены.
+    // Эффекты темы (снег, частицы…) в экономии выключены, пока их не включат вручную (themeFx в app.js) —
+    // applyHooks заново ставит data-fx-* и частицы, карточка «Эффекты темы» перерисовывается
+    if (on) {
+      root.dataset.anim = "off";
+      if (typeof applyHooks === "function" && S.theme) applyHooks();
+    } else if (typeof applyStyleVars === "function" && S.theme) applyStyleVars();
+    if (typeof renderFxCard === "function" && fxCard && fxCard.isConnected) renderFxCard();
     const v = document.getElementById("bgVideo");
     if (v && !v.hidden) {
       if (on) v.pause();
@@ -88,7 +94,7 @@
     const c = el("div", "card own powercard");
     c.dataset.tab = "ui";
     c.append(el("h3", null, L("Энергосбережение")));
-    c.append(el("p", "status", L("Без анимаций, размытия, фона по обложке, видеообоев и визуализатора — музыка играет как обычно.")));
+    c.append(el("p", "status", L("Без анимаций, размытия, эффектов темы, фона по обложке, видеообоев и визуализатора — музыка играет как обычно.")));
     const modes = [["off", L("Выключено")], ["on", L("Всегда")]];
     if (bat) modes.push(["auto", L("При низком заряде")]);
     c.append(seg(L("Включать"), modes, cfg.mode === "auto" && !bat ? "off" : cfg.mode, (v) => (cfg.mode = v)));
