@@ -1,8 +1,8 @@
 "use strict";
 // Телефон (Android; класс html.mobile ставит boot.js, раскладка — mobile.css). Разметка та же, что на компьютере
 // (контракт с темами Whisper), только несколько элементов переставляются туда, где до них дотянется палец:
-// * сверху — строка поиска (из боковой панели) и кнопка аккаунта: «Сервисы» (вход во ВКонтакте и SoundCloud);
-// * боковая панель — нижняя полоса разделов со значками (раздел «Сервисы» — кнопкой аккаунта);
+// * сверху — строка поиска (из боковой панели) и кнопка аккаунта — «Профиль»: статистика, Whisper Archive, «Сервисы»;
+// * боковая панель — нижняя полоса разделов со значками (без «Статистики» — она в профиле);
 // * плеер внизу — мини-плеер: обложка, трек, «Пуск», «Вперёд», тонкая полоса прогресса; нажатие — «Сейчас играет»;
 // * режимы плеера (перемешать, повтор, текст, «Постоянный уровень громкости», сон, кнопки модулей ядра —
 //   «Слушать вместе», очередь) и «⋯» — на экран «Сейчас играет»; id и обработчики остаются прежними;
@@ -64,9 +64,9 @@
   const main = $(".main");
   const account = el("button", "maccount");
   account.type = "button";
-  account.setAttribute("aria-label", L("Сервисы и интеграции"));
+  account.setAttribute("aria-label", L("Профиль"));
   account.innerHTML = Icons.svg("user");
-  account.addEventListener("click", () => go("services"));
+  account.addEventListener("click", () => go(profLast));
   if (search && main) {
     const box = el("div", "msearch");
     const field = el("label", "mfield");
@@ -76,8 +76,41 @@
     main.prepend(box);
   }
 
+  // ---------- «Профиль»: кнопка аккаунта ----------
+  // Статистика на телефоне — не разделом внизу (просьба владельца, 2026-11-18: слишком много кнопок), а в профиле:
+  // кнопка аккаунта открывает её, над страницей — вкладки профиля: статистика, профиль Whisper Archive (страница
+  // модуля ядра, если он есть) и «Сервисы» (вход во ВКонтакте и SoundCloud — вкладка «Интеграции» настроек).
+  // Вкладки — свой ряд над страницей: страницы рисуются заново (#content, #waprofilePage — модулем ядра)
+  const PROF_PAGES = ["stats", "waprofile"];
+  let profLast = "stats";
+  const prof = el("div", "chips mprof");
+  prof.hidden = true;
+  const paintProf = () => {
+    const items = [["stats", L("Статистика")]];
+    if (typeof MODPAGES !== "undefined" && MODPAGES.waprofile) items.push(["waprofile", "Whisper Archive"]);
+    items.push(["services", L("Сервисы")]);
+    prof.replaceChildren(...items.map(([page, label]) => {
+      const b = el("button", "chip" + (S.page === page ? " active" : ""), label);
+      b.type = "button";
+      b.addEventListener("click", () => { if (S.page !== page) go(page); });
+      return b;
+    }));
+  };
+  const syncProf = () => {
+    const on = typeof S !== "undefined" && PROF_PAGES.includes(S.page);
+    if (on) { profLast = S.page; paintProf(); }
+    prof.hidden = !on;
+    account.classList.toggle("active", on);
+  };
+  if (main) {
+    const head = main.querySelector(":scope > .head");
+    if (head) head.before(prof);
+    new MutationObserver(syncProf).observe(main, { attributes: true, attributeFilter: ["data-page"] });
+  }
+
   // ---------- нижняя полоса разделов: значки ----------
-  const NAV_ICONS = { wave: "mix", library: "library", vk: "playlist", stats: "chart", friends: "user", settings: "gear" };
+  // «Статистики» здесь нет — она в профиле (mobile.css прячет её кнопку)
+  const NAV_ICONS = { wave: "mix", library: "library", vk: "playlist", friends: "user", settings: "gear" };
   for (const b of document.querySelectorAll(".side .nav[data-page]")) {
     const icon = NAV_ICONS[b.dataset.page];
     if (!icon) continue;
@@ -85,9 +118,6 @@
     i.innerHTML = Icons.svg(icon);
     b.prepend(i);
   }
-  // кнопка аккаунта горит на странице «Сервисы» (go в app.js переключает .active у разделов — по нему и следим)
-  const syncAccount = () => account.classList.toggle("active", typeof S !== "undefined" && S.page === "services");
-  new MutationObserver(syncAccount).observe($(".side"), { subtree: true, attributes: true, attributeFilter: ["class"] });
 
   // ---------- мини-плеер и «Сейчас играет» ----------
   const fctrl = $("#full .fctrl");

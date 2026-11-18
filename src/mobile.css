@@ -43,7 +43,7 @@ html.mobile .main {
 }
 html.mobile .main::-webkit-scrollbar { width: 0; }
 
-/* верхняя строка: поиск со значком и кнопка аккаунта («Сервисы»), прилипает к верху */
+/* верхняя строка: поиск со значком и кнопка аккаунта («Профиль»), прилипает к верху */
 html.mobile .msearch {
   position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 8px;
   margin: 0 -14px; padding: 10px 14px 8px;
@@ -59,6 +59,12 @@ html.mobile .maccount {
 }
 html.mobile .maccount svg { width: 22px; height: 22px; }
 html.mobile .maccount.active { background: var(--btn-fill, var(--accent)); color: var(--on-accent, #0b0618); }
+/* вкладки профиля (кнопка аккаунта): статистика, Whisper Archive, «Сервисы» — mobile.js */
+html.mobile .mprof { display: flex; flex-wrap: nowrap; gap: 6px; margin: 4px 0 0; overflow-x: auto; scrollbar-width: none; }
+html.mobile .mprof[hidden] { display: none; }
+html.mobile .mprof::-webkit-scrollbar { display: none; }
+/* мельче обычных чипов: три вкладки — в ширину телефона */
+html.mobile .mprof .chip { flex: none; padding: 7px 13px !important; font-size: 13.5px !important; min-height: 0 !important; line-height: 1.2; }
 
 html.mobile .head { flex-wrap: nowrap; gap: 10px; margin: 6px 0 12px; }
 html.mobile .head h2 { font-size: 26px !important; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -113,7 +119,8 @@ html.mobile .side {
   align-items: stretch; gap: 0 !important; padding: 4px 2px 6px !important; overflow: hidden !important;
   border-left: 0 !important; border-right: 0 !important; border-bottom: 0 !important; box-shadow: none !important;
 }
-html.mobile .side .spacer, html.mobile .side .queue-mini, html.mobile .side #profile, html.mobile .side .sbox > .search { display: none !important; }
+/* «Статистика» — во вкладках профиля (кнопка аккаунта сверху), не разделом */
+html.mobile .side .spacer, html.mobile .side .queue-mini, html.mobile .side #profile, html.mobile .side #statsBtn, html.mobile .side .sbox > .search { display: none !important; }
 html.mobile .side .nav {
   min-width: 0; width: auto !important; height: auto !important; margin: 0 !important; padding: 4px 0 !important;
   display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 3px;

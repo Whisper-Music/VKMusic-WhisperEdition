@@ -1137,7 +1137,6 @@ window.I18N_DICTS.en = {
   "Полосы развёртки": "Scanlines",
   "Мерцание": "Flicker",
   // ── правый щелчок, «Меню трека», интеграции ──
-  "Сервисы и интеграции": "Services and integrations",
   "Цвета этого места…": "Colors of this spot…",
   "Последние стили": "Recent styles",
   "Обновить библиотеку": "Refresh library",
