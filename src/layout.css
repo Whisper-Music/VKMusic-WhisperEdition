@@ -348,8 +348,10 @@ html:root[data-ly-ui="super"] .player .ctrls .playbtn svg { width: 18px; height:
 html:root[data-ly-ui="super"] .player .ctrls :is(.likebtn, .disbtn) svg { width: 17px; height: 17px; }
 html:root[data-ly-ui="super"] .player .ctrls .disbtn { margin: 0; }
 html:root[data-ly-ui="super"] .player .ctrls .likebtn:not(.on) { color: var(--muted); }
+/* по центру — свойством translate, не transform: темы увеличивают кнопки плеера при наведении своим transform
+   («Над облаками»: .ctrls button:hover { transform: scale(1.1) }) — сдвиг пропадал, «⋮» уезжала из-под курсора */
 html:root[data-ly-ui="super"] .player .smmore {
-  display: grid; place-items: center; position: absolute; right: -8px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; position: absolute; right: -8px; top: 50%; translate: 0 -50%;
   color: var(--muted);
 }
 html:root[data-ly-ui="super"] .player .smmore:hover, html.sm-open .player .smmore { color: var(--text); }
