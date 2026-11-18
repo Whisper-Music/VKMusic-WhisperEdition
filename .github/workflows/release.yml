@@ -164,6 +164,8 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17, cache: gradle }
       - uses: android-actions/setup-android@v3
+        # по умолчанию ставит и пакет tools, которого в cmdline-tools 16 больше нет (sdkmanager падает, 2026-11-18)
+        with: { packages: platform-tools }
       - name: Android SDK — платформа, build-tools, NDK
         run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" "ndk;$NDK_VERSION"
       - uses: dtolnay/rust-toolchain@stable

@@ -41,7 +41,8 @@ pub enum PlayerEvent {
     Ended,
     /// не удалось открыть/проиграть
     Error { message: String },
-    /// визуализатор VK Микса: уровни полос, дБ (−100…0; viz.rs, на Android — VkmPlugin)
+    /// визуализатор VK Микса: уровни полос, дБ (−100…0; viz.rs, на Android — VkmPlugin); на Windows его нет
+    #[cfg_attr(windows, allow(dead_code))]
     Viz { b: Vec<i16> },
 }
 
