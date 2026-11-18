@@ -95,6 +95,11 @@ class BarsArgs {
   var bg: String = ""
 }
 
+@InvokeArg
+class RotateArgs {
+  var on: Boolean = true
+}
+
 /**
  * Kotlin-часть VK Music (mobile/mod.rs): плеер (Engine, PlaybackService), страница входа в сервисы, куки
  * CookieManager, ссылки, цвет системных панелей. Команды зовёт только Rust (`run_mobile_plugin_async`), не интерфейс.
@@ -356,6 +361,15 @@ class VkmPlugin(private val activity: Activity) : Plugin(activity) {
     // запомнить: при следующем запуске окно сразу этого цвета (MainActivity), без цвета прошлой темы
     activity.getSharedPreferences(MainActivity.PREFS, Activity.MODE_PRIVATE).edit().putInt(MainActivity.PREF_BG, c).apply()
     MainActivity.applyBars(activity, c)
+    invoke.resolve()
+  }
+
+  /** Поворот экрана («Общее → Поворот экрана»): нет — всегда вертикально; запоминается для следующего запуска. */
+  @Command
+  fun rotate(invoke: Invoke) {
+    val on = invoke.parseArgs(RotateArgs::class.java).on
+    activity.getSharedPreferences(MainActivity.PREFS, Activity.MODE_PRIVATE).edit().putBoolean(MainActivity.PREF_ROTATE, on).apply()
+    activity.requestedOrientation = MainActivity.orientation(on)
     invoke.resolve()
   }
 

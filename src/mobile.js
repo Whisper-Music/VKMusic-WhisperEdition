@@ -262,6 +262,25 @@
     invoke("app_background").catch(() => {});
   }
 
+  // ---------- поворот экрана ----------
+  // «Общее → Поворот экрана» (просьба владельца, 2026-11-18): выключено — всегда вертикально, включено — как велит
+  // автоповорот телефона. Выбор — localStorage vkm_rotate (входит в резервную копию); Kotlin запоминает его
+  // и сам (VkmPlugin.rotate → MainActivity), чтобы при следующем запуске экран не успел повернуться до интерфейса
+  const ROT_KEY = "vkm_rotate";
+  let rotate = true;
+  try { rotate = localStorage.getItem(ROT_KEY) !== "0"; } catch {}
+  const sendRotate = () => invoke("app_rotate", { on: rotate }).catch(() => {});
+  sendRotate();
+  window.renderRotateCard = () => {
+    const c = setCard("ui", L("Поворот экрана"));
+    c.append(switchRow(L("Поворачивать экран вместе с телефоном"), rotate, (on) => {
+      rotate = on;
+      try { localStorage.setItem(ROT_KEY, on ? "1" : "0"); } catch {}
+      sendRotate();
+    }));
+    c.append(el("p", "status", L("Выключено — VK Music всегда вертикально. Включено — как велит автоповорот в настройках телефона.")));
+  };
+
   // Tauri: «Назад» приходит событием, пока на него подписаны (иначе Android сам закрыл бы приложение)
   const app = TAURI.app;
   if (app && typeof app.onBackButtonPress === "function") app.onBackButtonPress(onBack).catch(() => {});

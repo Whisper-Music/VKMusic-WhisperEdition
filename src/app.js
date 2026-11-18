@@ -2540,6 +2540,7 @@ function renderSettings() {
   if (window.renderVizCard) renderVizCard(); // viz.js
   if (window.renderMascotCard) renderMascotCard(); // mascot.js
   renderGeneral();
+  if (window.renderRotateCard) renderRotateCard(); // mobile.js: только телефон
   renderLyricsSettings();
   // на телефоне трея и окна нет: плеер — в уведомлении, интерфейс — только в приложении
   if (window.renderTraySettings && !MOBILE) renderTraySettings(); // tray.js

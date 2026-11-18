@@ -190,6 +190,9 @@ window.I18N_DICTS.en = {
 
   // ── настройки: общее ──
   "Язык": "Language",
+  "Поворот экрана": "Screen rotation",
+  "Поворачивать экран вместе с телефоном": "Rotate the screen with the phone",
+  "Выключено — VK Music всегда вертикально. Включено — как велит автоповорот в настройках телефона.": "Off — VK Music always stays portrait. On — follows the auto-rotate setting of the phone.",
 
   // ── настройки: хранилище ──
   "Загрузки": "Downloads",

@@ -585,6 +585,16 @@ fn app_bars(bg: String) {
     let _ = bg;
 }
 
+/// Android: поворачивать ли экран вместе с телефоном («Общее → Поворот экрана», mobile.js): нет — всегда вертикально.
+/// На компьютере — ничего.
+#[tauri::command(rename_all = "snake_case")]
+fn app_rotate(on: bool) {
+    #[cfg(mobile)]
+    let _ = mobile::send("rotate", serde_json::json!({ "on": on }));
+    #[cfg(desktop)]
+    let _ = on;
+}
+
 /// Аргументы, с которыми перезапуститься при выходе: `--host` пришёл в уже открытое окно (single-instance)
 /// или переключение «окно ↔ браузер» (app_switch).
 static RELAUNCH: Mutex<Option<Vec<String>>> = Mutex::new(None);
@@ -817,6 +827,7 @@ pub fn run() {
             app_switch,
             app_background,
             app_bars,
+            app_rotate,
             battery_status,
             save_prefs,
             fonts_list,

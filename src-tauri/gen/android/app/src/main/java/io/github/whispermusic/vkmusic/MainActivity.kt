@@ -1,6 +1,7 @@
 package io.github.whispermusic.vkmusic
 
 import android.Manifest
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -29,6 +30,12 @@ class MainActivity : TauriActivity() {
     const val PREFS = "vkm"
     /** фон темы прошлого запуска (VkmPlugin.bars) — окно и системные панели до загрузки интерфейса */
     const val PREF_BG = "bg"
+    /** поворачивать ли экран (VkmPlugin.rotate): нет — всегда вертикально */
+    const val PREF_ROTATE = "rotate"
+
+    /** Ориентация окна: как велит автоповорот телефона или только вертикальная. */
+    fun orientation(rotate: Boolean) =
+      if (rotate) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
     /** Окно, строка состояния и навигация — цветом фона темы; значки панелей — тёмные на светлом. */
     fun applyBars(activity: Activity, c: Int) {
@@ -43,8 +50,11 @@ class MainActivity : TauriActivity() {
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    val bg = getSharedPreferences(PREFS, MODE_PRIVATE).let { if (it.contains(PREF_BG)) it.getInt(PREF_BG, 0) else null }
+    val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+    val bg = if (prefs.contains(PREF_BG)) prefs.getInt(PREF_BG, 0) else null
     if (bg != null) window.setBackgroundDrawable(ColorDrawable(bg))
+    // поворот — до интерфейса: иначе экран успел бы повернуться, пока грузится страница
+    requestedOrientation = orientation(prefs.getBoolean(PREF_ROTATE, true))
     val files = filesDir.absolutePath
     Os.setenv("HOME", files, true)
     Os.setenv("XDG_CONFIG_HOME", "$files/config", true)
