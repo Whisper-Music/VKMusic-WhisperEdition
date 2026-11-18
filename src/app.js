@@ -2918,10 +2918,13 @@ async function applyTheme(r, { intro = false } = {}) {
       // Телефон (просьба владельца, 2026-11-15: «полный функционал тем вроде „Терминал“ или „Телевизор“ не нужен»):
       // тема, которая сама перестраивает раскладку («layout": "fixed" — телевизор, консоль, страница соцсети…),
       // рассчитана на окно компьютера — от неё остаются цвета, фон и шрифт (tokens), без её CSS; ручка громкости,
-      // кнопки темы и консоль на телефоне не включаются ни у какой темы
+      // кнопки темы и консоль на телефоне не включаются ни у какой темы. Слой украшений, частицы, эффекты и «Тонкая
+      // настройка» темы (colorOverrides) остаются — это оформление, а не раскладка (облака «Над облаками» — #fxLayer)
       if (MOBILE) {
-        if (settings.layout === "fixed" || settings.console) css = "";
-        settings = settings.features ? { features: settings.features } : {};
+        const full = !(settings.layout === "fixed" || settings.console);
+        if (!full) css = "";
+        const keep = full ? ["features", "effects", "options", "layer", "particles", "colorOverrides"] : ["features"];
+        settings = Object.fromEntries(keep.filter((k) => settings[k] !== undefined).map((k) => [k, settings[k]]));
         rawCss = css ? rawCss : "";
       }
     } catch (e) {
