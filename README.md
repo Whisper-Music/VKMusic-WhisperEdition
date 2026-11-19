@@ -8,8 +8,8 @@
 Неофициальный десктопный клиент: ВКонтакте, SoundCloud и свои файлы в одной библиотеке,
 темы Whisper, тексты песен, статистика, Discord, OBS и друзья в одной комнате.
 
-[![Release](https://img.shields.io/github/v/release/Whisper-Music/VKMusic-WhisperEdition?label=версия&color=8b5cf6)](../../releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/Whisper-Music/VKMusic-WhisperEdition/total?label=скачиваний&color=ec4899)](../../releases)
+[![Release](https://img.shields.io/github/v/release/Whisper-Music/whisper-vkmusic?label=версия&color=8b5cf6)](../../releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Whisper-Music/whisper-vkmusic/total?label=скачиваний&color=ec4899)](../../releases)
 ![Linux](https://img.shields.io/badge/Linux-x64-f59e0b)
 ![Windows](https://img.shields.io/badge/Windows-x64-0078d4)
 [![License](https://img.shields.io/badge/лицензия-PolyForm%20Noncommercial-64748b)](LICENSE)
@@ -158,8 +158,8 @@ Arch / Manjaro:
 
 ```bash
 sudo pacman -S --needed base-devel rust webkit2gtk-4.1 mpv yt-dlp ffmpeg python-mutagen
-git clone --recurse-submodules https://github.com/Whisper-Music/VKMusic-WhisperEdition.git
-cd VKMusic-WhisperEdition
+git clone --recurse-submodules https://github.com/Whisper-Music/whisper-vkmusic.git
+cd whisper-vkmusic
 cargo build --release && ./target/release/vkmusic
 ./packaging/install.sh      # в ~/.local/bin + ярлык в меню и ссылки whisper://
 ```

@@ -52,9 +52,13 @@ mod imp {
     use serde::Deserialize;
     use tauri::AppHandle;
 
-    const MANIFEST: &str = "https://github.com/Whisper-Music/VKMusic-WhisperEdition/releases/latest/download/latest-android.json";
-    /// APK — только из выпусков этого репозитория
-    const DOWNLOADS: &str = "https://github.com/Whisper-Music/VKMusic-WhisperEdition/releases/download/";
+    const MANIFEST: &str = "https://github.com/Whisper-Music/whisper-vkmusic/releases/latest/download/latest-android.json";
+    /// APK — только из выпусков этого репозитория. Прежнее имя (до 2026-11-19 — VKMusic-WhisperEdition) GitHub
+    /// перенаправляет на новое; v0.2.0 принимает только его, поэтому release.yml пока пишет ссылку со старым именем.
+    const DOWNLOADS: [&str; 2] = [
+        "https://github.com/Whisper-Music/whisper-vkmusic/releases/download/",
+        "https://github.com/Whisper-Music/VKMusic-WhisperEdition/releases/download/",
+    ];
     const MAX_APK: u64 = 300 << 20;
 
     #[derive(Deserialize)]
@@ -88,7 +92,7 @@ mod imp {
             .map_err(|e| format!("Не удалось проверить обновления: {e}"))?;
         let m: Manifest = serde_json::from_slice(&body).map_err(|e| format!("Не удалось проверить обновления: {e}"))?;
         let ok = newer(&m.version, &app.package_info().version.to_string())
-            && m.url.starts_with(DOWNLOADS)
+            && DOWNLOADS.iter().any(|d| m.url.starts_with(d))
             && !m.url.contains("..")
             && m.url.ends_with(".apk")
             && m.size > 0

@@ -230,7 +230,9 @@ jobs:
               --title "VK Music Whisper Edition $tag" --notes "Что нового — допиши перед публикацией."
           fi
           # автообновление на телефоне (update.rs): версия, адрес и размер APK — читает releases/latest/download/…
-          jq -n --arg v "$VERSION" --arg u "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$(basename "$apk")" \
+          # Адрес — с прежним именем репозитория (VKMusic-WhisperEdition, GitHub перенаправляет): v0.2.0 принимает
+          # APK только с него. Когда v0.2.0 ни у кого не останется — вернуть $GITHUB_REPOSITORY.
+          jq -n --arg v "$VERSION" --arg u "https://github.com/Whisper-Music/VKMusic-WhisperEdition/releases/download/$tag/$(basename "$apk")" \
             --argjson s "$(stat -c %s "$apk")" '{version: $v, url: $u, size: $s}' > "$RUNNER_TEMP/latest-android.json"
           cat "$RUNNER_TEMP/latest-android.json"
           gh release upload "$tag" "$apk" "$RUNNER_TEMP/latest-android.json" --repo "$GITHUB_REPOSITORY" --clobber

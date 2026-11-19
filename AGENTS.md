@@ -86,7 +86,9 @@ cargo test                   # тесты Rust (модули src-tauri/src/*.rs)
   Прежний `ru.bobrik.vkmusic` переносится при запуске (`migrate_ident`, `secret::from_old`). Настройки приложения —
   по-прежнему `~/.config/vkmusic`, кэш — `~/.cache/vkmusic` (не зависят от идентификатора).
 * Лицензия — PolyForm Noncommercial 1.0.0 (`LICENSE`, как у Whisper Yandex и ядра); строку `Required Notice` не трогать.
-* Репозиторий — https://github.com/Whisper-Music/VKMusic-WhisperEdition. В нём только приложение: ядро — подмодуль
+* Репозиторий — https://github.com/Whisper-Music/whisper-vkmusic (до 2026-11-19 — `VKMusic-WhisperEdition`: GitHub
+  перенаправляет; v0.2.0 на Android берёт APK только по старому адресу — его пока пишет `release.yml`, `update.rs`
+  принимает оба). В нём только приложение: ядро — подмодуль
   (`src/core`, своё — в whisper-core), темы библиотеки — в whisper-themes (здесь — только 2 встроенные, `themes/`).
 
 ## Устройство

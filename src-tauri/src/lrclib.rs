@@ -36,7 +36,7 @@ fn client() -> &'static reqwest::Client {
                 }
             }))
             // LRCLIB просит называть приложение, версию и ссылку
-            .user_agent(concat!("VKMusic-WhisperEdition/", env!("CARGO_PKG_VERSION"), " (https://github.com/Whisper-Music/VKMusic-WhisperEdition)"))
+            .user_agent(concat!("whisper-vkmusic/", env!("CARGO_PKG_VERSION"), " (https://github.com/Whisper-Music/whisper-vkmusic)"))
             .build()
             .expect("HTTP-клиент LRCLIB")
     })
