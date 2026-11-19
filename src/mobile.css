@@ -197,8 +197,9 @@ html.mobile .statgrid, html.mobile .lsfav { grid-template-columns: minmax(0, 1fr
 html.mobile .stpeople { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 html.mobile .cols { flex-direction: column; gap: 12px; }
 html.mobile .card { border-radius: 18px; }
-/* Discord и виджет OBS — программы компьютера */
-html.mobile #settingsPage > .card:has(#dcOn), html.mobile #settingsPage > .card:has(#obsOn) { display: none !important; }
+/* Discord, виджет OBS и связь с приложениями Whisper — программы компьютера */
+html.mobile #settingsPage > .card:has(#dcOn), html.mobile #settingsPage > .card:has(#obsOn),
+html.mobile #settingsPage > .card:has(#wapiOn) { display: none !important; }
 
 /* ---------- VK Микс ---------- */
 html.mobile .wavepage .stage { min-height: 220px; }

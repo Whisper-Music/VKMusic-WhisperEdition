@@ -11,6 +11,10 @@ mod config;
 mod deeplink;
 // Rust-часть ядра Whisper (подмодуль src/core): Discord, виджет OBS, Whisper Archive и «Слушать вместе».
 // Своё у приложения — whisper_host.rs (ключ, семафор, Origin, Discord/OBS), whisper_vk.rs (архив и треки VK Music)
+// Whisper API ядра: приложения Whisper на этом компьютере управляют друг другом (тема — во все); только компьютер
+#[cfg(desktop)]
+#[path = "../../src/core/rust/api.rs"]
+mod api;
 #[path = "../../src/core/rust/discord.rs"]
 mod discord;
 mod fonts;
@@ -159,6 +163,8 @@ impl AppState {
 
 #[derive(Serialize)]
 struct Info {
+    /// версия приложения — для заглушки `--host` (host.js: `app.getVersion`, её спрашивает Whisper API ядра)
+    version: &'static str,
     music_dir: String,
     theme: String,
     volume: f64,
@@ -195,6 +201,7 @@ struct Info {
 fn app_info(st: State<'_, AppState>) -> Res<Info> {
     let c = st.cfg.lock().unwrap().clone();
     Ok(Info {
+        version: env!("CARGO_PKG_VERSION"),
         music_dir: c.music_dir().display().to_string(),
         download_dir: c.download_dir().display().to_string(),
         cache_limit_mb: c.cache_limit_mb,
@@ -951,6 +958,10 @@ pub fn run() {
             whisper::rooms::wa_room_dismiss,
             whisper::rooms::wa_room_transfer,
             whisper::rooms::wa_room_ping,
+            whisper::rooms::wa_room_presence,
+            whisper::rooms::wa_room_kick,
+            whisper::rooms::wa_room_unban,
+            whisper::rooms::wa_room_lock,
             whisper::rooms::wa_room_missing,
             whisper::rooms::wa_room_wink,
             whisper::rooms::wa_room_friends,
@@ -966,6 +977,8 @@ pub fn run() {
             whisper::friends::wa_friend_request,
             whisper::friends::wa_friend_accept,
             whisper::friends::wa_friend_remove,
+            whisper::friends::wa_friend_block,
+            whisper::friends::wa_friend_unblock,
             whisper::friends::wa_user_profile,
             whisper::friends::wa_image,
             whisper::profile::wa_my_profile,
@@ -988,12 +1001,32 @@ pub fn run() {
             obs::obs_config,
             obs::obs_state,
             obs::obs_theme,
+            // Whisper API (core/api.js)
+            #[cfg(desktop)]
+            api::wapi_start,
+            #[cfg(desktop)]
+            api::wapi_stop,
+            #[cfg(desktop)]
+            api::wapi_body,
+            #[cfg(desktop)]
+            api::wapi_reply,
+            #[cfg(desktop)]
+            api::wapi_apps,
+            #[cfg(desktop)]
+            api::wapi_send,
+            #[cfg(desktop)]
+            api::wapi_fetch,
         ])
         .build(context(host_port.is_some()))
         .expect("не удалось запустить приложение");
 
     app.run(|handle, event| {
         if let tauri::RunEvent::Exit = event {
+            // убрать себя из реестра Whisper API
+            #[cfg(desktop)]
+            api::shutdown();
+            // друзьям — «не в сети» сразу, а не через 70 с тишины (не дольше 1,5 с)
+            tauri::async_runtime::block_on(whisper::rooms::presence_offline());
             let st = handle.state::<AppState>();
             let _ = st.save();
             let player = st.player.lock().unwrap().take();

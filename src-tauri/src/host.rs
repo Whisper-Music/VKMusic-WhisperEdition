@@ -29,7 +29,7 @@ use tauri::{AppHandle, Listener, Manager};
 pub const DEFAULT_PORT: u16 = 7380;
 
 /// События Rust, которые уходят в браузер.
-const EVENTS: [&str; 10] = [
+const EVENTS: [&str; 11] = [
     "player://event",
     "dl://event",
     "svc://event",
@@ -38,6 +38,8 @@ const EVENTS: [&str; 10] = [
     "room-link",
     "hotkey",
     "tray://ctl",
+    // запросы других приложений Whisper (core/api.js, api.rs ядра)
+    "wapi",
     crate::omarchy::EVENT,
     crate::sleep::EVENT,
 ];

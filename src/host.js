@@ -84,6 +84,7 @@
       convertFileSrc: (path, protocol = "asset") => "/p/" + protocol + "/" + encodeURIComponent(path),
     },
     event: { listen },
+    app: { getVersion: () => invoke("app_info").then((i) => i.version) },
     window: { getCurrentWindow: () => ({ requestUserAttention: () => Promise.resolve() }) },
   };
   document.documentElement.classList.add("host-mode");

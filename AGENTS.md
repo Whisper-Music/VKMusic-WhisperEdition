@@ -13,7 +13,7 @@ Android (тот же код, раздел «Android» ниже).
 в `src/core` (решение владельца, 2026-11-03; в ядре оно называется «Whisper VK», id `whisper-vk`): шина событий,
 плеер и очередь для общих модулей, роли интерфейса и движок CSS тем, и все общие модули (просьба владельца,
 2026-11-04, по образцу YandexMusic-WhisperEdition): «Очередь и история», Whisper Archive, «Слушать вместе», Discord,
-виджет OBS — вместе с их Rust-частью.
+виджет OBS, Whisper API — вместе с их Rust-частью.
 **Интерфейс — разметка Whisper Yandex** (просьба владельца, 2026-11-04: «темы Whisper должны применяться полностью»):
 те же классы и id (`.app`, `.side`, `.main > .head`, `ul.list > li`, `.player > .pinfo/.pcenter/.pright`, `#settingsPage`
 с вкладками, `#full`, `.titlebar` …), основа оформления — `src/whisper.css` (styles.css Whisper Yandex без изменений),
@@ -153,7 +153,7 @@ src-tauri/src/mobile/      Android (cfg(mobile)): мост к Kotlin-плаги�
                            (login.rs), кэш потоков без ffmpeg — HLS с AES-128 и разбором MPEG-TS (hls.rs), заглушки трея и клавиш
 src-tauri/gen/android/     проект Android (Tauri android init); своё — MainActivity.kt, VkmPlugin.kt, PlaybackService.kt,
                            манифест, Media3 в app/build.gradle.kts, BuildTask.kt (Tauri CLI через npx)
-src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs
+src/core/rust/…            Rust ядра через #[path]: whisper/ (архив, вход, загрузка, wa://, комнаты), discord.rs, obs.rs, api.rs
 src/                       index.html, app.css, app.js, icons.js — без сборщика и фреймворков
 src/whisper.css            основа оформления Whisper (styles.css Whisper Yandex, коммит в заголовке; PolyForm Noncommercial) — не
                            править, обновлять целиком из Whisper Yandex (хвост «карточки своих стилей» сохранять)
@@ -349,8 +349,8 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   `bootDone`; снимок пишет `saveBoot` после `applyTheme`), `lsguard.js` (до всего, что пишет localStorage), затем
   `core/whisper-core.js` → i18n, `icons.js`, `errinfo.js`, `app.js` → `backup.js`, `tray.js`, `eq.js`, `sleep.js`, `keynav.js`, `cli.js`,
   `hotkeys.js`, `colors.js`, `themeguard.js` → `whisper-vk.js` →
-  `core/wmt.js`, `core/theme-css.js` → модули `archive`, `queue`, `discord`, `obs`, `together` (порядок модулей =
-  порядок карточек в «Интеграциях»). CSS: `core/base.css` → `whisper.css` → `core/together.css` → `app.css` →
+  `core/wmt.js`, `core/theme-css.js` → модули `archive`, `queue`, `discord`, `obs`, `api`, `together` (порядок модулей =
+  порядок карточек в «Интеграциях»; у `api` карточка — в «Оформлении»). CSS: `core/base.css` → `whisper.css` → `core/together.css` → `app.css` →
   `core/archive.css`, `queue.css`, `discord.css`, `obs.css` → `<style id="theme-css">`. `app.js` запускается по
   `DOMContentLoaded` (`boot`), когда роли и движок тем уже подключены.
 * Ядру о плеере сообщает `app.js` — `Whisper.player.report(…)`: смена трека (`playAt`: `track`, `started` — кроме
@@ -450,6 +450,16 @@ docs/THEMES.md             темы для VK Music: что от Whisper, что
   узел `#friendsPage` есть в index.html (кнопка скрыта, пока модуль не зарегистрировал страницу), `go()` прячет и
   показывает узлы `MODPAGES`, `rerender()` зовёт `render`. Альбом друга — `kit.playArchive(tracks, start, { author })`
   → `playArchive`: треки `{ key: "wa:<uuid>", archive }` играют только из архива (`wa_play`), в библиотеку не входят.
+* Whisper API (ядро ad60dea, 2026-11-19; `core/api.js`, `api.rs`, протокол — `src/core/docs/API.md`): приложения Whisper
+  на одном компьютере (Whisper Yandex, Whisper Mixer…) ставят друг другу тему. Сервер на 127.0.0.1 со случайным портом и
+  ключом, запись в реестре `$XDG_RUNTIME_DIR/whisper-api/whisper-vk.json` (0600); действия — `GET theme`, `GET theme/file`,
+  `POST theme` через наши `kit.themeExport` / `themeImport` (как «Темы комнаты»: `theme_install` с его проверками,
+  своя тема с тем же id — после подтверждения). Карточка «Приложения Whisper» — «Оформление» (выключатель — `vkm_api`).
+  Только компьютер: `mod api` и команды `wapi_*` — `#[cfg(desktop)]`, на телефоне карточка скрыта (mobile.css).
+  Запрос приходит на страницу событием `wapi` (в `host::EVENTS`); при выходе — `api::shutdown()` (убрать из реестра).
+  Версию модуль берёт у `__TAURI__.app.getVersion()` (в `--host` — `host.js` через `app_info.version`), поэтому
+  `setApp` её не задаёт. Проверка — песочница `--host` и `curl` с ключом из реестра.
+  Там же, в `RunEvent::Exit`: `whisper::rooms::presence_offline()` — друзьям «не в сети» сразу (не дольше 1,5 с).
 * «Профиль Whisper Archive» (ядро 4b32974, 2026-11-18; `core/profile.js`, `profile.css`, Rust — `whisper::profile::*`):
   ник, аватар, место, свои и лайкнутые альбомы, друзья. Страница — `kit.page("waprofile", { btn, bind: false })` →
   `modulePage` (узел `#waprofilePage.kitpage`); кнопка — `#profile` в боковой панели (`kit.profileButton` → "profile",

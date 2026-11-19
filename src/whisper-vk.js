@@ -8,7 +8,8 @@
   if (!W) return console.error("whisper-vk.js: нет ядра Whisper — подключите core/whisper-core.js раньше");
 
   // id — имя секции темы (@@ css whisper-vk); storage — приставка ключей localStorage модулей ядра (история очереди)
-  W.setApp({ id: "whisper-vk", name: "VK Music", version: "0.1.0", storage: "vkm_" });
+  // версию не задаём: модули ядра (Whisper API) спрашивают её у Tauri — app.getVersion (в --host — host.js)
+  W.setApp({ id: "whisper-vk", name: "VK Music", storage: "vkm_" });
 
   // ---------- роли интерфейса: [data-w="…"] в темах → наши селекторы ----------
   // Разметка — как у Whisper Yandex, поэтому и роли те же (yandex.js там). Публичный контракт с темами
